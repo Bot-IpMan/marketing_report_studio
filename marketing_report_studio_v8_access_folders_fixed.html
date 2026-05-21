@@ -962,8 +962,10 @@ function normalizeNumberString(v){
     // 4,271,994 -> 4271994
     s=s.replace(/,/g,'');
   }else if(!hasDot && commaCount===1){
-    // 2,8610 -> 2.8610
-    s=s.replace(',','.');
+    const [a,b]=s.split(',');
+    // 101,342 -> 101342 (thousands), 2,86 -> 2.86 (decimal comma)
+    if(/^\d{3}$/.test(b||'')) s=a+b;
+    else s=a+'.'+(b||'');
   }
   return s;
 }
@@ -1208,9 +1210,19 @@ function renderAnalytics(){
     }
   }
   const dedup=new Map();
+  const rowQuality=(r)=>{
+    const x=r||{};
+    const hasLikes=num(x.likes)>0?1:0;
+    const hasComments=num(x.comments_count)>0?1:0;
+    const hasViews=num(x.views)>0?1:0;
+    const hasRates=(num(x.like_rate_percent)>0||num(x.comment_rate_percent)>0||num(x.er_public_percent)>0)?1:0;
+    return hasLikes*1000 + hasComments*100 + hasViews*10 + hasRates;
+  };
   for(const v of videoCatalog){
     const id=`${v.author}::${normText(v.title||v.key)}`;
-    if(!dedup.has(id)) dedup.set(id,v);
+    const prev=dedup.get(id);
+    if(!prev){ dedup.set(id,v); continue; }
+    if(rowQuality(v.row) >= rowQuality(prev.row)) dedup.set(id,v);
   }
   const allVideoItems=[...dedup.values()].map(v=>({key:v.title||v.key,title:v.title,author:v.author}));
   const authors=['CaspianReport','Johnny Harris','Paul Warburg','Ryan McBeth','Savage_Sage','trueSavageSage','Zeihan on Geopolitics'];
@@ -1247,15 +1259,6 @@ function renderAnalytics(){
     if(!byAuthor.has(a)) byAuthor.set(a,[]);
     byAuthor.get(a).push(it);
   }
-  const channelsCount=byAuthor.size;
-  const videosCount=allVideoItems.length;
-  const channelsOk=channelsCount===7;
-  const videosOk=videosCount===35;
-  const perAuthorState=[...byAuthor.entries()].map(([a,list])=>`${a}: ${list.length}/5`).join(' · ');
-  const coverageHtml=`<div class="hintBox"><b>Покриття YouTube:</b> каналів ${channelsCount}/7 ${channelsOk?'OK':'НЕ OK'} · відео ${videosCount}/35 ${videosOk?'OK':'НЕ OK'}<br><span class="tiny">${esc(perAuthorState||'Немає даних')}</span></div>`;
-  const navItems=(state.analyticsAuthor==='all' ? [...byAuthor.entries()] : [...byAuthor.entries()].filter(([a])=>normAuthor(a)===selectedAuthorNorm))
-    .sort((x,y)=>String(x[0]).localeCompare(String(y[0]),'uk'));
-  const navHtml=`<div class="widget"><div class="widgetHead"><b>Канали → Відео</b><span class="badge">nav</span></div><div class="widgetBody">${navItems.length?navItems.map(([a,list])=>`<div style="margin-bottom:10px"><div><button class="btn small ${state.analyticsAuthor===a?'primary':''}" data-nav-author="${esc(a)}">${esc(a)}</button> <span class="tiny">${list.length}/5</span></div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">${list.map(v=>`<button class="btn small ${state.analyticsVideo===v.key?'primary':''}" data-nav-video="${esc(v.key)}" title="${esc(v.title)}">${esc(short(v.title,34))}</button>`).join('')}</div></div>`).join(''):'<div class="empty">Немає каналів/відео для навігації.</div>'}</div></div>`;
   const authorHtml=[
     `<button class="btn small ${state.analyticsAuthor==='all'?'primary':''}" data-author="all">Всі автори</button>`,
     ...authors.map(a=>`<button class="btn small ${state.analyticsAuthor===a?'primary':''}" data-author="${esc(a)}">${esc(short(a,28))}</button>`)
@@ -1264,12 +1267,56 @@ function renderAnalytics(){
     `<button class="btn small ${state.analyticsVideo==='all'?'primary':''}" data-mode="all">Порівняльні</button>`,
     ...videoItems.map(v=>`<button class="btn small ${state.analyticsVideo===v.key?'primary':''}" data-mode="${esc(v.key)}" title="${esc(v.title)}">${esc(short(v.title,36))}</button>`)
   ].join('');
-  chartsGrid.insertAdjacentHTML('beforebegin',`<div class="toolbar" id="analyticsAuthorBar">${authorHtml}</div><div class="toolbar" id="analyticsModeBar">${modeHtml}</div>${coverageHtml}<div id="analyticsNavTree">${navHtml}</div>`);
+  chartsGrid.insertAdjacentHTML('beforebegin',`<div class="toolbar" id="analyticsAuthorBar">${authorHtml}</div><div class="toolbar" id="analyticsModeBar">${modeHtml}</div>`);
   $('analyticsAuthorBar')?.querySelectorAll('[data-author]').forEach(b=>b.addEventListener('click',()=>{state.analyticsAuthor=b.dataset.author||'all'; state.analyticsVideo='all'; renderAnalytics();}));
   $('analyticsModeBar')?.querySelectorAll('[data-mode]').forEach(b=>b.addEventListener('click',()=>{state.analyticsVideo=b.dataset.mode||'all'; renderAnalytics();}));
-  $('analyticsNavTree')?.querySelectorAll('[data-nav-author]').forEach(b=>b.addEventListener('click',()=>{state.analyticsAuthor=b.dataset.navAuthor||'all'; state.analyticsVideo='all'; renderAnalytics();}));
-  $('analyticsNavTree')?.querySelectorAll('[data-nav-video]').forEach(b=>b.addEventListener('click',()=>{state.analyticsVideo=b.dataset.navVideo||'all'; renderAnalytics();}));
   if(state.analyticsVideo==='all'){
+    if(state.analyticsAuthor!=='all' && vizDatasets.length){
+      const allVizRows=vizDatasets.flatMap(d=>Array.isArray(d.rows)?d.rows:[]);
+      const authorRows=allVizRows.filter(r=>normAuthor(String(r.author||''))===selectedAuthorNorm);
+      const byTitle=new Map();
+      for(const r of authorRows){
+        const k=String(r.full_title||r.video_label||'').trim();
+        if(!k) continue;
+        const prev=byTitle.get(k);
+        const prevScore=Number(prev?.overall_video_score??Number.NEGATIVE_INFINITY);
+        const curScore=Number(r?.overall_video_score??Number.NEGATIVE_INFINITY);
+        if(!prev || curScore>prevScore) byTitle.set(k,r);
+      }
+      const rows=[...byTitle.values()];
+      if(rows.length){
+        const cmpDefs=[
+          ['Перегляди (5 відео автора)','views'],
+          ['Перегляди/день (5 відео автора)','views_per_day'],
+          ['ER Public % (5 відео автора)','er_public_percent'],
+          ['Лайки (5 відео автора)','likes'],
+          ['Коментарі (5 відео автора)','comments_count'],
+          ['Like Rate % (5 відео автора)','like_rate_percent'],
+          ['Comment Rate % (5 відео автора)','comment_rate_percent'],
+          ['Overall Score (5 відео автора)','overall_video_score']
+        ];
+        let rendered=0;
+        for(const [title,key] of cmpDefs){
+          const items=rows.map(r=>[String(r.full_title||r.video_label||'—'), num(r[key])]);
+          const max=Math.max(1,...items.map(x=>num(x[1])));
+          chartsGrid.appendChild(simpleWidget(title,'author-compare',renderSimpleBarChart(items,max)));
+          rendered++;
+        }
+        $('zoneChartsStat').textContent = `порівняння автора · ${rows.length} відео · ${rendered} графіків`;
+        const tRows=rows.map(r=>[
+          r.full_title||r.video_label||'',
+          fmt(r.views),
+          fmt(r.views_per_day),
+          fmt(r.er_public_percent),
+          fmt(r.likes),
+          fmt(r.comments_count),
+          fmt(r.overall_video_score)
+        ]);
+        tablesGrid.innerHTML=`<div class="widget tableWidget"><div class="widgetHead"><b>Порівняння 5 відео автора</b><span class="badge">table</span></div><div class="widgetBody"><table class="miniTable"><thead><tr><th>Відео</th><th>Views</th><th>Views/day</th><th>ER %</th><th>Likes</th><th>Comments</th><th>Overall</th></tr></thead><tbody>${tRows.map(r=>`<tr><th>${esc(short(r[0],56))}</th><td class="num">${esc(r[1])}</td><td class="num">${esc(r[2])}</td><td class="num">${esc(r[3])}</td><td class="num">${esc(r[4])}</td><td class="num">${esc(r[5])}</td><td class="num">${esc(r[6])}</td></tr>`).join('')}</tbody></table></div></div>`;
+        $('zoneTablesStat').textContent = `порівняльна таблиця автора`;
+        return;
+      }
+    }
     if(retentionDs){
       const tempoWidget=buildRetentionWidget(retentionDs,'tempo');
       const retWidget=buildRetentionWidget(retentionDs,'retention');
@@ -1661,15 +1708,49 @@ function renderEmbeddedTreeNode(node, path, match, depth){
 }
 async function pickAndConnectFolder(){
   if(!window.showDirectoryPicker){toast('Цей браузер не підтримує доступ до папок'); return;}
+  const knownAuthors=['CaspianReport','Johnny Harris','Paul Warburg','Ryan McBeth','Savage_Sage','trueSavageSage','Zeihan on Geopolitics'];
+  const norm=s=>String(s||'').toLowerCase().replace(/[_\s-]+/g,'').trim();
+  const existsRootByHandle=h=>state.fsRoots.some(r=>r.handle===h || (r.name===h?.name && r.handle?.kind===h?.kind));
+  const addRoot=async (h, displayName)=>{
+    if(!h || existsRootByHandle(h)) return false;
+    const root={id:uid('fsr'),name:displayName||h.name||'folder',handle:h,tree:null,index:new Map()};
+    state.fsRoots.push(root);
+    await refreshFsRoot(root);
+    return true;
+  };
   try{
     const handle=await window.showDirectoryPicker({mode:'read'});
-    const root={id:uid('fsr'),name:handle.name||'folder',handle,tree:null,index:new Map()};
-    state.fsRoots.push(root);
-    await saveFsRoots();
-    await refreshFsRoot(root);
-    await importVisualizationFromFsRoots(true);
-    startFsWatcher();
-    toast('Папку підключено');
+
+    const childDirs=[];
+    for await (const [name, child] of handle.entries()){
+      if(child?.kind==='directory') childDirs.push({name, handle:child});
+    }
+    const authorDirs=childDirs.filter(d=>knownAuthors.some(a=>norm(a)===norm(d.name)));
+
+    let added=0;
+    if(authorDirs.length>=2){
+      for(const d of authorDirs){
+        if(await addRoot(d.handle, d.name)) added++;
+      }
+      if(added===0){
+        toast('Ці папки вже підключені');
+      }else{
+        await saveFsRoots();
+        await importVisualizationFromFsRoots(true);
+        startFsWatcher();
+        toast(`Підключено ${added} папок авторів автоматично`);
+      }
+      return;
+    }
+
+    if(await addRoot(handle, handle.name||'folder')){
+      await saveFsRoots();
+      await importVisualizationFromFsRoots(true);
+      startFsWatcher();
+      toast('Папку підключено');
+    }else{
+      toast('Ця папка вже підключена');
+    }
   }catch(e){
     console.warn('[fs] pickAndConnectFolder cancelled/failed:', e?.message||e);
   }
@@ -2360,6 +2441,70 @@ function parseVisualizationMarkdown(text,fileName,authorHint){
   if(!row.video_label || !isNum(row.views)) return null;
   return enrichVideoMetricsRow(row);
 }
+function firstMetricNumber(raw){
+  const s=String(raw||'').replace(/\s+/g,' ').trim();
+  const m=s.match(/-?\d[\d\s.,]*/);
+  return m ? num(m[0]) : 0;
+}
+function parseAnalysisMarkdown(text,fileName,authorHint){
+  const tables=parseMarkdownTable(text);
+  if(!tables.length) return null;
+  let snap=null, metrics=null;
+  for(const t of tables){
+    const hs=t.headers.map(h=>normalizeVizKey(h));
+    if(hs.includes('поле') && hs.includes('значення')) snap=t;
+    if((hs.includes('метрика')||hs.includes('metric')) && (hs.includes('значення')||hs.includes('value'))) metrics=t;
+  }
+  if(!metrics || !metrics.rows.length) return null;
+  const mapFromTable=(tbl)=>{
+    const hs=tbl.headers.map(h=>normalizeVizKey(h));
+    const kIdx=hs.findIndex(h=>h==='метрика'||h==='metric'||h==='поле'||h==='field');
+    const vIdx=hs.findIndex(h=>h==='значення'||h==='value');
+    const out={};
+    if(kIdx<0||vIdx<0) return out;
+    for(const r of tbl.rows){
+      const k=normalizeVizKey(String(r[kIdx]||''));
+      const v=String(r[vIdx]||'').trim();
+      if(k) out[k]=v;
+    }
+    return out;
+  };
+  const snapMap=snap?mapFromTable(snap):{};
+  const metMap=mapFromTable(metrics);
+  const row={
+    author:String(authorHint||snapMap.channel||'').trim(),
+    video_label:String(snapMap.title||'').trim() || String(fileName||'').replace(/^YT_VIDEO_ANALYSIS_?/i,'').replace(/\.[^.]+$/,'').trim(),
+    full_title:String(snapMap.title||'').trim() || String(fileName||'').replace(/^YT_VIDEO_ANALYSIS_?/i,'').replace(/\.[^.]+$/,'').trim(),
+    format_group:String(snapMap.format_group||snapMap.format||'').trim(),
+    views:firstMetricNumber(metMap.views),
+    views_per_day:firstMetricNumber(metMap.views_per_day),
+    likes:firstMetricNumber(metMap.likes),
+    comments_count:firstMetricNumber(metMap.comments),
+    like_rate_percent:firstMetricNumber(metMap.like_rate),
+    comment_rate_percent:firstMetricNumber(metMap.comment_rate),
+    er_public_percent:firstMetricNumber(metMap.er_public),
+    views_per_1k_subs:firstMetricNumber(metMap.views_per_1k_subs),
+    likes_per_1k_views:firstMetricNumber(metMap.likes_per_1k_views),
+    comments_per_1k_views:firstMetricNumber(metMap.comments_per_1k_views),
+    watch_time_hours:firstMetricNumber(metMap.watch_time),
+    subscribers_gained:firstMetricNumber(metMap.subscribers_gained)
+  };
+  if(!row.video_label || !isNum(row.views)) return null;
+  return enrichVideoMetricsRow(row);
+}
+function backfillMissingMetricsFromAnalysis(vizRow, anaRow){
+  if(!vizRow || !anaRow) return vizRow;
+  const keys=['likes','comments_count','like_rate_percent','comment_rate_percent','er_public_percent','views_per_1k_subs','likes_per_1k_views','comments_per_1k_views','views_per_day','watch_time_hours','subscribers_gained'];
+  for(const k of keys){
+    if((!isNum(vizRow[k]) || num(vizRow[k])<=0) && isNum(anaRow[k]) && num(anaRow[k])>0){
+      vizRow[k]=num(anaRow[k]);
+    }
+  }
+  if((!vizRow.full_title || /^video\s*\d+$/i.test(String(vizRow.full_title||''))) && anaRow.full_title){
+    vizRow.full_title=anaRow.full_title;
+  }
+  return enrichVideoMetricsRow(vizRow);
+}
 function ensureVideoMetricsWidgets(ds, sourceFileId){
   (ds.rows||[]).forEach(enrichVideoMetricsRow);
   const chartDefs=[
@@ -2413,6 +2558,11 @@ async function importVisualizationFromFsRoots(force){
       REPORT.datasets.push(retDs);
     }
     const retRows=[];
+    const analysisRowsByLabel=new Map();
+    const vizRowsByFolder=new Map();
+    const analysisRowsByFolder=new Map();
+    const folderKey=(p)=>String(p||'').replace(/\\/g,'/').split('/').slice(0,-1).join('/').toLowerCase();
+
     for(const [relPath, handle] of (root.index||new Map()).entries()){
       if(!/YT_VIDEO_VISUALIZATION_/i.test(relPath) || !/\.md$/i.test(relPath)) continue;
       try{
@@ -2422,9 +2572,41 @@ async function importVisualizationFromFsRoots(force){
         const parsed=parseVisualizationMarkdown(txt,f.name, inferAuthorHintFromPath(relPath, root.name));
         if(!parsed) continue;
         byLabel.set(rowKey(parsed), parsed);
+        vizRowsByFolder.set(folderKey(relPath), parsed);
         imported++;
       }catch(e){
         console.warn('[viz] parseVisualizationMarkdown failed for', relPath, e?.message||e);
+      }
+    }
+    for(const [relPath, handle] of (root.index||new Map()).entries()){
+      if(!/YT_VIDEO_ANALYSIS_/i.test(relPath) || !/\.md$/i.test(relPath)) continue;
+      try{
+        const f=await handle.getFile();
+        const txt=await f.text();
+        upsertFsTextFileRecord(root, relPath, f, txt);
+        const parsed=parseAnalysisMarkdown(txt,f.name, inferAuthorHintFromPath(relPath, root.name));
+        if(!parsed) continue;
+        analysisRowsByLabel.set(rowKey(parsed), parsed);
+        analysisRowsByFolder.set(folderKey(relPath), parsed);
+      }catch(e){
+        console.warn('[viz] parseAnalysisMarkdown failed for', relPath, e?.message||e);
+      }
+    }
+
+    for(const [folder, anaRow] of analysisRowsByFolder.entries()){
+      const vizRow=vizRowsByFolder.get(folder);
+      if(vizRow){
+        const merged=backfillMissingMetricsFromAnalysis(vizRow, anaRow);
+        byLabel.set(rowKey(merged), merged);
+      }
+    }
+
+    for(const [k, anaRow] of analysisRowsByLabel.entries()){
+      const existing=byLabel.get(k);
+      if(existing){
+        byLabel.set(k, backfillMissingMetricsFromAnalysis(existing, anaRow));
+      }else{
+        byLabel.set(k, anaRow);
       }
     }
     for(const [relPath, handle] of (root.index||new Map()).entries()){
