@@ -43,7 +43,7 @@
 
 | Video | Format | Views | Likes | Comments | Subscribers | Views/day | Like Rate % | Comment Rate % | ER Public % | Views/1k subs | Likes/1k views | Comments/1k views | Hook | CTA | Ad | Audio | Comment Resonance | Overall |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Video 1 | LONG_20_PLUS_MIN | 110352 | 12987 | 4110 | 19100 | 190.26 | 11.77 | 3.72 | 15.49 | 5777.59 | 117.69 | 37.24 | 4 | 4 | N/A | 4 | 5 | 4.17 |
+| Video 1 | LONG_20_PLUS_MIN | 110352 | 12987 | 4110 | 19100 | 190.26 | 11.77 | 3.72 | 15.49 | 5 | 5 | 1 | 5 | 5 | 5 |
 
 | Label | Full title | URL |
 |---|---|---|

@@ -1276,12 +1276,26 @@ function renderAnalytics(){
       const authorRows=allVizRows.filter(r=>normAuthor(String(r.author||''))===selectedAuthorNorm);
       const byTitle=new Map();
       for(const r of authorRows){
-        const k=String(r.full_title||r.video_label||'').trim();
+        const rawTitle=String(r.full_title||r.video_label||'').trim();
+        if(!rawTitle) continue;
+        const k=normText(rawTitle);
         if(!k) continue;
         const prev=byTitle.get(k);
-        const prevScore=Number(prev?.overall_video_score??Number.NEGATIVE_INFINITY);
-        const curScore=Number(r?.overall_video_score??Number.NEGATIVE_INFINITY);
-        if(!prev || curScore>prevScore) byTitle.set(k,r);
+        if(!prev){
+          byTitle.set(k,r);
+          continue;
+        }
+        const prevQ=rowQuality(prev);
+        const curQ=rowQuality(r);
+        if(curQ>prevQ){
+          byTitle.set(k,r);
+          continue;
+        }
+        if(curQ===prevQ){
+          const prevViews=num(prev?.views);
+          const curViews=num(r?.views);
+          if(curViews>prevViews) byTitle.set(k,r);
+        }
       }
       const rows=[...byTitle.values()];
       if(rows.length){
@@ -1337,11 +1351,20 @@ function renderAnalytics(){
     return;
   }
   const modeNorm=normText(state.analyticsVideo);
-  const videoRow=(videoCatalog.find(v=>{
+  const videoCandidates=videoCatalog.filter(v=>{
     const sameAuthor = state.analyticsAuthor==='all' || normAuthor(v.author)===selectedAuthorNorm;
     const sameVideo = normText(v.key)===modeNorm || normText(v.title)===modeNorm || normText(v.key).includes(modeNorm) || modeNorm.includes(normText(v.key));
     return sameAuthor && sameVideo;
-  })||{}).row||null;
+  });
+  const fallbackCandidates=videoCandidates.length?videoCandidates:videoCatalog.filter(v=>{
+    const sameVideo = normText(v.key)===modeNorm || normText(v.title)===modeNorm || normText(v.key).includes(modeNorm) || modeNorm.includes(normText(v.key));
+    return sameVideo;
+  });
+  let videoRow=(fallbackCandidates.sort((a,b)=>rowQuality(b?.row)-rowQuality(a?.row))[0]||{}).row||null;
+  const fileRow=resolveVideoRowFromFiles(state.analyticsVideo, state.analyticsAuthor);
+  if(fileRow && (!videoRow || rowQuality(fileRow)>rowQuality(videoRow))){
+    videoRow=fileRow;
+  }
   if(!videoRow){
     chartsGrid.innerHTML='<div class="empty">Відео не знайдено для внутрішніх графіків.</div>';
     tablesGrid.innerHTML='<div class="empty">Немає даних.</div>';
@@ -1621,7 +1644,7 @@ function renderSide(){
   if(state.fsRoots.length){
     for(const root of state.fsRoots){
       const rk='root:'+root.id;
-      const open=state.fsOpen[rk]!==false;
+      const open=state.fsOpen[rk]===true;
       html += `<div class="item" data-type="fs-root" data-id="${esc(root.id)}"><div class="icon">${open?'▾':'▸'}</div><div class="itemName">📂 ${esc(root.name)}</div></div>`;
       if(open && root.tree) html += renderFsTreeNode(root.tree, '', match, 0, root.id);
     }
@@ -1636,10 +1659,10 @@ function onSideListClick(e){
   const it=e.target.closest('.item');
   if(!it || !sideList.contains(it)) return;
   const type=it.dataset.type,id=it.dataset.id;
-  if(type==='fs-root'){const k='root:'+id; state.fsOpen[k]=!(state.fsOpen[k]!==false); renderSide(); return;}
-  if(type==='fs-folder'){state.fsOpen[id]=!(state.fsOpen[id]!==false); renderSide(); return;}
+  if(type==='fs-root'){const k='root:'+id; state.fsOpen[k]=!Boolean(state.fsOpen[k]); renderSide(); return;}
+  if(type==='fs-folder'){state.fsOpen[id]=!Boolean(state.fsOpen[id]); renderSide(); return;}
   if(type==='fs-file'){openFsFile(id); return;}
-  if(type==='emb-folder'){state.fsOpen[id]=!(state.fsOpen[id]!==false); renderSide(); return;}
+  if(type==='emb-folder'){state.fsOpen[id]=!Boolean(state.fsOpen[id]); renderSide(); return;}
   if(type==='emb-file'){openFile(id); return;}
 }
 function renderFsTreeNode(node, path, match, depth, rootId){
@@ -1649,7 +1672,7 @@ function renderFsTreeNode(node, path, match, depth, rootId){
   for(const d of dirs){
     const p=path?`${path}/${d}`:d;
     const folderKey=`${rootId}::${p}`;
-    const open = state.fsOpen[folderKey]!==false;
+    const open = state.fsOpen[folderKey]===true;
     const child = renderFsTreeNode(node.dirs.get(d), p, match, depth+1, rootId);
     if(!match(d) && !child.trim()) continue;
     const pad=18 + depth*16;
@@ -1690,7 +1713,7 @@ function renderEmbeddedTreeNode(node, path, match, depth){
   let html='';
   for(const d of dirs){
     const p=path?`${path}/${d}`:d;
-    const open = state.fsOpen[`emb::${p}`]!==false;
+    const open = state.fsOpen[`emb::${p}`]===true;
     const child = renderEmbeddedTreeNode(node.dirs.get(d), p, match, depth+1);
     if(!match(d) && !child.trim()) continue;
     const pad=18 + depth*16;
@@ -1708,41 +1731,17 @@ function renderEmbeddedTreeNode(node, path, match, depth){
 }
 async function pickAndConnectFolder(){
   if(!window.showDirectoryPicker){toast('Цей браузер не підтримує доступ до папок'); return;}
-  const knownAuthors=['CaspianReport','Johnny Harris','Paul Warburg','Ryan McBeth','Savage_Sage','trueSavageSage','Zeihan on Geopolitics'];
-  const norm=s=>String(s||'').toLowerCase().replace(/[_\s-]+/g,'').trim();
   const existsRootByHandle=h=>state.fsRoots.some(r=>r.handle===h || (r.name===h?.name && r.handle?.kind===h?.kind));
   const addRoot=async (h, displayName)=>{
     if(!h || existsRootByHandle(h)) return false;
     const root={id:uid('fsr'),name:displayName||h.name||'folder',handle:h,tree:null,index:new Map()};
     state.fsRoots.push(root);
+    state.fsOpen['root:'+root.id]=false;
     await refreshFsRoot(root);
     return true;
   };
   try{
     const handle=await window.showDirectoryPicker({mode:'read'});
-
-    const childDirs=[];
-    for await (const [name, child] of handle.entries()){
-      if(child?.kind==='directory') childDirs.push({name, handle:child});
-    }
-    const authorDirs=childDirs.filter(d=>knownAuthors.some(a=>norm(a)===norm(d.name)));
-
-    let added=0;
-    if(authorDirs.length>=2){
-      for(const d of authorDirs){
-        if(await addRoot(d.handle, d.name)) added++;
-      }
-      if(added===0){
-        toast('Ці папки вже підключені');
-      }else{
-        await saveFsRoots();
-        await importVisualizationFromFsRoots(true);
-        startFsWatcher();
-        toast(`Підключено ${added} папок авторів автоматично`);
-      }
-      return;
-    }
-
     if(await addRoot(handle, handle.name||'folder')){
       await saveFsRoots();
       await importVisualizationFromFsRoots(true);
@@ -2322,7 +2321,13 @@ function parseMarkdownTable(text){
 function normalizeVizKey(s){return String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'');}
 function parseRetentionSeriesMarkdown(text,fileName){
   const src=String(text||'');
-  const fullTitle=String(fileName||'').replace(/^youtube_(video|longform)_retention\s*/i,'').replace(/\.[^.]+$/,'').trim()||String(fileName||'').trim();
+  const fullTitle=String(fileName||'')
+    .replace(/^analysis_youtube_retention_?/i,'')
+    .replace(/^youtube_(video|longform)_retention\s*/i,'')
+    .replace(/\.[^.]+$/,'')
+    .replace(/[_]+/g,' ')
+    .replace(/\s+/g,' ')
+    .trim()||String(fileName||'').trim();
   const all=[];
   const blocks=[...src.matchAll(/```mermaid([\s\S]*?)```/g)].map(m=>String(m[1]||''));
   for(const b of blocks){
@@ -2352,8 +2357,14 @@ function parseRetentionSeriesMarkdown(text,fileName){
   return all.filter(r=>isNum(r.t_sec)&&isNum(r.value));
 }
 function inferAuthorHintFromPath(path, fallback){
+  const knownAuthors=['CaspianReport','Johnny Harris','Paul Warburg','Ryan McBeth','Savage_Sage','trueSavageSage','Zeihan on Geopolitics'];
+  const norm=s=>String(s||'').toLowerCase().replace(/[_\s\-]+/g,'').trim();
   const p=String(path||'').replace(/\\/g,'/').replace(/^\/+/, '').trim();
   const parts=p.split('/').filter(Boolean);
+  for(const seg of parts){
+    const hit=knownAuthors.find(a=>norm(a)===norm(seg));
+    if(hit) return hit;
+  }
   if(parts.length>=2){
     if(String(parts[0]).toLowerCase()==='companies' && parts[1]) return parts[1];
     return parts[0];
@@ -2394,7 +2405,9 @@ function parseVisualizationMarkdown(text,fileName,authorHint){
   const tables=parseMarkdownTable(text);
   const target=tables.find(t=>{
     const hs=t.headers.map(normalizeVizKey);
-    return hs.includes('video') && hs.includes('views') && (hs.includes('er_public')||hs.includes('er_public_'));
+    const hasVideo=hs.includes('video') || hs.includes('video_label');
+    const hasViews=hs.includes('views') || hs.includes('view_count');
+    return hasVideo && hasViews;
   }) || null;
   if(!target || !target.rows.length) return null;
   const idx={};
@@ -2449,17 +2462,19 @@ function firstMetricNumber(raw){
 function parseAnalysisMarkdown(text,fileName,authorHint){
   const tables=parseMarkdownTable(text);
   if(!tables.length) return null;
+  const hNorm=s=>String(s||'').toLowerCase().replace(/\s+/g,' ').trim();
+  const hasAny=(arr,subs)=>subs.some(x=>arr.some(h=>h.includes(x)));
   let snap=null, metrics=null;
   for(const t of tables){
-    const hs=t.headers.map(h=>normalizeVizKey(h));
-    if(hs.includes('поле') && hs.includes('значення')) snap=t;
-    if((hs.includes('метрика')||hs.includes('metric')) && (hs.includes('значення')||hs.includes('value'))) metrics=t;
+    const hs=t.headers.map(h=>hNorm(h));
+    if(hasAny(hs,['поле','field']) && hasAny(hs,['значення','value'])) snap=t;
+    if(hasAny(hs,['метрика','metric']) && hasAny(hs,['значення','value'])) metrics=t;
   }
   if(!metrics || !metrics.rows.length) return null;
   const mapFromTable=(tbl)=>{
-    const hs=tbl.headers.map(h=>normalizeVizKey(h));
-    const kIdx=hs.findIndex(h=>h==='метрика'||h==='metric'||h==='поле'||h==='field');
-    const vIdx=hs.findIndex(h=>h==='значення'||h==='value');
+    const hs=tbl.headers.map(h=>hNorm(h));
+    const kIdx=hs.findIndex(h=>h.includes('метрика')||h.includes('metric')||h.includes('поле')||h.includes('field'));
+    const vIdx=hs.findIndex(h=>h.includes('значення')||h.includes('value'));
     const out={};
     if(kIdx<0||vIdx<0) return out;
     for(const r of tbl.rows){
@@ -2494,7 +2509,7 @@ function parseAnalysisMarkdown(text,fileName,authorHint){
 }
 function backfillMissingMetricsFromAnalysis(vizRow, anaRow){
   if(!vizRow || !anaRow) return vizRow;
-  const keys=['likes','comments_count','like_rate_percent','comment_rate_percent','er_public_percent','views_per_1k_subs','likes_per_1k_views','comments_per_1k_views','views_per_day','watch_time_hours','subscribers_gained'];
+  const keys=['views','likes','comments_count','like_rate_percent','comment_rate_percent','er_public_percent','views_per_1k_subs','likes_per_1k_views','comments_per_1k_views','views_per_day','watch_time_hours','subscribers_gained'];
   for(const k of keys){
     if((!isNum(vizRow[k]) || num(vizRow[k])<=0) && isNum(anaRow[k]) && num(anaRow[k])>0){
       vizRow[k]=num(anaRow[k]);
@@ -2504,6 +2519,40 @@ function backfillMissingMetricsFromAnalysis(vizRow, anaRow){
     vizRow.full_title=anaRow.full_title;
   }
   return enrichVideoMetricsRow(vizRow);
+}
+function resolveVideoRowFromFiles(selectedVideo, selectedAuthor){
+  const modeNorm=normText(selectedVideo||'');
+  const authorNorm=normAuthorKey(selectedAuthor||'');
+  if(!modeNorm) return null;
+  const candidates=[];
+  for(const f of (REPORT.files||[])){
+    const p=String(f.path||'');
+    if(!/\.md$/i.test(p)) continue;
+    if(!/YT_VIDEO_(VISUALIZATION|ANALYSIS)_/i.test(p)) continue;
+    const txt=String(f.contentText||'');
+    if(!txt) continue;
+    const hint=inferAuthorHintFromPath(p, f.folder||'');
+    if(selectedAuthor && selectedAuthor!=='all'){
+      const a=normAuthorKey(hint||f.folder||'');
+      if(a!==authorNorm) continue;
+    }
+    const parsed=/YT_VIDEO_VISUALIZATION_/i.test(p)
+      ? parseVisualizationMarkdown(txt, f.name||'', hint)
+      : parseAnalysisMarkdown(txt, f.name||'', hint);
+    if(!parsed) continue;
+    const nk=normText(parsed.video_label||'');
+    const nt=normText(parsed.full_title||'');
+    const ok=(nk===modeNorm||nt===modeNorm||nk.includes(modeNorm)||modeNorm.includes(nk)||nt.includes(modeNorm)||modeNorm.includes(nt));
+    if(!ok) continue;
+    candidates.push(parsed);
+  }
+  if(!candidates.length) return null;
+  candidates.sort((a,b)=>{
+    const qa=(num(a.likes)>0?1000:0)+(num(a.comments_count)>0?100:0)+(num(a.views)>0?10:0)+((num(a.like_rate_percent)>0||num(a.comment_rate_percent)>0||num(a.er_public_percent)>0)?1:0);
+    const qb=(num(b.likes)>0?1000:0)+(num(b.comments_count)>0?100:0)+(num(b.views)>0?10:0)+((num(b.like_rate_percent)>0||num(b.comment_rate_percent)>0||num(b.er_public_percent)>0)?1:0);
+    return qb-qa;
+  });
+  return candidates[0]||null;
 }
 function ensureVideoMetricsWidgets(ds, sourceFileId){
   (ds.rows||[]).forEach(enrichVideoMetricsRow);
@@ -2610,7 +2659,7 @@ async function importVisualizationFromFsRoots(force){
       }
     }
     for(const [relPath, handle] of (root.index||new Map()).entries()){
-      if(!/youtube_(video|longform)_retention/i.test(relPath) || !/\.md$/i.test(relPath)) continue;
+      if(!/(analysis_)?youtube_(video|longform)?_?retention/i.test(relPath) || !/\.md$/i.test(relPath)) continue;
       try{
         const f=await handle.getFile();
         const txt=await f.text();

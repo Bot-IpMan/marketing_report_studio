@@ -41,9 +41,9 @@
 
 ## 3. Підготовлена таблиця для графіків
 
-| Video | Format | Views | Likes | Comments | Subscribers | Views/day | Like Rate % | Comment Rate % | ER Public % | Views/1k subs | Likes/1k views | Comments/1k views | Hook | CTA | Ad | Audio | Comment Resonance | Overall |
-|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Video 1 | LONG_10_20_MIN | 23694 | 2664 | 548 | 19100 | 50.52 | 11.24 | 2.31 | 13.56 | 1240.52 | 112.43 | 23.13 | 4 | 3 | N/A | 3 | 4 | 3.89 |
+| Video | Format | Views | Likes | Comments | Views/day | Like Rate % | Comment Rate % | ER Public % | Views/1k subs | Hook | CTA | Ad | Audio | Comment Resonance | Overall |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Video 1 | LONG_10_20_MIN | 23 694 | 2 664 | 548 | 50.52 | 11.24 | 2.31 | 13.56 | 1240.52 | 4 | 3 | 1 | 3 | 4 | 3.89 |
 
 | Label | Full title | URL |
 |---|---|---|
