@@ -17,6 +17,8 @@
 .layout{height:calc(100vh - 52px);display:grid;grid-template-columns:minmax(0,1fr) 7px var(--side);grid-template-rows:minmax(120px,var(--top)) 7px minmax(120px,1fr);padding:10px;gap:0}.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);min-width:0;min-height:0;overflow:hidden}.analytics{grid-column:1;grid-row:1;display:flex;flex-direction:column}.reader{grid-column:1;grid-row:3;display:flex;flex-direction:column}.files{grid-column:3;grid-row:1/4;display:flex;flex-direction:column}.splitY{grid-column:1;grid-row:2;cursor:row-resize;display:grid;place-items:center}.splitX{grid-column:2;grid-row:1/4;cursor:col-resize;display:grid;place-items:center}.splitDot{width:34px;height:4px;border-radius:999px;background:var(--line)}.splitX .splitDot{width:4px;height:34px}.panelHead{height:40px;display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--line);background:var(--panel2);flex:0 0 auto}.panelHead h2{font-size:13px;margin:0;font-weight:950}.content{padding:10px;overflow:auto;min-height:0}.hidden{display:none!important}
 .guide{display:flex;align-items:center;gap:8px;justify-content:space-between;padding:8px 10px;margin-bottom:8px;border:1px solid rgba(49,92,246,.16);border-radius:14px;background:linear-gradient(90deg,rgba(49,92,246,.10),rgba(49,92,246,.02));color:var(--muted);font-size:12px}.guide b{color:var(--text)}.toolbar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px}.select,input,textarea{border:1px solid var(--line);background:var(--panel);border-radius:10px;height:32px;padding:0 9px;outline:none}.select{min-width:160px}.cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:8px}.stat{border:1px solid var(--line);background:var(--panel2);border-radius:13px;padding:8px;min-width:0}.stat .label{font-size:11px;color:var(--muted);font-weight:850}.stat .val{font-size:18px;font-weight:950;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.stat .sub{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:9px}.widget{border:1px solid var(--line);border-radius:15px;background:var(--panel2);min-height:250px;overflow:hidden;display:flex;flex-direction:column}.widget:hover{outline:2px solid rgba(49,92,246,.12)}.widgetHead{height:35px;display:flex;align-items:center;gap:6px;padding:7px 8px;border-bottom:1px solid var(--line)}.widgetHead b{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}.widgetBody{padding:8px;flex:1;min-height:0;overflow:auto;color:var(--text)}.widget.compactWidget{min-height:145px}.widget.compactWidget .widgetBody{padding:8px 10px;overflow:visible}.widget.chartAuto{min-height:unset}.widget.chartAuto .widgetBody{overflow:visible}.svgChart{width:100%;height:auto;display:block}.empty{color:var(--muted);text-align:center;padding:26px 10px}.miniTable{width:100%;border-collapse:collapse;font-size:12px;color:var(--text)}.miniTable th,.miniTable td{padding:6px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}.miniTable th{font-size:11px;color:var(--text);font-weight:950}.num{text-align:right!important}.clientRow td{color:var(--brand);font-weight:950}.badge{font-size:10px;border:1px solid var(--line);border-radius:999px;padding:2px 6px;color:var(--muted);background:var(--soft)}
 .readerTabs{display:flex;gap:6px;max-width:54vw;overflow:auto}.readerTab{height:25px;padding:0 8px;border:1px solid var(--line);border-radius:999px;background:var(--panel);font-size:11px;font-weight:850;color:var(--muted);white-space:nowrap}.readerTab.active{color:var(--brand);border-color:rgba(49,92,246,.4)}.readerBody{color:var(--text)}.readerBody h1,.readerBody h2,.readerBody h3{margin:8px 0}.readerBody pre{background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:10px;overflow:auto}.previewTable{width:100%;border-collapse:collapse;font-size:12px;color:var(--text)}.previewTable th,.previewTable td{padding:7px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}.previewTable th{position:sticky;top:0;background:var(--panel2);font-size:11px;color:var(--text);font-weight:950;z-index:1}.previewToolbar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px;color:var(--text)}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px}.iframePreview{width:100%;height:100%;min-height:240px;border:0;background:#fff;border-radius:12px}
+.jsonView{display:flex;flex-direction:column;gap:10px}.jsonSummary{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}.jsonMetric{border:1px solid var(--line);border-radius:8px;background:var(--panel2);padding:8px;min-width:0}.jsonMetric span{display:block;color:var(--muted);font-size:10px;font-weight:950;text-transform:uppercase;letter-spacing:.04em}.jsonMetric b{display:block;margin-top:2px;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.jsonBlock{border:1px solid var(--line);border-radius:8px;background:var(--panel2);overflow:hidden}.jsonBlockHead{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border-bottom:1px solid var(--line);font-weight:950}.jsonBlockHead .tiny{font-weight:850}.jsonBlockBody{padding:8px;overflow:auto}.jsonTree{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;line-height:1.55}.jsonTree details{margin-left:14px}.jsonTree details:first-child{margin-left:0}.jsonTree summary{cursor:pointer;list-style:none;white-space:nowrap}.jsonTree summary::-webkit-details-marker{display:none}.jsonTree summary:before{content:'▸';display:inline-block;width:14px;color:var(--muted)}.jsonTree details[open]>summary:before{content:'▾'}.jsonKey{color:var(--brand);font-weight:900}.jsonString{color:#0f8b5f}.jsonNumber{color:#b25a00}.jsonBool{color:#7048c8}.jsonNull,.jsonMeta{color:var(--muted)}.jsonNull{font-style:italic}.jsonCode{margin:0;max-height:420px;white-space:pre;line-height:1.55;background:#0f172a!important;color:#dbe7ff!important}.jsonCode .jsonKey{color:#93c5fd}.jsonCode .jsonString{color:#86efac}.jsonCode .jsonNumber{color:#fdba74}.jsonCode .jsonBool{color:#c4b5fd}.jsonCode .jsonNull{color:#cbd5e1}
+.jsonLead{display:grid;grid-template-columns:minmax(230px,.8fr) minmax(260px,1.2fr);gap:10px}.jsonPanel{border:1px solid var(--line);border-radius:8px;background:var(--panel2);padding:10px;min-width:0}.jsonPanel h3{font-size:12px;margin:0 0 8px;font-weight:950}.jsonFacts{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:6px}.jsonFact{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;border-bottom:1px solid var(--line);padding:6px 0}.jsonFact span{color:var(--muted);font-size:11px;font-weight:850}.jsonFact b{text-align:right;word-break:break-word}.jsonList{display:flex;flex-wrap:wrap;gap:6px}.jsonChip,.jsonLink{display:inline-flex;max-width:100%;align-items:center;border:1px solid var(--line);border-radius:999px;background:var(--panel);padding:3px 7px;font-size:11px;font-weight:850;text-decoration:none;color:var(--text);overflow:hidden;text-overflow:ellipsis}.jsonLink{color:var(--brand)}.jsonTableWrap{overflow:auto;max-height:380px}.jsonDataTable{table-layout:auto}.jsonDataTable td{max-width:360px;white-space:normal;word-break:break-word}.jsonDataTable .num{white-space:nowrap}.jsonValueList{display:flex;flex-direction:column;gap:4px;align-items:flex-start}.jsonMiniObject{display:grid;gap:3px;min-width:170px}.jsonMiniObject div{display:flex;gap:6px}.jsonMiniObject span{color:var(--muted);font-weight:850}.jsonCollapsed{border:1px solid var(--line);border-radius:8px;background:var(--panel2);overflow:hidden}.jsonCollapsed>summary{cursor:pointer;list-style:none}.jsonCollapsed>summary::-webkit-details-marker{display:none}.jsonCollapsed>summary:after{content:'▾';color:var(--muted);font-weight:950}.jsonCollapsed:not([open])>summary:after{content:'▸'}@media(max-width:920px){.jsonLead{grid-template-columns:1fr}.jsonDataTable td{max-width:260px}}
 .mdView{line-height:1.6;font-size:14px}.mdView h1,.mdView h2,.mdView h3{line-height:1.3;margin:16px 0 8px}.mdView h1{font-size:28px}.mdView h2{font-size:22px}.mdView h3{font-size:18px}.mdView p{margin:10px 0}.mdView ul,.mdView ol{margin:8px 0 8px 20px}.mdView blockquote{margin:10px 0;padding:8px 12px;border-left:3px solid var(--brand);background:var(--soft);border-radius:8px;color:var(--muted)}.mdView code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--soft);border:1px solid var(--line);padding:1px 5px;border-radius:6px}.mdView pre{padding:12px;border-radius:12px;background:#0f172a;color:#e2e8f0;overflow:auto}.mdView pre code{background:transparent;border:0;padding:0;color:inherit}.mdView table{width:100%;border-collapse:collapse;margin:10px 0}.mdView th,.mdView td{padding:8px;border:1px solid var(--line);vertical-align:top}.mdView th{background:var(--panel2);text-align:left}.mdView a{color:var(--brand);text-decoration:none}.mdView a:hover{text-decoration:underline}.mdMermaidWrap{position:relative}.mdMermaid{margin:12px 0;border:1px solid var(--line);border-radius:12px;background:var(--panel2);padding:14px;overflow-x:auto;overflow-y:hidden}.mdMermaid svg{width:auto;max-width:none;height:auto;display:block}.mdMermaid::-webkit-scrollbar{height:14px}.mdMermaid::-webkit-scrollbar-thumb{background:#9fb5ee;border-radius:999px}.mdMermaid::-webkit-scrollbar-track{background:transparent}.mdMermaidShift{position:absolute;right:10px;top:10px;height:34px;padding:0 10px;border:1px solid var(--line);border-radius:10px;background:var(--panel);font-weight:900;font-size:12px;color:var(--text);cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.08)}
 .files .content{padding:8px}.search{width:100%;margin-bottom:8px}.sectionTitle{font-size:11px;color:var(--muted);font-weight:950;text-transform:uppercase;letter-spacing:.04em;margin:9px 6px 5px}.item{display:flex;align-items:center;gap:8px;min-height:31px;border-radius:10px;padding:4px 8px;font-size:12px;font-weight:780;color:var(--muted)}.item:hover{background:var(--soft);color:var(--text)}.item.active{background:rgba(49,92,246,.10);color:var(--brand)}.icon{width:22px;height:22px;border-radius:7px;background:var(--soft);display:grid;place-items:center;font-size:11px;flex:0 0 auto}.itemName{overflow:hidden;white-space:nowrap;text-overflow:ellipsis;flex:1}.itemMeta{font-size:10px;color:var(--muted)}.drop{border:1px dashed var(--line);border-radius:14px;padding:10px;text-align:center;color:var(--muted);font-size:12px;margin-top:8px}.drop.drag{border-color:var(--brand);background:rgba(49,92,246,.08)}
 .modalBackdrop{position:fixed;inset:0;background:rgba(7,12,24,.48);display:none;align-items:center;justify-content:center;padding:20px;z-index:100}.modalBackdrop.open{display:flex}.modal{width:min(680px,100%);max-height:min(90vh,780px);background:var(--panel);border:1px solid var(--line);border-radius:20px;box-shadow:0 30px 70px rgba(0,0,0,.25);overflow:hidden}.modalHead{height:48px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 14px}.modalBody{padding:14px;overflow:auto;max-height:calc(90vh - 104px)}.modalFoot{height:56px;border-top:1px solid var(--line);display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:10px 14px;background:var(--panel2)}.formGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.field{display:flex;flex-direction:column;gap:5px}.field label{font-size:12px;color:var(--muted);font-weight:850}.field input,.field select,.field textarea{width:100%;height:36px}.field textarea{height:120px;padding-top:8px;resize:vertical}.full{grid-column:1/-1}.checks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.check{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12px;overflow:hidden;padding:7px 8px;border:1px solid var(--line);border-radius:12px;background:var(--panel2)}.check input{width:18px!important;height:18px!important;min-width:18px;accent-color:var(--brand);margin:0}.check span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.hintBox{border:1px solid rgba(49,92,246,.16);background:rgba(49,92,246,.06);border-radius:14px;padding:9px 10px;font-size:12px;color:var(--muted);line-height:1.45}.columnTools{display:flex;gap:6px;align-items:center;margin:0 0 8px 0;flex-wrap:wrap}.toast{position:fixed;right:14px;bottom:14px;background:var(--text);color:var(--panel);border-radius:12px;padding:10px 12px;font-weight:850;font-size:12px;box-shadow:var(--shadow);opacity:0;transform:translateY(8px);transition:.18s;z-index:200}.toast.show{opacity:1;transform:none}.hiddenInput{display:none}
@@ -420,11 +422,18 @@ function renderAnalytics(){
   const videoCatalog=[];
   const rootNameById=new Map((state.fsRoots||[]).map(r=>[String(r.id||''), String(r.name||'')]));
   const vizDatasets=(REPORT.datasets||[]).filter(d=>{
-    const kind=String(d?.sourceKind||'');
-    const isVideoMetricsLive = kind==='markdown-fs-video' || /·\s*Video Metrics$/i.test(String(d?.name||''));
-    if(!isVideoMetricsLive) return false;
     const cols=(d.columns||[]).map(c=>String(c.name||''));
-    return cols.includes('video_label') && cols.includes('views');
+    const hasCore=cols.includes('video_label') && cols.includes('views');
+    if(!hasCore) return false;
+    const kind=String(d?.sourceKind||'');
+    if(kind==='markdown-fs-video' || /·\s*Video Metrics$/i.test(String(d?.name||''))) return true;
+    const rows=d?.rows||[];
+    return rows.some(r=>
+      ('overall_video_score' in (r||{})) ||
+      ('views_per_day' in (r||{})) ||
+      ('like_rate_percent' in (r||{})) ||
+      ('comment_rate_percent' in (r||{}))
+    );
   });
   const vizDs=vizDatasets[0] || null;
   const retentionDs=(REPORT.datasets||[]).find(d=>{
@@ -448,6 +457,15 @@ function renderAnalytics(){
         author:canonicalAuthorName(author),
         row:enriched
       });
+      const folderKey=String(r._sourceFolderName||pathName(pathDir(String(r._sourceRelPath||'')))||'').trim();
+      if(folderKey){
+        videoCatalog.push({
+          key:folderKey,
+          title:String(r.full_title||r.video_label||folderKey).trim(),
+          author:canonicalAuthorName(author),
+          row:enriched
+        });
+      }
     }
   }
   const dedup=new Map();
@@ -683,6 +701,27 @@ function renderAnalytics(){
     return;
   }
   const modeNorm=normText(state.analyticsVideo);
+  const scoreVideoMatch=(mode, row)=>{
+    const m=String(mode||'');
+    const nk=normText(String(row?.video_label||''));
+    const nt=normText(String(row?.full_title||''));
+    const nf=normText(String(row?._sourceFolderName||pathName(pathDir(String(row?._sourceRelPath||'')))||''));
+    if(!m) return 0;
+    if(m===nk || m===nt || m===nf) return 1000;
+    let s=0;
+    if(nk && (nk.includes(m) || m.includes(nk))) s=Math.max(s,700);
+    if(nt && (nt.includes(m) || m.includes(nt))) s=Math.max(s,680);
+    if(nf && (nf.includes(m) || m.includes(nf))) s=Math.max(s,720);
+    const words=(v)=>String(v||'').toLowerCase().split(/[^a-z0-9а-яіїєґ]+/gi).filter(Boolean);
+    const mw=words(state.analyticsVideo);
+    if(mw.length){
+      const set=new Set([...words(row?.video_label), ...words(row?.full_title), ...words(row?._sourceFolderName)]);
+      let hit=0;
+      for(const w of mw){ if(set.has(w)) hit++; }
+      if(hit>0) s=Math.max(s, 300 + hit*40);
+    }
+    return s;
+  };
   const directRows=vizRowsEnriched.filter(r=>{
     const a=normAuthor(String(r.author||r._sourceRootName||''));
     if(state.analyticsAuthor!=='all' && a!==selectedAuthorNorm) return false;
@@ -695,6 +734,14 @@ function renderAnalytics(){
       || nf.includes(modeNorm) || modeNorm.includes(nf);
   });
   let videoRow=(directRows.sort((a,b)=>rowQuality(b)-rowQuality(a))[0]||null);
+  if(!videoRow){
+    const authorScoped=vizRowsEnriched.filter(r=>state.analyticsAuthor==='all' || normAuthor(String(r.author||r._sourceRootName||''))===selectedAuthorNorm);
+    const ranked=authorScoped
+      .map(r=>({r,score:scoreVideoMatch(modeNorm,r),q:rowQuality(r)}))
+      .filter(x=>x.score>0)
+      .sort((a,b)=>b.score-a.score || b.q-a.q);
+    videoRow=ranked[0]?.r||null;
+  }
   const videoCandidates=videoCatalog.filter(v=>{
     const sameAuthor = state.analyticsAuthor==='all' || normAuthor(v.author)===selectedAuthorNorm;
     const sameVideo = normText(v.key)===modeNorm || normText(v.title)===modeNorm || normText(v.key).includes(modeNorm) || modeNorm.includes(normText(v.key));
@@ -712,6 +759,24 @@ function renderAnalytics(){
     videoRow=fileRow;
   }
   if(!videoRow){
+    const tempoOne=retentionDs?buildRetentionWidget(retentionDs,'tempo',state.analyticsVideo):null;
+    const retOne=retentionDs?buildRetentionWidget(retentionDs,'retention',state.analyticsVideo):null;
+    if(tempoOne || retOne){
+      if(tempoOne) chartsGrid.appendChild(simpleWidget('3. Емоційний темп','youtube_video_retention',tempoOne,`retention-${state.analyticsVideo}-tempo`));
+      if(retOne) chartsGrid.appendChild(simpleWidget('4. Утримання аудиторії','youtube_video_retention',retOne,`retention-${state.analyticsVideo}-main`));
+      $('zoneChartsStat').textContent = `retention-only · ${tempoOne&&retOne?2:1} графік(и) · ${state.analyticsVideo}`;
+      tablesGrid.innerHTML='<div class="empty">Для цього відео немає KPI-таблиці (views/likes/comments), доступні лише retention-дані.</div>';
+      $('zoneTablesStat').textContent = 'немає KPI';
+      return;
+    }
+    console.warn('[analytics] no videoRow and no retention fallback', {
+      author: state.analyticsAuthor,
+      videoMode: state.analyticsVideo,
+      vizDatasets: vizDatasets.length,
+      vizRows: vizRowsEnriched.length,
+      retentionDataset: Boolean(retentionDs),
+      retentionRows: retentionDs?.rows?.length||0
+    });
     chartsGrid.innerHTML='<div class="empty">Відео не знайдено для внутрішніх графіків.</div>';
     tablesGrid.innerHTML='<div class="empty">Немає даних.</div>';
     return;
@@ -1343,6 +1408,9 @@ async function openFsFile(fileKey){
           else toast('У цьому markdown не знайдено таблиць з даними');
         });
       }
+      else if(ext==='json'){
+        reader.innerHTML=`<div class="previewToolbar"><b>${esc(f.name)}</b><span class="pill">${bytes(f.size)}</span><span class="pill">${esc(f.type||ext||'file')}</span></div>${renderJsonPreview(txt)}`;
+      }
       else reader.innerHTML=`<div class="previewToolbar"><b>${esc(f.name)}</b><span class="pill">${bytes(f.size)}</span><span class="pill">${esc(f.type||ext||'file')}</span></div><pre>${esc(txt.slice(0,500000))}</pre>`;
     }else if(['png','jpg','jpeg','webp','gif','bmp'].includes(ext)){
       const url=URL.createObjectURL(f);
@@ -1419,7 +1487,7 @@ async function tryAutoReconnectFs(){
   }
 }
 function openCompany(id){const c=company(id); if(!c) return; state.activeCompany=id; addTab('company:'+id,c.name,'company',id); state.activeFile='company:'+id; const ds=dataset(state.activeDataset); const rows=companyRows(id, ds?.id); const cols=columns(ds).map(x=>x.name); const files=companyFiles(id); const previewRows=rows.slice(0,20); reader.innerHTML=`<div class="previewToolbar"><b>📁 ${esc(c.name)}</b><span class="pill">${esc(c.type||'competitor')}</span><span class="pill">${rows.length} рядків</span><span class="pill">${files.length} файлів</span><button class="btn small adminOnly" id="folderAddFile">+ файл у папку</button></div><div class="grid"><div class="widget"><div class="widgetHead"><b>Дані компанії</b></div><div class="widgetBody"><div style="overflow:auto"><table class="dataTable"><thead><tr>${cols.slice(0,8).map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${previewRows.map(r=>`<tr>${cols.slice(0,8).map(h=>`<td>${esc(r[h])}</td>`).join('')}</tr>`).join('')||'<tr><td>Даних поки немає</td></tr>'}</tbody></table></div></div></div><div class="widget"><div class="widgetHead"><b>Файли папки</b></div><div class="widgetBody">${files.map(f=>`<div class="item" data-file="${esc(f.id)}"><div class="icon">${fileIcon(f)}</div><div class="itemName">${esc(f.name)}<div class="itemMeta">${esc(f.ext||'file')} · ${bytes(f.size||0)}</div></div></div>`).join('')||'<div class="empty">Файлів ще немає. В адмін-режимі вибери цю папку і натисни + Дані / перетягни файли.</div>'}</div></div></div>`; $('folderAddFile')?.addEventListener('click',()=>{if(guardAdmin()) $('fileInput').click();}); reader.querySelectorAll('[data-file]').forEach(x=>x.addEventListener('click',()=>openFile(x.dataset.file))); renderReaderTabs(); renderSide();}
-function fileIcon(f){if(f.isData) return '▦'; const e=(f.ext||'').toLowerCase(); if(['png','jpg','jpeg','webp','gif'].includes(e)) return '🖼'; if(e==='pdf') return 'PDF'; if(['md','txt'].includes(e)) return 'TXT'; if(e==='html') return 'HTML'; if(e==='docx') return 'DOC'; return '📎';}
+function fileIcon(f){const e=(f.ext||'').toLowerCase(); if(e==='json') return '{}'; if(f.isData) return '▦'; if(['png','jpg','jpeg','webp','gif'].includes(e)) return '🖼'; if(e==='pdf') return 'PDF'; if(['md','txt'].includes(e)) return 'TXT'; if(e==='html') return 'HTML'; if(e==='docx') return 'DOC'; return '📎';}
 function renderReaderTabs(){
   readerTabs.innerHTML = state.openTabs.map(t=>`<button class="readerTab ${t.id===state.activeFile?'active':''}" data-id="${esc(t.id)}">${esc(short(t.title,20))}</button>`).join('');
   readerTabs.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>{
@@ -1438,9 +1506,9 @@ function openDataset(id, sourceFileId, editMode=false){if(editMode&&!isAdmin()) 
   state.activeFile= sourceFileId || 'ds:'+id; refreshSideOnly(); renderReaderTabs();
 }
 function refreshSideOnly(){renderSide();}
-async function openFile(id){const f=fileRec(id); if(!f) return; addTab('file:'+id,f.name,'file',id); state.activeFile='file:'+id; const ext=(f.ext||'').toLowerCase(); let html='';
-  if(f.isData){const ds=REPORT.datasets.find(d=>d.sourceFileId===f.id); if(ds){openDataset(ds.id,f.id); return;}}
-  if(['md','txt','csv','json'].includes(ext) || (f.contentText && ext!=='docx')){html=renderTextFile(f);}
+async function openFile(id){const f=fileRec(id); if(!f) return; addTab('file:'+id,f.name,'file',id); state.activeFile='file:'+id; const ext=(f.ext||'').toLowerCase(); const jsonDataset=ext==='json'?REPORT.datasets.find(d=>d.sourceFileId===f.id):null; let html='';
+  if(f.isData && !(ext==='json' && f.contentText)){const ds=REPORT.datasets.find(d=>d.sourceFileId===f.id); if(ds){openDataset(ds.id,f.id); return;}}
+  if(['md','txt','csv','json'].includes(ext) || (f.contentText && ext!=='docx')){html=renderTextFile(f,jsonDataset);}
   else if(ext==='docx'){html=await renderDocxFile(f);}
   else if(['png','jpg','jpeg','webp','gif'].includes(ext) && f.contentBase64){html=`<img alt="${esc(f.name)}" src="data:${esc(f.type)};base64,${f.contentBase64}" style="max-width:100%;border-radius:12px;border:1px solid var(--line)">`;}
   else if(ext==='pdf' && f.contentBase64){const url=blobUrl(f); html=`<iframe class="iframePreview" src="${url}"></iframe>`;}
@@ -1453,10 +1521,314 @@ async function openFile(id){const f=fileRec(id); if(!f) return; addTab('file:'+i
   }
   else {html=`<div class="empty"><b>${esc(f.name)}</b><br>Файл збережено всередині звіту.<br><br><button class="btn" id="downloadFileBtn">Завантажити файл</button></div>`;}
   reader.innerHTML = `<div class="previewToolbar"><b>${esc(f.name)}</b><span class="pill">${esc(ext||'file')}</span><span class="pill">${bytes(f.size||0)}</span></div>${html}`;
-  $('downloadFileBtn')?.addEventListener('click',()=>downloadStoredFile(f)); refreshSideOnly(); renderReaderTabs();
+  $('downloadFileBtn')?.addEventListener('click',()=>downloadStoredFile(f)); $('openJsonDatasetBtn')?.addEventListener('click',()=>{if(jsonDataset) openDataset(jsonDataset.id,f.id);}); refreshSideOnly(); renderReaderTabs();
   $('pickDocxBtn')?.addEventListener('click',()=>pickAndRenderDocx(f));
 }
-function renderTextFile(f){let text=f.contentText||''; const ext=(f.ext||'').toLowerCase(); if(ext==='json'){try{text=JSON.stringify(JSON.parse(text),null,2)}catch(e){}} if(ext==='csv'){const rows=parseCsv(text).slice(0,80); if(rows.length){const head=rows[0]; return `<table class="previewTable"><thead><tr>${head.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.slice(1).map(r=>`<tr>${head.map((_,i)=>`<td>${esc(r[i]??'')}</td>`).join('')}</tr>`).join('')}</tbody></table>`;}} if(ext==='md') return markdownLite(text); return `<pre class="mono">${esc(text)}</pre>`;}
+function renderTextFile(f, relatedDataset=null){let text=f.contentText||''; const ext=(f.ext||'').toLowerCase(); if(ext==='json') return renderJsonPreview(text,{dataset:relatedDataset}); if(ext==='csv'){const rows=parseCsv(text).slice(0,80); if(rows.length){const head=rows[0]; return `<table class="previewTable"><thead><tr>${head.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.slice(1).map(r=>`<tr>${head.map((_,i)=>`<td>${esc(r[i]??'')}</td>`).join('')}</tr>`).join('')}</tbody></table>`;}} if(ext==='md') return markdownLite(text); return `<pre class="mono">${esc(text)}</pre>`;}
+function renderJsonPreview(raw, opts={}){
+  const text=String(raw||'').replace(/^\ufeff/,'');
+  if(!text.trim()) return '<div class="empty">JSON-файл порожній.</div>';
+  let obj=null;
+  try{
+    obj=JSON.parse(text);
+  }catch(e){
+    return `<div class="hintBox" style="margin-bottom:8px"><b>JSON не прочитався.</b> ${esc(e?.message||'Перевір синтаксис файлу.')}</div><pre class="mono">${esc(text.slice(0,500000))}</pre>`;
+  }
+  const stats=jsonStats(obj);
+  const tables=jsonTableCandidates(obj);
+  const pretty=JSON.stringify(obj,null,2);
+  const prettyLimit=500000;
+  const prettyShown=pretty.length>prettyLimit?pretty.slice(0,prettyLimit)+'\n... JSON обрізано для швидкого перегляду':pretty;
+  const tableHtml=renderJsonDataSections(tables, opts);
+  const note=stats.truncated?'<span class="pill">структуру скорочено</span>':'';
+  return `<div class="jsonView">
+    ${renderJsonOverview(obj,stats,text,tables)}
+    ${tableHtml}
+    <details class="jsonCollapsed">
+      <summary class="jsonBlockHead"><span>Технічна структура</span><span class="tiny">${stats.objects} об'єктів · ${stats.arrays} масивів</span>${note}</summary>
+      <div class="jsonBlockBody">${renderJsonTree(obj)}</div>
+    </details>
+    <details class="jsonCollapsed">
+      <summary class="jsonBlockHead"><span>Сирий JSON</span><span class="tiny">${bytes(estimateUtf8Bytes(text))}</span></summary>
+      <div class="jsonBlockBody"><pre class="jsonCode mono">${jsonHighlightedCode(prettyShown)}</pre></div>
+    </details>
+  </div>`;
+}
+function jsonKindLabel(v){if(Array.isArray(v)) return 'Масив'; if(v===null) return 'null'; if(typeof v==='object') return "Об'єкт"; if(typeof v==='string') return 'Рядок'; if(typeof v==='number') return 'Число'; if(typeof v==='boolean') return 'Так/ні'; return typeof v;}
+function jsonStats(value){
+  const out={objects:0,arrays:0,scalars:0,keys:0,maxDepth:0,visited:0,truncated:false};
+  const walk=(v,depth)=>{
+    if(out.visited>=6000){out.truncated=true; return;}
+    out.visited++; out.maxDepth=Math.max(out.maxDepth,depth);
+    if(Array.isArray(v)){
+      out.arrays++;
+      const lim=Math.min(v.length,1000);
+      for(let i=0;i<lim;i++) walk(v[i],depth+1);
+      if(v.length>lim) out.truncated=true;
+    }else if(v&&typeof v==='object'){
+      out.objects++;
+      const keys=Object.keys(v);
+      out.keys+=keys.length;
+      const lim=Math.min(keys.length,1000);
+      for(let i=0;i<lim;i++) walk(v[keys[i]],depth+1);
+      if(keys.length>lim) out.truncated=true;
+    }else{
+      out.scalars++;
+    }
+  };
+  walk(value,0);
+  return out;
+}
+function renderJsonOverview(obj,stats,text,tables){
+  const rootItems=Array.isArray(obj)?obj.length:(obj&&typeof obj==='object'?Object.keys(obj).length:1);
+  const generated=jsonFindFirstScalar(obj,['generated_at_utc','generated_at','created_at','updated_at']);
+  const mode=jsonFindFirstScalar(obj,['mode','status','type']);
+  const domains=jsonFindFirstArray(obj,['domains','domain','subdomains_resolved','live_urls']);
+  const facts=[
+    ['Тип',jsonKindLabel(obj)],
+    ['Розмір',bytes(estimateUtf8Bytes(text))],
+    ['Верхні елементи',fmt(rootItems)],
+    ['Поля',fmt(stats.keys)],
+    ['Табличні блоки',fmt(tables.length)]
+  ];
+  if(mode!==undefined) facts.push(['Режим',jsonScalarText(mode)]);
+  if(generated!==undefined) facts.push(['Створено',jsonDateText(generated)]);
+  if(domains?.length) facts.push(['Домени / URL',fmt(domains.length)]);
+  const counts=jsonFindObjectByKey(obj,'counts',3);
+  const lists=jsonImportantLists(obj).slice(0,4);
+  const scalarFacts=jsonTopFacts(obj).slice(0,10);
+  return `<div class="jsonLead">
+    <div class="jsonPanel">
+      <h3>Огляд</h3>
+      <div class="jsonSummary">${facts.map(([k,v])=>`<div class="jsonMetric"><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('')}</div>
+      ${counts?`<div style="margin-top:8px">${renderJsonCountCards(counts)}</div>`:''}
+    </div>
+    <div class="jsonPanel">
+      <h3>Ключові значення</h3>
+      ${scalarFacts.length?`<div class="jsonFacts">${scalarFacts.map(x=>`<div class="jsonFact"><span>${esc(jsonHumanLabel(x.path))}</span><b>${jsonInlineValueHtml(x.value)}</b></div>`).join('')}</div>`:'<div class="empty">Немає коротких текстових або числових полів.</div>'}
+    </div>
+    ${lists.length?`<div class="jsonPanel" style="grid-column:1/-1"><h3>Списки та посилання</h3>${lists.map(l=>`<div style="margin-top:8px"><div class="tiny" style="margin-bottom:5px">${esc(jsonHumanLabel(l.path))} · ${l.values.length}</div><div class="jsonList">${l.values.slice(0,12).map(v=>jsonChipHtml(v)).join('')}${l.values.length>12?`<span class="jsonChip">+${l.values.length-12}</span>`:''}</div></div>`).join('')}</div>`:''}
+  </div>`;
+}
+function renderJsonCountCards(counts){
+  const entries=Object.entries(counts||{}).filter(([,v])=>v===null || ['string','number','boolean'].includes(typeof v)).slice(0,10);
+  if(!entries.length) return '';
+  return `<div class="jsonSummary">${entries.map(([k,v])=>`<div class="jsonMetric"><span>${esc(jsonHumanLabel(k))}</span><b>${esc(jsonScalarText(v))}</b></div>`).join('')}</div>`;
+}
+function renderJsonDataSections(tables, opts={}){
+  const datasetBtn=opts.dataset?'<button class="btn small" id="openJsonDatasetBtn">Відкрити як таблицю</button>':'';
+  if(!tables.length) return datasetBtn?`<div class="jsonBlock"><div class="jsonBlockHead"><span>JSON уже розпізнано як дані</span>${datasetBtn}</div></div>`:'';
+  const shown=tables.slice(0,4);
+  return shown.map((t,i)=>`
+    <div class="jsonBlock">
+      <div class="jsonBlockHead"><span>${esc(jsonHumanLabel(t.path))}</span><span class="tiny">${t.rows.length} рядків · ${t.cols.length} колонок</span>${i===0?datasetBtn:''}</div>
+      <div class="jsonBlockBody">${renderJsonTablePreview(t.rows,t.cols)}</div>
+    </div>`).join('') + (tables.length>shown.length?`<div class="tiny">Ще ${tables.length-shown.length} табличних блоків у технічній структурі.</div>`:'');
+}
+function jsonTableCandidates(obj){
+  const out=[];
+  const seen=new Set();
+  const add=(path,arr,depth)=>{
+    const rows=(arr||[]).filter(x=>x&&typeof x==='object'&&!Array.isArray(x));
+    if(!rows.length) return;
+    const key=path+'|'+rows.length+'|'+Object.keys(rows[0]||{}).join(',');
+    if(seen.has(key)) return;
+    seen.add(key);
+    const cols=jsonTableColumns(rows);
+    if(!cols.length) return;
+    const top=path.split('.').length===1?140:0;
+    const preferred=/^(rows|data|items|results|records|clusters)$/i.test(path.split('.').pop()||'')?80:0;
+    const urlish=/url|domain|link|inventory|sitemap/i.test(path)?60:0;
+    out.push({path,rows,cols,score:top+preferred+urlish+Math.min(rows.length,300)+cols.length*5-depth*8});
+  };
+  const visit=(v,path,depth)=>{
+    if(depth>5 || out.length>28) return;
+    if(Array.isArray(v)){
+      add(path||'root',v,depth);
+      v.slice(0,8).forEach((item,i)=>visit(item,`${path||'root'}[${i}]`,depth+1));
+      return;
+    }
+    if(v&&typeof v==='object'){
+      for(const [k,val] of Object.entries(v)){
+        const p=path?`${path}.${k}`:k;
+        if(Array.isArray(val)) add(p,val,depth+1);
+        if(val&&typeof val==='object') visit(val,p,depth+1);
+      }
+    }
+  };
+  visit(obj,'',0);
+  const direct=jsonRows(obj);
+  if(Array.isArray(direct)&&direct.length) add(Array.isArray(obj)?'root':'data',direct,0);
+  return out.sort((a,b)=>b.score-a.score).slice(0,8);
+}
+function jsonTableColumns(rows){
+  const names=[];
+  for(const row of rows.slice(0,100)){
+    Object.keys(row||{}).forEach(k=>{if(!String(k).startsWith('_')&&!names.includes(k)) names.push(k);});
+  }
+  const preferred=['name','title','label','cluster','keyword','query','url','link','domain','path','status','type','count','score','value'];
+  const scored=names.map(name=>{
+    let filled=0,scalar=0,linkish=0,arrayScalar=0;
+    for(const r of rows.slice(0,80)){
+      const v=r?.[name];
+      if(v===undefined||v===null||v==='') continue;
+      filled++;
+      if(['string','number','boolean'].includes(typeof v)) scalar++;
+      if(typeof v==='string' && isUrlString(v)) linkish++;
+      if(Array.isArray(v) && v.some(x=>['string','number','boolean'].includes(typeof x))) arrayScalar++;
+    }
+    const pref=preferred.findIndex(p=>String(name).toLowerCase()===p || String(name).toLowerCase().includes(p));
+    return {name,score:filled*3+scalar*8+arrayScalar*7+linkish*10+(pref>=0?80-pref*3:0)};
+  });
+  return scored.sort((a,b)=>b.score-a.score).slice(0,12).map(x=>x.name);
+}
+function renderJsonTablePreview(rows,cols){
+  const visible=rows.slice(0,80);
+  return `<div class="jsonTableWrap"><table class="previewTable jsonDataTable"><thead><tr>${cols.map(c=>`<th>${esc(jsonHumanLabel(c))}</th>`).join('')}</tr></thead><tbody>${visible.map(r=>`<tr>${cols.map(c=>{const v=r[c]; return `<td class="${isNum(v)?'num':''}">${jsonCellHtml(v)}</td>`;}).join('')}</tr>`).join('')}</tbody></table></div>${rows.length>visible.length?`<div class="tiny" style="margin-top:8px">Показано перші ${visible.length} рядків із ${rows.length}.</div>`:''}`;
+}
+function jsonCellHtml(v){
+  if(v===undefined || v==='') return '<span class="jsonMeta">—</span>';
+  if(v===null) return '<span class="jsonNull">null</span>';
+  if(typeof v==='number') return esc(fmt(v));
+  if(typeof v==='boolean') return `<span class="jsonBool">${v?'true':'false'}</span>`;
+  if(typeof v==='string') return jsonInlineValueHtml(v);
+  if(Array.isArray(v)){
+    if(!v.length) return '<span class="jsonMeta">порожньо</span>';
+    if(v.every(x=>x===null || ['string','number','boolean'].includes(typeof x))){
+      return `<div class="jsonValueList">${v.slice(0,5).map(x=>jsonChipHtml(x)).join('')}${v.length>5?`<span class="jsonChip">+${v.length-5}</span>`:''}</div>`;
+    }
+    return `<span class="pill">${v.length} елементів</span>`;
+  }
+  if(typeof v==='object'){
+    const entries=Object.entries(v).filter(([,x])=>x===null || ['string','number','boolean'].includes(typeof x)).slice(0,4);
+    return entries.length?`<div class="jsonMiniObject">${entries.map(([k,x])=>`<div><span>${esc(jsonHumanLabel(k))}:</span><b>${jsonInlineValueHtml(x)}</b></div>`).join('')}</div>`:`<span class="pill">${Object.keys(v).length} полів</span>`;
+  }
+  return esc(String(v));
+}
+function jsonInlineValueHtml(v){
+  if(v===null) return '<span class="jsonNull">null</span>';
+  if(typeof v==='number') return esc(fmt(v));
+  if(typeof v==='boolean') return `<span class="jsonBool">${v?'true':'false'}</span>`;
+  const s=String(v??'');
+  if(isUrlString(s)) return `<a class="jsonLink" href="${esc(s)}" target="_blank" rel="noreferrer">${esc(short(s,120))}</a>`;
+  return esc(short(s,180));
+}
+function jsonChipHtml(v){
+  const s=jsonScalarText(v);
+  if(isUrlString(s)) return `<a class="jsonLink" href="${esc(s)}" target="_blank" rel="noreferrer">${esc(short(s,110))}</a>`;
+  return `<span class="jsonChip">${esc(short(s,110))}</span>`;
+}
+function jsonScalarText(v){if(v===null) return 'null'; if(typeof v==='number') return fmt(v); if(typeof v==='boolean') return v?'true':'false'; return String(v??'');}
+function isUrlString(s){return /^https?:\/\/[^\s"'<>]+$/i.test(String(s||'').trim());}
+function jsonDateText(v){const d=new Date(String(v||'')); return Number.isFinite(d.getTime())?d.toLocaleString('uk-UA'):jsonScalarText(v);}
+function jsonHumanLabel(path){
+  const raw=String(path||'').replace(/\[\d+\]/g,'').split('.').filter(Boolean).pop()||String(path||'');
+  const key=raw.toLowerCase();
+  const map={generated_at_utc:'Створено UTC',generated_at:'Створено',updated_at:'Оновлено',created_at:'Створено',live_urls:'Живі URL',urls_inventory:'Інвентар URL',subdomains_resolved:'Знайдені піддомени',subdomains_all:'Усі піддомени',tech_stack:'Технології',security_posture:'Безпека',content_map:'Карта контенту',clusters:'Кластери',domains:'Домени',httpx_fingerprints:'HTTP fingerprints',whatever_raw_ndjson_path:'Raw NDJSON path'};
+  return map[key] || raw.replace(/_/g,' ').replace(/\b\w/g,m=>m.toUpperCase());
+}
+function jsonFindFirstScalar(obj,keys){
+  const wanted=new Set(keys.map(k=>String(k).toLowerCase()));
+  let found;
+  const walk=(v,depth)=>{
+    if(found!==undefined || depth>4 || !v || typeof v!=='object') return;
+    for(const [k,val] of Object.entries(v)){
+      if(wanted.has(String(k).toLowerCase()) && (val===null || ['string','number','boolean'].includes(typeof val))){found=val; return;}
+      if(val&&typeof val==='object') walk(val,depth+1);
+      if(found!==undefined) return;
+    }
+  };
+  walk(obj,0);
+  return found;
+}
+function jsonFindObjectByKey(obj,key,maxDepth=3){
+  const target=String(key).toLowerCase();
+  let found=null;
+  const walk=(v,depth)=>{
+    if(found || depth>maxDepth || !v || typeof v!=='object') return;
+    for(const [k,val] of Object.entries(v)){
+      if(String(k).toLowerCase()===target && val && typeof val==='object' && !Array.isArray(val)){found=val; return;}
+      if(val&&typeof val==='object') walk(val,depth+1);
+    }
+  };
+  walk(obj,0);
+  return found;
+}
+function jsonFindFirstArray(obj,keys){
+  const wanted=new Set(keys.map(k=>String(k).toLowerCase()));
+  let found=null;
+  const walk=(v,depth)=>{
+    if(found || depth>4 || !v || typeof v!=='object') return;
+    for(const [k,val] of Object.entries(v)){
+      if(wanted.has(String(k).toLowerCase()) && Array.isArray(val)){found=val; return;}
+      if(val&&typeof val==='object') walk(val,depth+1);
+    }
+  };
+  walk(obj,0);
+  return found;
+}
+function jsonTopFacts(obj){
+  const out=[];
+  const add=(path,val)=>{if(val===null || ['string','number','boolean'].includes(typeof val)) out.push({path,value:val});};
+  if(obj&&typeof obj==='object'&&!Array.isArray(obj)){
+    for(const [k,v] of Object.entries(obj)){
+      if(k==='counts') continue;
+      if(v&&typeof v==='object'&&!Array.isArray(v)){
+        for(const [kk,vv] of Object.entries(v)){
+          if(kk==='counts') continue;
+          add(`${k}.${kk}`,vv);
+        }
+      }else add(k,v);
+    }
+  }else add('value',obj);
+  return out;
+}
+function jsonImportantLists(obj){
+  const out=[];
+  const walk=(v,path,depth)=>{
+    if(depth>4 || !v || typeof v!=='object') return;
+    for(const [k,val] of Object.entries(v)){
+      const p=path?`${path}.${k}`:k;
+      if(Array.isArray(val) && val.length && val.every(x=>x===null || ['string','number','boolean'].includes(typeof x))){
+        const priority=/url|domain|link|subdomain|fingerprint|asset|sitemap/i.test(p)?1:0;
+        out.push({path:p,values:val,priority});
+      }else if(val&&typeof val==='object') walk(val,p,depth+1);
+    }
+  };
+  walk(obj,'',0);
+  return out.sort((a,b)=>b.priority-a.priority || b.values.length-a.values.length);
+}
+function renderJsonTree(obj){const ctx={count:0,max:500,stopped:false}; return `<div class="jsonTree">${jsonTreeNode(obj,'root',0,ctx)}</div>`;}
+function jsonTreeNode(value,label,depth,ctx){
+  if(ctx.count>=ctx.max){if(!ctx.stopped){ctx.stopped=true; return '<div class="jsonMeta">... дерево скорочено для швидкого перегляду</div>';} return '';}
+  ctx.count++;
+  const labelCls=String(label||'').startsWith('[')?'jsonMeta':'jsonKey';
+  const labelHtml=label!==undefined?`<span class="${labelCls}">${esc(label)}</span>: `:'';
+  if(Array.isArray(value)){
+    const open=depth===0?' open':'';
+    const limit=depth===0?20:8;
+    const shown=value.slice(0,limit).map((v,i)=>jsonTreeNode(v,`[${i}]`,depth+1,ctx)).join('');
+    const more=value.length>limit?`<div class="jsonMeta">... ще ${value.length-limit} елементів</div>`:'';
+    return `<details${open}><summary>${labelHtml}<span class="jsonMeta">Array(${value.length})</span></summary>${shown}${more}</details>`;
+  }
+  if(value&&typeof value==='object'){
+    const keys=Object.keys(value);
+    if(!keys.length) return `<div>${labelHtml}<span class="jsonMeta">{}</span></div>`;
+    const open=depth===0?' open':'';
+    const limit=depth===0?80:14;
+    const shown=keys.slice(0,limit).map(k=>jsonTreeNode(value[k],k,depth+1,ctx)).join('');
+    const more=keys.length>limit?`<div class="jsonMeta">... ще ${keys.length-limit} полів</div>`:'';
+    return `<details${open}><summary>${labelHtml}<span class="jsonMeta">Object(${keys.length})</span></summary>${shown}${more}</details>`;
+  }
+  return `<div>${labelHtml}${jsonPrimitiveHtml(value)}</div>`;
+}
+function jsonPrimitiveHtml(v){if(v===null) return '<span class="jsonNull">null</span>'; if(typeof v==='string') return `<span class="jsonString">"${esc(short(v.replace(/\s+/g,' ').trim(),180))}"</span>`; if(typeof v==='number') return `<span class="jsonNumber">${esc(String(v))}</span>`; if(typeof v==='boolean') return `<span class="jsonBool">${String(v)}</span>`; return `<span class="jsonMeta">${esc(String(v))}</span>`;}
+function jsonHighlightedCode(json){
+  return String(json).replace(/("(?:\\.|[^"\\])*"\s*:)|("(?:\\.|[^"\\])*")|\b(true|false)\b|\bnull\b|-?\d+(?:\.\d+)?(?:[eE][+\-]?\d+)?/g,(m,key,str,bool)=>{
+    const cls=key?'jsonKey':str?'jsonString':bool?'jsonBool':m==='null'?'jsonNull':'jsonNumber';
+    return `<span class="${cls}">${esc(m)}</span>`;
+  });
+}
 async function renderDocxFile(f){
   try{
     if(typeof JSZip==='undefined') return f.contentText?`<pre class="mono">${esc(f.contentText)}</pre>`:`<div class="empty"><b>${esc(f.name)}</b><br>JSZip недоступний для читання .docx</div>`;
@@ -2176,7 +2548,10 @@ function firstMetricNumber(raw){
 }
 function parseAnalysisMarkdown(text,fileName,authorHint){
   const tables=parseMarkdownTable(text);
-  if(!tables.length) return null;
+  if(!tables.length){
+    console.warn('[viz] parseAnalysisMarkdown: no tables', {fileName});
+    return null;
+  }
   const hNorm=s=>String(s||'').toLowerCase().replace(/\s+/g,' ').trim();
   const hasAny=(arr,subs)=>subs.some(x=>arr.some(h=>h.includes(x)));
   let snap=null, metrics=null;
@@ -2185,7 +2560,10 @@ function parseAnalysisMarkdown(text,fileName,authorHint){
     if(hasAny(hs,['поле','field']) && hasAny(hs,['значення','value'])) snap=t;
     if(hasAny(hs,['метрика','metric']) && hasAny(hs,['значення','value'])) metrics=t;
   }
-  if(!metrics || !metrics.rows.length) return null;
+  if(!metrics || !metrics.rows.length){
+    console.warn('[viz] parseAnalysisMarkdown: no metrics table', {fileName, tableCount:tables.length});
+    return null;
+  }
   const mapFromTable=(tbl)=>{
     const hs=tbl.headers.map(h=>hNorm(h));
     const kIdx=hs.findIndex(h=>h.includes('метрика')||h.includes('metric')||h.includes('поле')||h.includes('field'));
@@ -2203,8 +2581,8 @@ function parseAnalysisMarkdown(text,fileName,authorHint){
   const metMap=mapFromTable(metrics);
   const row={
     author:canonicalAuthorName(String(authorHint||snapMap.channel||'').trim()),
-    video_label:String(snapMap.title||'').trim() || String(fileName||'').replace(/^YT_VIDEO_ANALYSIS_?/i,'').replace(/\.[^.]+$/,'').trim(),
-    full_title:String(snapMap.title||'').trim() || String(fileName||'').replace(/^YT_VIDEO_ANALYSIS_?/i,'').replace(/\.[^.]+$/,'').trim(),
+    video_label:String(snapMap.title||'').trim() || String(fileName||'').replace(/^(YT_VIDEO_ANALYSIS_|ANALYSIS_YOUTUBE_RETENTION_?)/i,'').replace(/\.[^.]+$/,'').trim(),
+    full_title:String(snapMap.title||'').trim() || String(fileName||'').replace(/^(YT_VIDEO_ANALYSIS_|ANALYSIS_YOUTUBE_RETENTION_?)/i,'').replace(/\.[^.]+$/,'').trim(),
     format_group:String(snapMap.format_group||snapMap.format||'').trim(),
     views:firstMetricNumber(metMap.views),
     views_per_day:firstMetricNumber(metMap.views_per_day),
@@ -2219,7 +2597,10 @@ function parseAnalysisMarkdown(text,fileName,authorHint){
     watch_time_hours:firstMetricNumber(metMap.watch_time),
     subscribers_gained:firstMetricNumber(metMap.subscribers_gained)
   };
-  if(!row.video_label || !isNum(row.views)) return null;
+  if(!row.video_label || !isNum(row.views)){
+    console.warn('[viz] parseAnalysisMarkdown: invalid row', {fileName, video_label:row.video_label, views:row.views});
+    return null;
+  }
   return enrichVideoMetricsRow(row);
 }
 function backfillMissingMetricsFromAnalysis(vizRow, anaRow){
@@ -2243,7 +2624,7 @@ function resolveVideoRowFromFiles(selectedVideo, selectedAuthor){
   for(const f of (REPORT.files||[])){
     const p=String(f.path||'');
     if(!/\.md$/i.test(p)) continue;
-    if(!/YT_VIDEO_(VISUALIZATION|ANALYSIS)_/i.test(p)) continue;
+    if(!/(YT_VIDEO_(VISUALIZATION|ANALYSIS)_|ANALYSIS_YOUTUBE_RETENTION_)/i.test(p)) continue;
     const txt=String(f.contentText||'');
     if(!txt) continue;
     const hint=inferAuthorHintFromPath(p, f.folder||'');
@@ -2377,7 +2758,7 @@ async function importVisualizationFromFsRoots(force){
       }
     }
     for(const [relPath, handle] of (root.index||new Map()).entries()){
-      if(!/YT_VIDEO_ANALYSIS_/i.test(relPath) || !/\.md$/i.test(relPath)) continue;
+      if(!/(YT_VIDEO_ANALYSIS_|ANALYSIS_YOUTUBE_RETENTION_)/i.test(relPath) || !/\.md$/i.test(relPath)) continue;
       try{
         const f=await handle.getFile();
         const txt=await f.text();
