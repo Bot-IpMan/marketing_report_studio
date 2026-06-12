@@ -1,9 +1,0 @@
-# Used only by `wrangler pages dev` on localhost.
-LOCAL_DEV_EMAIL=owner@example.com
-LOCAL_DEV_NAME=Local owner
-
-# Required in production. These values are identifiers, not passwords.
-ACCESS_TEAM_DOMAIN=https://your-team.cloudflareaccess.com
-ACCESS_AUD=replace-with-access-application-aud
-BOOTSTRAP_OWNER_EMAIL=owner@example.com
-
