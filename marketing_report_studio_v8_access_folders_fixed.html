@@ -166,7 +166,7 @@ let persistTimer = null;
 let localStorageDisabledBySize = false;
 let REPORT = normalizeReport(loadReport() || DEFAULT);
 const state = {activeDataset: REPORT.datasets[0]?.id || null, activeFile:null, openTabs:[], theme:'light', access:(HOSTED_MODE||REPORT.meta?.clientLocked)?'viewer':(REPORT.meta?.accessMode || 'admin'), activeCompany:null, compareA:null, compareB:null, compareOnly:false, openFolders:{}, showCompare:false, fsOpen:{}, fsRoots:[], fsPollTimer:null, analyticsSite:'all', analyticsResearch:'all', lastVizFsSync:0, widgetSnapshots:{}, lang:(REPORT.meta?.lang || getSavedLang() || 'uk')};
-const cloudSync = {enabled:HOSTED_MODE, ready:false, saving:false, dirty:false, conflict:false, suppress:false, saveTimer:null, reportId:null, version:null, role:null, user:null, workspace:null};
+const cloudSync = {enabled:HOSTED_MODE, ready:false, localFallback:false, saving:false, dirty:false, conflict:false, suppress:false, saveTimer:null, reportId:null, version:null, role:null, user:null, workspace:null};
 const $ = id => document.getElementById(id);
 const app = $('app'), analytics = $('analyticsContent'), reader = $('readerContent'), readerTabs = $('readerTabs'), sideList = $('sideList'), search = $('search');
 const UI_TEXT = {
@@ -933,6 +933,8 @@ async function initCloudSync(){
     setCloudStatus('local',isClientLocked()?'Клієнтська копія':'Локально');
     return;
   }
+  cloudSync.enabled=true;
+  cloudSync.localFallback=false;
   setCloudStatus('loading','Підключення…','Підключення до спільного сховища');
   state.access='viewer';
   app.dataset.access='viewer';
@@ -959,6 +961,7 @@ async function initCloudSync(){
     if(['API_UNAVAILABLE','NOT_FOUND','MISSING_DB','MISSING_R2','ACCESS_NOT_CONFIGURED'].includes(e.code)){
       cloudSync.enabled=false;
       cloudSync.ready=false;
+      cloudSync.localFallback=true;
       cloudSync.role=null;
       try{
         const cached=localStorage.getItem(REPORT_STORAGE_KEY);
@@ -1682,7 +1685,7 @@ function stripLegacyTrueSavageDemoPack(r){
 }
 REPORT=stripLegacyTrueSavageDemoPack(REPORT);
 function inferColumns(rows){const names=[]; for(const row of rows.slice(0,100)){Object.keys(row||{}).forEach(k=>{if(!String(k).startsWith('_')&&!names.includes(k)) names.push(k)})} return names.map(name=>{let seen=0, numeric=0; for(const r of rows.slice(0,80)){const v=r?.[name]; if(v!==''&&v!==null&&v!==undefined){seen++; if(isNum(v)) numeric++;}} return {name, type: seen && numeric/seen>=0.75 ? 'number':'text'};});}
-function initState(){REPORT.meta=REPORT.meta||{}; REPORT.meta.title=REPORT.meta.title||'Ринкова конкурентна розвідка'; REPORT.meta.companyName=String(REPORT.meta.companyName||'').trim(); state.lang=REPORT.meta.lang || getSavedLang() || state.lang || 'uk'; REPORT.meta.lang=state.lang; state.access=REPORT.meta.clientLocked?'viewer':(HOSTED_MODE?(cloudCanWrite()?'admin':'viewer'):(REPORT.meta.accessMode||state.access||'admin')); REPORT.meta.accessMode=state.access; app.dataset.access=state.access; const firstClient=(REPORT.companies||[]).find(c=>c.type==='client') || (REPORT.companies||[])[0]; state.activeCompany=REPORT.meta.activeCompany || firstClient?.id || null; state.compareA=REPORT.meta.compareA || firstClient?.id || (REPORT.companies||[])[0]?.id || null; state.compareB=REPORT.meta.compareB || (REPORT.companies||[]).find(c=>c.id!==state.compareA)?.id || null; state.openFolders=REPORT.meta.openFolders||{}; state.showCompare=!!REPORT.meta.showCompare; state.analyticsSite=REPORT.meta.analyticsSite||'all'; state.analyticsResearch=REPORT.meta.analyticsResearch||'all'; state.activeDataset=REPORT.meta.activeDataset || state.activeDataset || REPORT.datasets[0]?.id || null; applyLanguage();}
+function initState(){REPORT.meta=REPORT.meta||{}; REPORT.meta.title=REPORT.meta.title||'Ринкова конкурентна розвідка'; REPORT.meta.companyName=String(REPORT.meta.companyName||'').trim(); state.lang=REPORT.meta.lang || getSavedLang() || state.lang || 'uk'; REPORT.meta.lang=state.lang; const useCloudAccess=HOSTED_MODE&&!cloudSync.localFallback; state.access=REPORT.meta.clientLocked?'viewer':(useCloudAccess?(cloudCanWrite()?'admin':'viewer'):(REPORT.meta.accessMode||state.access||'admin')); REPORT.meta.accessMode=state.access; app.dataset.access=state.access; const firstClient=(REPORT.companies||[]).find(c=>c.type==='client') || (REPORT.companies||[])[0]; state.activeCompany=REPORT.meta.activeCompany || firstClient?.id || null; state.compareA=REPORT.meta.compareA || firstClient?.id || (REPORT.companies||[])[0]?.id || null; state.compareB=REPORT.meta.compareB || (REPORT.companies||[]).find(c=>c.id!==state.compareA)?.id || null; state.openFolders=REPORT.meta.openFolders||{}; state.showCompare=!!REPORT.meta.showCompare; state.analyticsSite=REPORT.meta.analyticsSite||'all'; state.analyticsResearch=REPORT.meta.analyticsResearch||'all'; state.activeDataset=REPORT.meta.activeDataset || state.activeDataset || REPORT.datasets[0]?.id || null; applyLanguage();}
 function renderReportTitle(){
   const name=String(REPORT.meta?.companyName||'').trim() || t('reportTitleDefaultCompany');
   const titleEl=$('reportTitle');
