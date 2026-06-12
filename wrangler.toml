@@ -1,0 +1,12 @@
+name = "marketing-report-studio"
+main = "worker.js"
+compatibility_date = "2026-06-12"
+
+[build]
+command = "node scripts/build.mjs"
+
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+run_worker_first = ["/api", "/api/*", "/marketing_report_studio_v8_access_folders_fixed"]
+
