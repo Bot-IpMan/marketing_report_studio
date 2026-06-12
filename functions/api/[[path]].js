@@ -13,13 +13,19 @@ let accessKeysExpiresAt = 0;
 
 export async function onRequest(context) {
   try {
+    const segments = normalizePath(context.params.path);
+    const method = context.request.method.toUpperCase();
+
     assertBindings(context.env);
+
+    if (segments.length === 1 && segments[0] === 'health' && method === 'GET') {
+      return json({ ok: true });
+    }
+
     assertSameOriginWrite(context.request);
 
     const identity = await authenticate(context.request, context.env);
     const membership = await resolveMembership(context.env.DB, identity, context.env);
-    const segments = normalizePath(context.params.path);
-    const method = context.request.method.toUpperCase();
 
     if (segments.length === 1 && segments[0] === 'session' && method === 'GET') {
       return json({

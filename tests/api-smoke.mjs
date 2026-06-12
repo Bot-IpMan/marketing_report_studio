@@ -124,6 +124,10 @@ let result = await api('GET', '/api/session');
 assert.equal(result.response.status, 200);
 assert.equal(result.body.role, 'owner');
 
+result = await api('GET', '/api/health');
+assert.equal(result.response.status, 200);
+assert.equal(result.body.ok, true);
+
 result = await api('POST', '/api/reports', { title: 'Shared report', report: emptyReport });
 assert.equal(result.response.status, 201);
 assert.equal(result.body.version, 1);
