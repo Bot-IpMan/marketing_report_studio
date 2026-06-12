@@ -1,0 +1,10 @@
+{
+  "name": "marketing-report-studio",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --experimental-sqlite tests/api-smoke.mjs"
+  }
+}

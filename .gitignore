@@ -1,0 +1,14 @@
+dist/
+node_modules/
+.wrangler/
+.wrangler-dry-run/
+_tmp_docx/
+
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+.env
+.env.*
+!.env.example
+
+*.log
