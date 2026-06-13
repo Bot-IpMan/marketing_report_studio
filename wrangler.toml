@@ -11,14 +11,5 @@ directory = "./dist"
 binding = "ASSETS"
 run_worker_first = ["/api", "/api/*", "/marketing_report_studio_v8_access_folders_fixed"]
 
-# Production Cloudflare bindings. The live API requires these names exactly.
-# Fill database_id with the real D1 id before deploying from this file, or
-# configure the same bindings in the Cloudflare dashboard for Workers Builds.
-[[d1_databases]]
-binding = "DB"
-database_name = "marketing-report-studio"
-database_id = "replace-with-d1-database-id"
-
-[[r2_buckets]]
-binding = "REPORTS_BUCKET"
-bucket_name = "marketing-report-studio-reports"
+# Production DB and REPORTS_BUCKET bindings are managed in the Cloudflare
+# dashboard. Do not commit account-specific IDs or placeholder UUIDs here.

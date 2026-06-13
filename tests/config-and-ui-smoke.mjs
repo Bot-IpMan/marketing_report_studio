@@ -4,14 +4,12 @@ import { readFileSync } from 'node:fs';
 const wrangler = readFileSync('wrangler.toml', 'utf8');
 const html = readFileSync('marketing_report_studio_v8_access_folders_fixed.html', 'utf8');
 const buildScript = readFileSync('scripts/build.mjs', 'utf8');
+const api = readFileSync('functions/api/[[path]].js', 'utf8');
 
-assert.match(wrangler, /\[\[d1_databases\]\]/, 'production wrangler.toml must declare the D1 DB binding');
-assert.match(wrangler, /binding\s*=\s*"DB"/, 'D1 binding must be named DB');
-assert.match(wrangler, /database_name\s*=\s*"marketing-report-studio"/, 'D1 database name must match deployment docs');
-assert.match(wrangler, /database_id\s*=\s*"[^"]+"/, 'D1 database_id field must be present for deploy');
-assert.match(wrangler, /\[\[r2_buckets\]\]/, 'production wrangler.toml must declare the R2 bucket binding');
-assert.match(wrangler, /binding\s*=\s*"REPORTS_BUCKET"/, 'R2 binding must be named REPORTS_BUCKET');
-assert.match(wrangler, /bucket_name\s*=\s*"marketing-report-studio-reports"/, 'R2 bucket name must match deployment docs');
+assert.doesNotMatch(wrangler, /replace-with-|database_id\s*=\s*""/, 'deploy config must not contain placeholder Cloudflare resource IDs');
+assert.match(wrangler, /keep_vars\s*=\s*true/, 'dashboard-managed production variables must be preserved');
+assert.match(api, /env\.DB/, 'API must use the dashboard DB binding');
+assert.match(api, /REPORTS_BUCKET/, 'API must use the dashboard report storage binding');
 
 assert.match(html, /id="uploadFilesBtn"/, 'UI must expose a visible file upload button');
 assert.match(html, /id="fileInput"[^>]+multiple/, 'hidden file input must allow multiple files');
