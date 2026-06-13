@@ -5,6 +5,6 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
-    "test": "node --experimental-sqlite tests/api-smoke.mjs && node tests/worker-smoke.mjs && node tests/config-and-ui-smoke.mjs"
+    "test": "node --experimental-sqlite tests/api-smoke.mjs && node tests/worker-smoke.mjs && node tests/config-and-ui-smoke.mjs && node tests/ui-smoke.mjs"
   }
 }

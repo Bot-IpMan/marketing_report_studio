@@ -24,6 +24,8 @@ for (const marker of [
 
 assert.match(html, /id="dropZone" class="drop adminOnly"/);
 assert.match(html, /id="readerPanelTitle">Робоча область</);
+assert.match(html, /document\.addEventListener\('keydown',handleModalKeydown\)/);
+assert.match(html, /\$\('pasteBtn'\)\.onclick=\(\)=>openDataModal\(\)/);
 
 const staticHtml = html.slice(0, html.indexOf('<script type="application/json"'));
 const ids = [...staticHtml.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]);
