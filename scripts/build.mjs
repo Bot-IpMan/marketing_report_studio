@@ -34,6 +34,11 @@ await writeFile(
   'utf8',
 );
 await writeFile(
+  resolve(outputDir, 'favicon.svg'),
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="16" fill="#315cf6"/><text x="32" y="42" text-anchor="middle" font-family="Arial, sans-serif" font-size="34" font-weight="900" fill="white">M</text></svg>\n',
+  'utf8',
+);
+await writeFile(
   resolve(outputDir, '_routes.json'),
   `${JSON.stringify({ version: 1, include: ['/api/*'], exclude: [] }, null, 2)}\n`,
   'utf8',

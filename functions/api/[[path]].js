@@ -16,11 +16,12 @@ export async function onRequest(context) {
     const segments = normalizePath(context.params.path);
     const method = context.request.method.toUpperCase();
 
-    assertBindings(context.env);
-
     if (segments.length === 1 && segments[0] === 'health' && method === 'GET') {
-      return json({ ok: true });
+      const configured = Boolean(context.env.DB && context.env.REPORTS_BUCKET);
+      return json({ ok: true, configured });
     }
+
+    assertBindings(context.env);
 
     assertSameOriginWrite(context.request);
 

@@ -110,6 +110,14 @@ async function api(method, path, body, email = env.LOCAL_DEV_EMAIL) {
   return { response, body: await response.json() };
 }
 
+const unconfiguredHealth = await onRequest({
+  request: new Request('https://example.com/api/health'),
+  env: {},
+  params: { path: ['health'] },
+});
+assert.equal(unconfiguredHealth.status, 200);
+assert.deepEqual(await unconfiguredHealth.json(), { ok: true, configured: false });
+
 const emptyReport = {
   meta: { title: 'Shared report' },
   datasets: [],

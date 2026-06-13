@@ -3,7 +3,9 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="description" content="Marketing Report Studio: інтерактивні маркетингові звіти, таблиці, файли, графіки та конкурентна розвідка." />
 <title>Ринкова конкурентна розвідка</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <style>
 :root{
   color-scheme:light;
@@ -66,7 +68,7 @@
     <div class="title"><b id="reportTitle">Ринкова конкурентна розвідка для: ваша компанія</b><span id="reportSubtitle">адмін редагує · клієнт переглядає</span></div>
     <input class="select adminOnly" id="companyNameInput" placeholder="Назва компанії" style="min-width:240px" />
     <div class="spacer"></div>
-    <button class="btn adminOnly" id="pasteBtn"><span class="hideMob">Вставити CSV</span></button>
+    <button class="btn adminOnly" id="pasteBtn" aria-label="Вставити CSV" title="Вставити CSV / TSV"><span class="hideMob">Вставити CSV</span></button>
     <button class="btn adminOnly" id="exportJsonBtn" title="Експорт у єдиній CI OS структурі"><span class="hideMob">CI JSON</span></button>
     <button class="btn primary adminOnly" id="saveDiskBtn" title="Зберегти поточний проєкт у HTML-файл на диск">Зберегти на диск</button><button class="btn primary adminOnly" id="saveHtmlBtn">Зберегти адмін</button><button class="btn primary adminOnly" id="saveClientHtmlBtn">Для клієнта</button><button class="btn adminOnly hidden" id="membersBtn">Користувачі</button><button class="btn small cloudStatus" id="cloudStatus" data-state="local" title="Стан спільного збереження">Локально</button><span class="rolePill" id="rolePill">Адмін</span><button class="btn ghost" id="unlockAdminBtn" title="Перемкнути режим редагування">🔒</button>
     <button class="btn ghost" id="themeBtn" title="Тема">◐</button>
@@ -84,7 +86,7 @@
     </section>
     <div class="splitX" id="splitX"><div class="splitDot"></div></div>
     <aside class="panel files">
-        <div class="panelHead"><h2 id="filesPanelTitle">Дані й файли</h2><span class="hint" id="storageStat"></span><div class="spacer"></div><button class="btn small adminOnly" id="connectFolderBtn">Підключити папку</button></div>
+        <div class="panelHead"><h2 id="filesPanelTitle">Дані й файли</h2><span class="hint" id="storageStat"></span><div class="spacer"></div><button class="btn small adminOnly" id="uploadFilesBtn" aria-label="Завантажити файли" title="Вибрати один або кілька файлів з диска">Завантажити файли</button><button class="btn small adminOnly" id="connectFolderBtn">Підключити папку</button></div>
       <div class="content">
         <input id="search" class="search select" placeholder="Пошук таблиць, файлів, графіків" />
         <div id="sideList"></div>
@@ -192,6 +194,7 @@ const UI_TEXT = {
     clear: 'Очистити',
     dataFiles: 'Дані й файли',
     connectFolder: 'Підключити папку',
+    uploadFiles: 'Завантажити файли',
     searchPlaceholder: 'Пошук таблиць, файлів, графіків',
     dropZone: 'Перетягни сюди Excel/CSV/JSON або файли',
     dropZoneSmall: '.xlsx, .csv, .json, .md, .pdf, зображення...',
@@ -231,6 +234,7 @@ const UI_TEXT = {
     clear: 'Clear',
     dataFiles: 'Data & files',
     connectFolder: 'Connect folder',
+    uploadFiles: 'Upload files',
     searchPlaceholder: 'Search tables, files, charts',
     dropZone: 'Drag Excel/CSV/JSON or files here',
     dropZoneSmall: '.xlsx, .csv, .json, .md, .pdf, images...',
@@ -659,6 +663,7 @@ function applyLanguage(){
   $('filesPanelTitle') && ($('filesPanelTitle').textContent=t('dataFiles'));
   $('clearReaderBtn') && ($('clearReaderBtn').textContent=t('clear'));
   $('connectFolderBtn') && ($('connectFolderBtn').textContent=t('connectFolder'));
+  $('uploadFilesBtn') && ($('uploadFilesBtn').textContent=t('uploadFiles'));
   $('search').placeholder=t('searchPlaceholder');
   const drop=$('dropZone');
   if(drop) drop.innerHTML = `${t('dropZone')}<br><small>${t('dropZoneSmall')}</small>`;
@@ -939,6 +944,12 @@ async function initCloudSync(){
   state.access='viewer';
   app.dataset.access='viewer';
   try{
+    const health=await cloudApi('/api/health');
+    if(health?.configured===false){
+      const err=new Error('Cloud storage is not configured.');
+      err.code='CLOUD_NOT_CONFIGURED';
+      throw err;
+    }
     const session=await cloudApi('/api/session');
     cloudSync.user=session.user;
     cloudSync.workspace=session.workspace;
@@ -957,8 +968,8 @@ async function initCloudSync(){
     }
     applyCloudReport(payload);
   }catch(e){
-    console.error('[cloud] initialization failed:',e);
-    if(['API_UNAVAILABLE','NOT_FOUND','MISSING_DB','MISSING_R2','ACCESS_NOT_CONFIGURED'].includes(e.code)){
+    if(['API_UNAVAILABLE','NOT_FOUND','MISSING_DB','MISSING_R2','ACCESS_NOT_CONFIGURED','CLOUD_NOT_CONFIGURED'].includes(e.code)){
+      console.warn('[cloud] disabled, using local fallback:', e.code);
       cloudSync.enabled=false;
       cloudSync.ready=false;
       cloudSync.localFallback=true;
@@ -977,6 +988,7 @@ async function initCloudSync(){
       toast('Хмарне сховище ще не налаштоване. Дані зберігаються лише в цьому браузері.');
       return;
     }
+    console.error('[cloud] initialization failed:',e);
     cloudSync.ready=false;
     state.access='viewer';
     app.dataset.access='viewer';
@@ -4636,7 +4648,7 @@ function toggleEditMode(){
   toast(state.access==='admin'?'Режим редагування':'Режим перегляду');
 }
 function bind(){
-  $('pasteBtn').onclick=()=>openPasteModal(); $('connectFolderBtn').onclick=()=>pickAndConnectFolder(); $('saveDiskBtn').onclick=()=>{toast('Зберігаю HTML-файл на диск...'); saveProjectHtmlOnly();}; $('saveHtmlBtn').onclick=saveHtml; $('saveClientHtmlBtn').onclick=saveClientHtml; $('exportJsonBtn').onclick=exportJson; $('membersBtn').onclick=openMembersModal; $('clearReaderBtn').onclick=()=>{state.openTabs=[]; state.activeFile=null; reader.innerHTML=`<div class="empty">${t('emptyReader')}</div>`; renderReaderTabs(); renderSide();}; $('unlockAdminBtn').onclick=toggleEditMode; $('cloudStatus').onclick=()=>{if(cloudSync.conflict){toast('Збережіть свою копію локально, потім перезавантажте сторінку.');return;} if(cloudSync.ready&&cloudSync.dirty){saveReportToCloud();return;} if(cloudSync.ready) reloadCloudReport(); else if(HOSTED_MODE) initCloudSync();}; $('langBtn').onclick=()=>setLanguage(state.lang==='uk'?'en':'uk'); $('themeBtn').onclick=()=>{state.theme=state.theme==='dark'?'light':'dark'; app.dataset.theme=state.theme}; $('modalClose').onclick=closeModal; $('modalBackdrop').addEventListener('click',e=>{if(e.target.id==='modalBackdrop')closeModal();}); $('fileInput').addEventListener('change',e=>{handleFiles(e.target.files); e.target.value='';}); search.addEventListener('input',renderSide); sideList.addEventListener('click', onSideListClick);
+  $('pasteBtn').onclick=()=>openPasteModal(); $('uploadFilesBtn').onclick=()=>$('fileInput').click(); $('connectFolderBtn').onclick=()=>pickAndConnectFolder(); $('saveDiskBtn').onclick=()=>{toast('Зберігаю HTML-файл на диск...'); saveProjectHtmlOnly();}; $('saveHtmlBtn').onclick=saveHtml; $('saveClientHtmlBtn').onclick=saveClientHtml; $('exportJsonBtn').onclick=exportJson; $('membersBtn').onclick=openMembersModal; $('clearReaderBtn').onclick=()=>{state.openTabs=[]; state.activeFile=null; reader.innerHTML=`<div class="empty">${t('emptyReader')}</div>`; renderReaderTabs(); renderSide();}; $('unlockAdminBtn').onclick=toggleEditMode; $('cloudStatus').onclick=()=>{if(cloudSync.conflict){toast('Збережіть свою копію локально, потім перезавантажте сторінку.');return;} if(cloudSync.ready&&cloudSync.dirty){saveReportToCloud();return;} if(cloudSync.ready) reloadCloudReport(); else if(HOSTED_MODE) initCloudSync();}; $('langBtn').onclick=()=>setLanguage(state.lang==='uk'?'en':'uk'); $('themeBtn').onclick=()=>{state.theme=state.theme==='dark'?'light':'dark'; app.dataset.theme=state.theme}; $('modalClose').onclick=closeModal; $('modalBackdrop').addEventListener('click',e=>{if(e.target.id==='modalBackdrop')closeModal();}); $('fileInput').addEventListener('change',e=>{handleFiles(e.target.files); e.target.value='';}); search.addEventListener('input',renderSide); sideList.addEventListener('click', onSideListClick);
   $('companyNameInput')?.addEventListener('input',e=>{REPORT.meta=REPORT.meta||{}; REPORT.meta.companyName=String(e.target.value||'').trim(); renderReportTitle(); schedulePersist();});
   renderReportTitle();
   analytics.addEventListener('click',e=>{
