@@ -1,119 +1,74 @@
-# Cloudflare Workers deployment
+# Cloudflare Deployment
 
-The hosted build is a shared application:
+This project is deployed as a browser-only static application through a
+Cloudflare Worker with Static Assets.
 
-- Cloudflare Access authenticates every user.
-- D1 stores users, workspace roles, report metadata, versions, and audit events.
-- R2 stores private JSON snapshots of every report version, including embedded files.
-- The browser uses optimistic locking so an older tab cannot overwrite a newer save.
-- Local client HTML exports remain read-only and do not connect to the cloud API.
+## GitHub / Workers Builds
 
-## 1. Create Cloudflare resources
-
-Create one D1 database and one private R2 bucket. Suggested names:
-
-```text
-D1: marketing-report-studio
-R2: marketing-report-studio-reports
-```
-
-Apply `migrations/0001_init.sql` to the production D1 database. With Wrangler:
-
-```powershell
-npx wrangler d1 execute marketing-report-studio --remote --file=migrations/0001_init.sql
-```
-
-Use a different D1 database and R2 bucket for preview deployments.
-
-## 2. Configure the Worker project
-
-Connect the GitHub repository in Workers Builds and configure:
+Connect the GitHub repository in Cloudflare Workers Builds and use:
 
 ```text
 Build command: npm run build
 Deploy command: npx wrangler deploy
 ```
 
-The tracked `wrangler.toml` builds `dist/`, serves it through Workers Static
-Assets, and runs `worker.js` first for `/api/*` and the legacy application URL.
+The production output directory is `dist/`, configured in `wrangler.toml`.
 
-Add these exact production bindings either to `wrangler.toml` or through the
-Cloudflare configuration used by the deployment:
+## Required Resources
 
-```text
-DB              -> the D1 database
-REPORTS_BUCKET  -> the private R2 bucket
+None. Do not add:
+
+- D1 databases;
+- R2 buckets;
+- KV namespaces;
+- Cloudflare Access JWT variables;
+- application API tokens or secrets.
+
+The Worker routes `/api` and `/api/*` only to return `404 API_DISABLED`. A
+Cloudflare Pages fallback handler does the same if the repository is deployed
+through Pages by mistake.
+
+## Security Headers
+
+The build writes `dist/_headers`. Cloudflare Static Assets applies this file to
+the hosted responses. It includes:
+
+- a script-hash Content Security Policy;
+- `connect-src 'none'`;
+- HSTS for one year;
+- `frame-ancestors 'none'` and `X-Frame-Options: DENY`;
+- `Referrer-Policy: no-referrer`;
+- COOP, CORP, MIME sniffing protection, and a restrictive Permissions Policy;
+- no-store and noindex directives.
+
+After deployment, verify:
+
+```bash
+curl -I https://mrsai.lookdata.live/
+curl -i https://mrsai.lookdata.live/api/health
 ```
 
-Under environment variables add:
+The first response must contain `connect-src 'none'` and
+`Strict-Transport-Security`. The second must return `404` with
+`error.code = API_DISABLED`.
 
-```text
-ACCESS_TEAM_DOMAIN     = https://your-team.cloudflareaccess.com
-ACCESS_AUD             = the Access application's AUD tag
-BOOTSTRAP_OWNER_EMAIL  = email of the first workspace owner
-```
+## Optional Cloudflare Access
 
-Redeploy after adding or changing bindings.
+Use Cloudflare Access only if the static application itself must be private.
+This is independent of file storage: selected files remain in the browser in
+either case. If Access is enabled, protect the entire hostname, not only
+`/api/*`.
 
-## 3. Configure Cloudflare Access
+## Cloudflare Dashboard Checklist
 
-Create a self-hosted Access application for the production Worker hostname or
-custom domain. Allow only the required users or identity-provider groups and
-require MFA where appropriate. Protect preview deployments too.
+1. SSL/TLS mode is `Full (strict)`.
+2. Always Use HTTPS is enabled.
+3. No public D1/R2/API bindings are attached to this Worker.
+4. Remove obsolete plaintext variables and encrypted secrets from Worker
+   Settings > Variables and Secrets.
+5. Production and preview branches use the same browser-only build.
+6. Logs do not intentionally capture request bodies or report contents.
+7. Bot/indexing settings match the intended privacy level.
 
-The API validates the `Cf-Access-Jwt-Assertion` signature, issuer, expiration,
-and application audience. Access authentication alone is not enough: D1 roles
-also control each write.
-
-The first authenticated request from `BOOTSTRAP_OWNER_EMAIL` creates the default
-workspace and owner membership. Other authenticated users receive `403` until
-the owner adds their email with the `Користувачі` button. They must also be allowed
-by the Cloudflare Access policy.
-
-Roles:
-
-```text
-owner   edit reports and manage users
-editor  edit reports
-viewer  read reports only
-```
-
-## 4. Build behavior
-
-```powershell
-npm.cmd run build
-```
-
-The build creates:
-
-- `dist/index.html`, with empty embedded `reportData`
-- `dist/_headers`, with CSP and other browser security headers
-- `dist/_routes.json`, retained for optional Pages compatibility
-- `dist/robots.txt`
-- `dist/marketing_report_studio_v8_access_folders_fixed.html`, preserving the
-  existing public route
-
-Never publish the repository root as the Pages output directory. The real report
-is loaded from R2 only after Access and workspace authorization succeed.
-
-## 5. Local development
-
-Copy `wrangler.toml.example` to `wrangler.toml`, fill in development resource IDs,
-and copy `.dev.vars.example` to `.dev.vars`. `LOCAL_DEV_EMAIL` bypasses Access only
-when the request hostname is localhost or `127.0.0.1`.
-
-Build first, then run Pages locally through Wrangler. Apply the same migration to
-the local or development D1 database before opening the application.
-
-## Security notes
-
-- Do not put API tokens, service-token secrets, or credentials in HTML or Git.
-- R2 must remain private; report objects are returned only through the authorized API.
-- Hosted mode does not persist report contents in localStorage, preventing one Access
-  user from inheriting another user's browser cache on a shared machine.
-- Every successful create/update and membership change is written to `audit_log`.
-- Old R2 report versions are retained for recovery. Add a retention policy when the
-  desired history period is known.
-- A downloaded client HTML disables editing in the application UI. Like any local
-  file, a technically skilled recipient can still modify its source; it is not a
-  cryptographically tamper-proof document.
+Do not enable HSTS preload or `includeSubDomains` without reviewing every
+subdomain first. The application sends a host-only HSTS header.

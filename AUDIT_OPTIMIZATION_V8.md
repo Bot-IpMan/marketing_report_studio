@@ -1,175 +1,59 @@
-# Глибокий аудит: Marketing Report Studio V8 (fixed)
+# Security And Optimization Audit
 
-Дата аудиту: 2026-05-21
-Об’єкт: `marketing_report_studio_v8_access_folders_fixed.html`
+Updated: 2026-06-15
 
-## 1) Підсумок
+## Verified Production State
 
-Проєкт функціональний, але має архітектурні вузькі місця продуктивності через дуже великий single-file HTML і важкий цикл `refresh()`.
+Audit target: <https://mrsai.lookdata.live/>
 
-Критично важливо: оптимізацію треба робити без руйнування основної конструкції (один HTML + offline + ролі admin/viewer + експорт admin/client).
+Before the current changes, the live site returned strong CSP, no-store,
+no-referrer, frame blocking, MIME sniffing protection, and noindex headers.
+`/api/health` returned `{ "ok": true, "configured": false }`, confirming that
+D1 and R2 were not configured in production.
 
-## 2) Факти з коду
+The live response did not yet include HSTS, COOP, or CORP, and its CSP allowed
+connections, images, and frames from arbitrary HTTPS origins.
 
-- Розмір файлу: 7,108,025 байт, 1840 рядків.
-- Ушиті binary-дані в `DEFAULT`:
-  - 5 записів `contentBase64`
-  - загальний обсяг base64: 6,844,952 символів
-  - декодований обсяг: ~5,133,714 байт
-- Вихідний JS валідний (обидва inline script-блоки пройшли `node --check`).
-- Логіка доступу viewer/admin на UI-рівні:
-  - CSS-гейтинг `[data-access="viewer"] .adminOnly { display:none }`
-  - перемикання режиму через `prompt('Адмін-код (демо)')` з кодом `admin`.
-- `refresh()` викликає `saveReportIntoHtml()` на кожне оновлення, а воно викликає `localStorage.setItem(JSON.stringify(REPORT))`.
-- Широке використання `innerHTML`/`insertAdjacentHTML` для рендеру.
-- Є множинні `catch(e){}` без логування причин (silent fail), особливо у файлових/FS-потоках.
+## Changes Applied
 
-## 3) Ризики (пріоритет)
+1. Browser-only mode is now explicit in the UI.
+2. Worker and Pages `/api/*` routes always return `404 API_DISABLED`.
+3. D1/R2/Access configuration and SQL migration were removed.
+4. Production CSP now uses `connect-src 'none'` and blocks remote image/frame
+   sources while preserving local `data:` and `blob:` previews.
+5. HSTS, COOP, CORP, Origin-Agent-Cluster, and cross-domain policy headers were
+   added.
+6. HTML and PDF previews are sandboxed with no referrer.
+7. File and archive limits reduce browser memory-exhaustion and ZIP-bomb risk.
+8. Temporary download blob URLs are revoked.
+9. Tests enforce browser-only deployment and fail if server storage or network
+   access is reintroduced.
+10. Current files and Git history were scanned for common secret patterns; no
+    matching credentials were found.
 
-### P1. Великий state + часті serializations
+## Data Flow
 
-Симптом:
-- `refresh()` => `saveReportIntoHtml()` => `JSON.stringify(REPORT)` + `localStorage.setItem(...)` при майже кожній UX-дії.
+```text
+User file -> Browser File API -> In-memory report/browser storage -> UI/export
+```
 
-Наслідок:
-- лаги UI при середніх/великих даних;
-- втрата перформансу на слабших машинах;
-- ризик перевищення квоти localStorage (помилка тихо ковтається).
+There is no application data path from the page to Cloudflare storage or an
+external API. Opening the site still sends ordinary HTTP metadata to Cloudflare.
 
-### P1. Вбудовані великі base64 документи у стартовому `DEFAULT`
+## Remaining Risks
 
-Симптом:
-- ~5.1 MB binary у `DEFAULT` вже на старті.
+- Browser `localStorage` persists in the current profile until cleared.
+- Exported HTML/ZIP files contain the data selected for export and must be
+  protected by the user.
+- Browser extensions, malware, or another person using the same unlocked browser
+  profile are outside the application's security boundary.
+- Restricting who may open the site requires a hostname-wide Cloudflare Access
+  policy; `robots.txt` is not authentication.
+- A real-browser E2E test and post-deployment header check should be run after
+  each production release.
 
-Наслідок:
-- повільне відкриття HTML;
-- високий memory footprint;
-- дорогі clone/stringify операції.
+## Verification
 
-### P2. Повний перерендер великих зон
-
-Симптом:
-- `renderAnalytics()` і `renderSide()` перезбирають великі шматки DOM через `innerHTML`.
-
-Наслідок:
-- зайві reflow/repaint;
-- переробка toolbar/listeners при кожному перемиканні.
-
-### P2. Silent errors
-
-Симптом:
-- багато `catch(e){}` без телеметрії.
-
-Наслідок:
-- важко діагностувати проблеми файлів/FS/парсингу;
-- користувач бачить «не працює», але не бачить причину.
-
-### P3. Демо-рівень доступу
-
-Симптом:
-- viewer/admin керується на клієнті; код `admin` у фронті.
-
-Наслідок:
-- це не security boundary; підходить для UX-режимів, не для захисту даних.
-
-## 4) Що зберігаємо без змін
-
-- Single-file модель.
-- Offline-first роботу.
-- Поточний UX: Аналітика + Перегляд + Дані/файли.
-- Режими admin/viewer і експорт admin/client.
-- Сумісність поточних JSON/HTML-пакетів.
-
-## 5) План оптимізації без втрати функціоналу
-
-## Фаза 1. Негайні low-risk покращення (без зміни UX)
-
-1. Дебаунс збереження state:
-- прибрати прямий `saveReportIntoHtml()` з кожного `refresh()`;
-- зробити `schedulePersist()` (напр. 300-800ms) + флаш при save/export/закритті.
-
-2. Розділити «легкий refresh» і «важкий persist»:
-- `refreshView()` тільки DOM;
-- `persistState()` окремо.
-
-3. Ліміт для localStorage:
-- перед `setItem` рахувати розмір JSON;
-- якщо > порогу (напр. 3.5-4 MB), не писати в LS, показати toast «state великий, працюємо без autosave в localStorage».
-
-4. Прибрати silent catches:
-- мінімум `console.warn('[module]', e?.message || e)`;
-- в чутливих місцях toast з коротким кодом помилки.
-
-5. Memoization для дорогих обчислень в analytics:
-- кеш `videoCatalog/dedup` поки не змінюються datasets/files.
-
-## Фаза 2. Оптимізація даних (збереження single-file)
-
-1. Полегшений `DEFAULT`:
-- залишити демо-дані таблично;
-- прибрати важкі docx `contentBase64` з `DEFAULT`;
-- підвантаження цих файлів тільки через імпорт/підключену папку.
-
-2. Розумне зберігання файлів:
-- для великих binaries у runtime зберігати тільки метадані + `blobCache` (in-memory) до експорту;
-- в `REPORT` не тримати все base64 завжди.
-
-3. Поріг inline preview:
-- великі текстові/markdown/docx рендерити частинами або з lazy preview.
-
-## Фаза 3. DOM-ефективність
-
-1. Side panel:
-- event delegation замість прив’язки listener на кожен `.item` після кожного render.
-
-2. Analytics toolbar:
-- оновлювати лише активні стани кнопок, не перебудовувати блок повністю.
-
-3. Reader tabs:
-- мінімізувати full `innerHTML` rebuild, оновлювати тільки змінені вкладки.
-
-## Фаза 4. Надійність експорту
-
-1. Єдиний `buildBundle({mode:'admin'|'viewer'})` замість дублювання логіки у `saveHtml()`/`saveClientHtml()`.
-
-2. Явна валідація bundle:
-- перевірка duplicate paths, порожніх типів MIME, відсутніх sourceFileId.
-
-3. Контроль пам’яті під час ZIP:
-- для великих наборів показувати прогрес і попередження про обсяг.
-
-## 6) Рефакторинг без зміни «основної конструкції»
-
-Рекомендований формат:
-- залишаємо один HTML-файл;
-- але всередині вводимо модулі-неймспейси:
-  - `StateStore`
-  - `RenderAnalytics`
-  - `RenderSide`
-  - `Reader`
-  - `FileIO`
-  - `ExportBundle`
-
-Це не ламає доставку одним файлом, але різко зменшує ризик регресій і спрощує підтримку.
-
-## 7) KPI після оптимізації
-
-- Час першого інтерактиву (відкриття файлу) зменшити мінімум на 30-50%.
-- Час `refresh()` при типових діях зменшити на 40%+.
-- Кількість silent-fail місць: з поточних до 0.
-- Відсутність втрати функціоналу:
-  - admin/viewer
-  - імпорт CSV/XLSX/JSON
-  - графіки/таблиці
-  - експорт admin/client
-  - робота з підключеною папкою
-
-## 8) Мінімальний безпечний старт впровадження
-
-Першими робити тільки:
-- debounce persist;
-- guard по розміру localStorage;
-- логування помилок замість `catch{}`;
-- event delegation для side list.
-
-Це дає помітний приріст без зміни UX і без ризику втрати структури.
+```bash
+npm run check
+```

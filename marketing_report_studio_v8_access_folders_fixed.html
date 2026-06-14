@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="referrer" content="no-referrer" />
+<meta name="robots" content="noindex,nofollow,noarchive" />
 <meta name="description" content="Marketing Report Studio: інтерактивні маркетингові звіти, таблиці, файли, графіки та конкурентна розвідка." />
 <title>Ринкова конкурентна розвідка</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
@@ -162,14 +164,25 @@ const CI_LINEAGE_RULE = 'Recommendation -> Insight -> Fact -> Source';
 const REPORT_STORAGE_KEY = `marketing_report_studio_v8:${location.pathname}:report`;
 const LANG_STORAGE_KEY = `marketing_report_studio_v8:${location.pathname}:lang`;
 const LOCALSTORAGE_MAX_BYTES = 4 * 1024 * 1024;
+const MAX_IMPORT_FILES = 100;
+const MAX_IMPORT_FILE_BYTES = 40 * 1024 * 1024;
+const MAX_TEXT_IMPORT_BYTES = 20 * 1024 * 1024;
+const MAX_ARCHIVE_ENTRIES = 2000;
+const MAX_ARCHIVE_UNCOMPRESSED_BYTES = 96 * 1024 * 1024;
+const MAX_ARCHIVE_TEXT_BYTES = 32 * 1024 * 1024;
+const MAX_SHEET_ROWS = 100000;
+const MAX_SHEET_COLUMNS = 10000;
+const MAX_SHEET_CELLS = 1000000;
 const PERSIST_DEBOUNCE_MS = 500;
 const CLOUD_PERSIST_DEBOUNCE_MS = 1400;
+const CLOUD_RETRY_DELAYS_MS = [3000, 10000, 30000, 60000];
+const BROWSER_ONLY_MODE = true;
 const HOSTED_MODE = location.protocol==='https:' || location.protocol==='http:';
 let persistTimer = null;
 let localStorageDisabledBySize = false;
 let REPORT = normalizeReport(loadReport() || DEFAULT);
-const state = {activeDataset: REPORT.datasets[0]?.id || null, activeFile:null, openTabs:[], theme:'dark', access:(HOSTED_MODE||REPORT.meta?.clientLocked)?'viewer':(REPORT.meta?.accessMode || 'admin'), activeCompany:null, compareA:null, compareB:null, compareOnly:false, openFolders:{}, showCompare:false, fsOpen:{}, fsRoots:[], fsPollTimer:null, analyticsSite:'all', analyticsResearch:'all', lastVizFsSync:0, widgetSnapshots:{}, lang:(REPORT.meta?.lang || getSavedLang() || 'uk')};
-const cloudSync = {enabled:HOSTED_MODE, ready:false, localFallback:false, saving:false, dirty:false, conflict:false, suppress:false, saveTimer:null, reportId:null, version:null, role:null, user:null, workspace:null};
+const state = {activeDataset: REPORT.datasets[0]?.id || null, activeFile:null, openTabs:[], theme:'dark', access:((HOSTED_MODE&&!BROWSER_ONLY_MODE)||REPORT.meta?.clientLocked)?'viewer':(REPORT.meta?.accessMode || 'admin'), activeCompany:null, compareA:null, compareB:null, compareOnly:false, openFolders:{}, showCompare:false, fsOpen:{}, fsRoots:[], fsPollTimer:null, analyticsSite:'all', analyticsResearch:'all', lastVizFsSync:0, widgetSnapshots:{}, lang:(REPORT.meta?.lang || getSavedLang() || 'uk')};
+const cloudSync = {enabled:HOSTED_MODE&&!BROWSER_ONLY_MODE, ready:false, localFallback:BROWSER_ONLY_MODE, saving:false, dirty:false, conflict:false, suppress:false, saveTimer:null, retryCount:0, reportId:null, version:null, role:null, user:null, workspace:null};
 const $ = id => document.getElementById(id);
 const app = $('app'), analytics = $('analyticsContent'), reader = $('readerContent'), readerTabs = $('readerTabs'), sideList = $('sideList'), search = $('search');
 const UI_TEXT = {
@@ -732,6 +745,34 @@ function enrichVideoMetricsRow(r){
 }
 function fmt(n){n=num(n); return Math.abs(n)>=1000 ? Math.round(n).toLocaleString(uiLocale()) : n.toLocaleString(uiLocale(),{maximumFractionDigits:2});}
 function bytes(n){n=num(n); if(n>1024*1024) return (n/1024/1024).toFixed(1)+' MB'; if(n>1024) return (n/1024).toFixed(1)+' KB'; return Math.round(n)+' B';}
+function assertSafeImportFile(file){
+  if(!file) throw new Error('Файл не вибрано.');
+  const size=Number(file.size||0);
+  const ext=extFromName(file.name||'');
+  if(size>MAX_IMPORT_FILE_BYTES) throw new Error(`Файл ${file.name} завеликий. Максимум ${bytes(MAX_IMPORT_FILE_BYTES)}.`);
+  if(['csv','tsv','json','md','txt','html','xml','js','css'].includes(ext) && size>MAX_TEXT_IMPORT_BYTES){
+    throw new Error(`Текстовий файл ${file.name} завеликий. Максимум ${bytes(MAX_TEXT_IMPORT_BYTES)}.`);
+  }
+}
+function assertSafeArchive(zip,label='Архів'){
+  const entries=Object.values(zip?.files||{});
+  if(entries.length>MAX_ARCHIVE_ENTRIES) throw new Error(`${label} містить забагато файлів.`);
+  let total=0;
+  for(const entry of entries){
+    const size=Number(entry?._data?.uncompressedSize||0);
+    if(Number.isFinite(size) && size>0) total+=size;
+    if(total>MAX_ARCHIVE_UNCOMPRESSED_BYTES) throw new Error(`${label} завеликий після розпакування.`);
+  }
+}
+async function safeZipText(zip,path){
+  const entry=zip.file(path);
+  if(!entry) return '';
+  const declared=Number(entry?._data?.uncompressedSize||0);
+  if(declared>MAX_ARCHIVE_TEXT_BYTES) throw new Error(`Файл ${path} завеликий після розпакування.`);
+  const text=await entry.async('text');
+  if(estimateUtf8Bytes(text)>MAX_ARCHIVE_TEXT_BYTES) throw new Error(`Файл ${path} завеликий після розпакування.`);
+  return text;
+}
 function toast(msg){const t=$('toast'); t.textContent=translateText(msg); t.classList.add('show'); clearTimeout(toast.t); toast.t=setTimeout(()=>t.classList.remove('show'),1900);}
 function showNotice(msg,kind='info'){const notice=$('appNotice'); if(!notice) return; $('appNoticeText').textContent=translateText(msg); notice.dataset.kind=kind; notice.classList.add('show');}
 function hideNotice(){$('appNotice')?.classList.remove('show');}
@@ -839,38 +880,28 @@ function cloudSnapshot(){
   delete snapshot.meta.clientLocked;
   return snapshot;
 }
-async function cloudApi(path,options={}){
-  const init={credentials:'same-origin',...options,headers:{Accept:'application/json',...(options.headers||{})}};
-  if(init.body && !init.headers['Content-Type']) init.headers['Content-Type']='application/json';
-  const response=await fetch(path,init);
-  let payload=null;
-  try{payload=await response.json();}catch(e){}
-  if(response.ok&&!payload){
-    const err=new Error('Cloud API is not available.');
-    err.status=response.status;
-    err.code='API_UNAVAILABLE';
-    throw err;
-  }
-  if(!response.ok){
-    const err=new Error(payload?.error?.message||`HTTP ${response.status}`);
-    err.status=response.status;
-    err.code=payload?.error?.code||'REQUEST_FAILED';
-    err.details=payload?.error||{};
-    throw err;
-  }
-  return payload;
+async function cloudApi(){
+  const err=new Error('Мережевий API вимкнено: дані залишаються лише у браузері.');
+  err.code='API_DISABLED';
+  throw err;
 }
 function scheduleCloudPersist(delay=CLOUD_PERSIST_DEBOUNCE_MS){
   if(!cloudSync.enabled||!cloudSync.ready||cloudSync.suppress||cloudSync.conflict||!cloudCanWrite()||isClientLocked()) return;
   cloudSync.dirty=true;
   cloudSync.changeSeq=(cloudSync.changeSeq||0)+1;
+  queueCloudSave(delay);
+}
+function queueCloudSave(delay=CLOUD_PERSIST_DEBOUNCE_MS){
+  if(!cloudSync.enabled||!cloudSync.ready||cloudSync.suppress||cloudSync.conflict||!cloudCanWrite()||isClientLocked()) return;
   if(cloudSync.saveTimer) clearTimeout(cloudSync.saveTimer);
   cloudSync.saveTimer=setTimeout(()=>{cloudSync.saveTimer=null; saveReportToCloud();},Math.max(0,delay));
 }
 async function saveReportToCloud(){
   if(!cloudSync.ready||cloudSync.saving||cloudSync.conflict||!cloudCanWrite()||!cloudSync.reportId||!cloudSync.dirty) return;
+  if(cloudSync.saveTimer){clearTimeout(cloudSync.saveTimer);cloudSync.saveTimer=null;}
   cloudSync.saving=true;
   const saveSeq=cloudSync.changeSeq||0;
+  let retryDelay=null;
   setCloudStatus('saving','Хмара…','Збереження спільного звіту');
   try{
     const snapshot=cloudSnapshot();
@@ -879,6 +910,7 @@ async function saveReportToCloud(){
       body:JSON.stringify({expectedVersion:cloudSync.version,title:snapshot.meta?.title||'Shared report',report:snapshot})
     });
     cloudSync.version=result.version;
+    cloudSync.retryCount=0;
     if((cloudSync.changeSeq||0)===saveSeq) cloudSync.dirty=false;
     setCloudStatus('saved',`Хмара · v${cloudSync.version}`,`Збережено. ${cloudSync.user?.email||''}`);
   }catch(e){
@@ -888,12 +920,19 @@ async function saveReportToCloud(){
       setCloudStatus('conflict','Конфлікт','Інший користувач уже змінив цей звіт');
       toast('Конфлікт версій: інший користувач уже зберіг зміни. Експортуйте свою копію та перезавантажте звіт.');
     }else{
-      setCloudStatus('error','Хмара: помилка',e.message||'Помилка збереження');
-      toast('Не вдалося зберегти звіт у хмарі');
+      const retryIndex=Math.min(cloudSync.retryCount,CLOUD_RETRY_DELAYS_MS.length-1);
+      retryDelay=CLOUD_RETRY_DELAYS_MS[retryIndex];
+      cloudSync.retryCount+=1;
+      const retrySeconds=Math.ceil(retryDelay/1000);
+      setCloudStatus('error','Хмара: повтор',`${e.message||'Помилка збереження'}. Повтор через ${retrySeconds} с.`);
+      if(cloudSync.retryCount===1) toast('Не вдалося зберегти звіт у хмарі. Повторю автоматично.');
     }
   }finally{
     cloudSync.saving=false;
-    if(cloudSync.dirty&&!cloudSync.conflict&&(cloudSync.changeSeq||0)!==saveSeq) scheduleCloudPersist();
+    if(cloudSync.dirty&&!cloudSync.conflict){
+      if(retryDelay!==null) queueCloudSave(retryDelay);
+      else if((cloudSync.changeSeq||0)!==saveSeq) queueCloudSave();
+    }
   }
 }
 function applyCloudReport(payload){
@@ -908,6 +947,7 @@ function applyCloudReport(payload){
   cloudSync.conflict=false;
   cloudSync.dirty=false;
   cloudSync.changeSeq=0;
+  cloudSync.retryCount=0;
   state.activeDataset=null;
   state.activeCompany=null;
   state.compareA=null;
@@ -937,6 +977,16 @@ async function reloadCloudReport(){
   }
 }
 async function initCloudSync(){
+  if(BROWSER_ONLY_MODE){
+    cloudSync.enabled=false;
+    cloudSync.ready=false;
+    cloudSync.localFallback=true;
+    cloudSync.role=null;
+    state.access=isClientLocked()?'viewer':(REPORT.meta?.accessMode||'admin');
+    app.dataset.access=state.access;
+    setCloudStatus('local','Лише браузер','Файли й дані не відправляються на сервер');
+    return;
+  }
   if(!HOSTED_MODE||isClientLocked()){
     setCloudStatus('local',isClientLocked()?'Клієнтська копія':'Локально');
     return;
@@ -1700,7 +1750,7 @@ function stripLegacyTrueSavageDemoPack(r){
 }
 REPORT=stripLegacyTrueSavageDemoPack(REPORT);
 function inferColumns(rows){const names=[]; for(const row of rows.slice(0,100)){Object.keys(row||{}).forEach(k=>{if(!String(k).startsWith('_')&&!names.includes(k)) names.push(k)})} return names.map(name=>{let seen=0, numeric=0; for(const r of rows.slice(0,80)){const v=r?.[name]; if(v!==''&&v!==null&&v!==undefined){seen++; if(isNum(v)) numeric++;}} return {name, type: seen && numeric/seen>=0.75 ? 'number':'text'};});}
-function initState(){REPORT.meta=REPORT.meta||{}; REPORT.meta.title=REPORT.meta.title||'Ринкова конкурентна розвідка'; REPORT.meta.companyName=String(REPORT.meta.companyName||'').trim(); state.lang=REPORT.meta.lang || getSavedLang() || state.lang || 'uk'; REPORT.meta.lang=state.lang; const useCloudAccess=HOSTED_MODE&&!cloudSync.localFallback; state.access=REPORT.meta.clientLocked?'viewer':(useCloudAccess?(cloudCanWrite()?'admin':'viewer'):(REPORT.meta.accessMode||state.access||'admin')); REPORT.meta.accessMode=state.access; app.dataset.access=state.access; const firstClient=(REPORT.companies||[]).find(c=>c.type==='client') || (REPORT.companies||[])[0]; state.activeCompany=REPORT.meta.activeCompany || firstClient?.id || null; state.compareA=REPORT.meta.compareA || firstClient?.id || (REPORT.companies||[])[0]?.id || null; state.compareB=REPORT.meta.compareB || (REPORT.companies||[]).find(c=>c.id!==state.compareA)?.id || null; state.openFolders=REPORT.meta.openFolders||{}; state.showCompare=!!REPORT.meta.showCompare; state.analyticsSite=REPORT.meta.analyticsSite||'all'; state.analyticsResearch=REPORT.meta.analyticsResearch||'all'; state.activeDataset=REPORT.meta.activeDataset || state.activeDataset || REPORT.datasets[0]?.id || null; applyLanguage();}
+function initState(){REPORT.meta=REPORT.meta||{}; REPORT.meta.title=REPORT.meta.title||'Ринкова конкурентна розвідка'; REPORT.meta.companyName=String(REPORT.meta.companyName||'').trim(); state.lang=REPORT.meta.lang || getSavedLang() || state.lang || 'uk'; REPORT.meta.lang=state.lang; const useCloudAccess=HOSTED_MODE&&!BROWSER_ONLY_MODE&&!cloudSync.localFallback; state.access=REPORT.meta.clientLocked?'viewer':(useCloudAccess?(cloudCanWrite()?'admin':'viewer'):(REPORT.meta.accessMode||state.access||'admin')); REPORT.meta.accessMode=state.access; app.dataset.access=state.access; const firstClient=(REPORT.companies||[]).find(c=>c.type==='client') || (REPORT.companies||[])[0]; state.activeCompany=REPORT.meta.activeCompany || firstClient?.id || null; state.compareA=REPORT.meta.compareA || firstClient?.id || (REPORT.companies||[])[0]?.id || null; state.compareB=REPORT.meta.compareB || (REPORT.companies||[]).find(c=>c.id!==state.compareA)?.id || null; state.openFolders=REPORT.meta.openFolders||{}; state.showCompare=!!REPORT.meta.showCompare; state.analyticsSite=REPORT.meta.analyticsSite||'all'; state.analyticsResearch=REPORT.meta.analyticsResearch||'all'; state.activeDataset=REPORT.meta.activeDataset || state.activeDataset || REPORT.datasets[0]?.id || null; applyLanguage();}
 function renderReportTitle(){
   const name=String(REPORT.meta?.companyName||'').trim() || t('reportTitleDefaultCompany');
   const titleEl=$('reportTitle');
@@ -2925,12 +2975,12 @@ async function openFile(id){const f=fileRec(id); if(!f) return; addTab('file:'+i
   if(['md','txt','csv','tsv','json'].includes(ext) || (f.contentText && !['docx','html'].includes(ext))){html=renderTextFile(f,jsonDataset);}
   else if(ext==='docx'){html=await renderDocxFile(f);}
   else if(['png','jpg','jpeg','webp','gif'].includes(ext) && f.contentBase64){html=`<img alt="${esc(f.name)}" src="data:${esc(f.type)};base64,${f.contentBase64}" style="max-width:100%;border-radius:12px;border:1px solid var(--line)">`;}
-  else if(ext==='pdf' && f.contentBase64){const url=blobUrl(f); html=`<iframe class="iframePreview" src="${url}"></iframe>`;}
+  else if(ext==='pdf' && f.contentBase64){const url=blobUrl(f); html=`<iframe class="iframePreview" sandbox="" referrerpolicy="no-referrer" src="${url}"></iframe>`;}
   else if(ext==='html' && f.contentText){
     if(location.protocol==='file:'){
       html=`<pre class="mono">${esc(f.contentText)}</pre>`;
     } else {
-      html=`<iframe class="iframePreview" sandbox srcdoc="${esc(sanitizeHtml(f.contentText))}"></iframe>`;
+      html=`<iframe class="iframePreview" sandbox="" referrerpolicy="no-referrer" srcdoc="${esc(sanitizeHtml(f.contentText))}"></iframe>`;
     }
   }
   else {html=`<div class="empty"><b>${esc(f.name)}</b><br>Файл збережено всередині звіту.<br><br><button class="btn" id="downloadFileBtn">Завантажити файл</button></div>`;}
@@ -3124,12 +3174,12 @@ function jsonInlineValueHtml(v){
   if(typeof v==='number') return esc(fmt(v));
   if(typeof v==='boolean') return `<span class="jsonBool">${v?'true':'false'}</span>`;
   const s=String(v??'');
-  if(isUrlString(s)) return `<a class="jsonLink" href="${esc(s)}" target="_blank" rel="noreferrer">${esc(short(s,120))}</a>`;
+  if(isUrlString(s)) return `<a class="jsonLink" href="${esc(s)}" target="_blank" rel="noopener noreferrer">${esc(short(s,120))}</a>`;
   return esc(short(s,180));
 }
 function jsonChipHtml(v){
   const s=jsonScalarText(v);
-  if(isUrlString(s)) return `<a class="jsonLink" href="${esc(s)}" target="_blank" rel="noreferrer">${esc(short(s,110))}</a>`;
+  if(isUrlString(s)) return `<a class="jsonLink" href="${esc(s)}" target="_blank" rel="noopener noreferrer">${esc(short(s,110))}</a>`;
   return `<span class="jsonChip">${esc(short(s,110))}</span>`;
 }
 function jsonScalarText(v){if(v===null) return 'null'; if(typeof v==='number') return fmt(v); if(typeof v==='boolean') return v?'true':'false'; return String(v??'');}
@@ -3293,7 +3343,8 @@ async function docxTextFromBase64(b64){
 }
 async function docxTextFromArrayBuffer(ab){
   const zip=await JSZip.loadAsync(ab);
-  const xml=await zip.file('word/document.xml')?.async('text');
+  assertSafeArchive(zip,'DOCX');
+  const xml=await safeZipText(zip,'word/document.xml');
   if(!xml) return '';
   return xml.replace(/<w:p[^>]*>/g,'\n').replace(/<w:tab[^>]*\/>/g,'\t').replace(/<w:br[^>]*\/>/g,'\n').replace(/<[^>]+>/g,' ').replace(/\s+\n/g,'\n').replace(/\n\s+/g,'\n').replace(/[ \t]{2,}/g,' ').replace(/\n{3,}/g,'\n\n').trim();
 }
@@ -3303,14 +3354,20 @@ async function pickAndRenderDocx(f){
     inp.type='file';
     inp.accept='.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
     inp.onchange=async ()=>{
-      const file=inp.files?.[0];
-      if(!file) return;
-      const text=await docxTextFromArrayBuffer(await file.arrayBuffer());
-      if(text){
-        f.contentText=text;
-        reader.innerHTML = `<div class="previewToolbar"><b>${esc(f.name)}</b><span class="pill">docx</span><span class="pill">${bytes(file.size||f.size||0)}</span></div>${renderDocxStructured(text,f.name)}`;
-      } else {
-        toast('Не вдалося витягнути текст з .docx');
+      try{
+        const file=inp.files?.[0];
+        if(!file) return;
+        assertSafeImportFile(file);
+        const text=await docxTextFromArrayBuffer(await file.arrayBuffer());
+        if(text){
+          f.contentText=text;
+          reader.innerHTML = `<div class="previewToolbar"><b>${esc(f.name)}</b><span class="pill">docx</span><span class="pill">${bytes(file.size||f.size||0)}</span></div>${renderDocxStructured(text,f.name)}`;
+        } else {
+          toast('Не вдалося витягнути текст з .docx');
+        }
+      }catch(e){
+        console.warn('[docx] local open failed:',e?.message||e);
+        showNotice(e?.message||'Не вдалося відкрити локальний .docx','error');
       }
     };
     inp.click();
@@ -3595,7 +3652,7 @@ function sanitizeHtml(s){
     .replace(/javascript:/gi,'');
 }
 function blobUrl(f){const bin=atob(f.contentBase64||''); const arr=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i); return URL.createObjectURL(new Blob([arr],{type:f.type||'application/octet-stream'}));}
-function downloadStoredFile(f){const a=document.createElement('a'); if(f.contentBase64){a.href=blobUrl(f);} else {a.href=URL.createObjectURL(new Blob([f.contentText||''],{type:f.type||'text/plain'}));} a.download=f.name; a.click();}
+function downloadStoredFile(f){const a=document.createElement('a'); const url=f.contentBase64?blobUrl(f):URL.createObjectURL(new Blob([f.contentText||''],{type:f.type||'text/plain'})); a.href=url; a.download=f.name; a.click(); setTimeout(()=>URL.revokeObjectURL(url),1000);}
 let modalReturnFocus=null;
 function openModal(title, body, foot){modalReturnFocus=document.activeElement; $('modalTitle').textContent=translateText(title); $('modalBody').innerHTML=translateText(body); $('modalFoot').innerHTML=translateText(foot); $('modalBackdrop').classList.add('open'); requestAnimationFrame(()=>$('modalBody').querySelector('input,textarea,select,button')?.focus());}
 function closeModal(){const wasOpen=$('modalBackdrop').classList.contains('open'); $('modalBackdrop').classList.remove('open'); if(wasOpen&&modalReturnFocus?.focus) modalReturnFocus.focus(); modalReturnFocus=null;}
@@ -3666,8 +3723,8 @@ function saveDatasetEdits(dsId){const ds=dataset(dsId); const table=$('readerDat
 
 function quickChart(dsId){const ds=dataset(dsId); const ch=autoChartConfig(dsId); if(!ch.x||!ch.y){toast('Потрібна текстова і числова колонка'); return;} inheritSourceMeta(ch, ds); ch._baseTitle=ch.title; REPORT.charts.push(ch); refresh(); openDataset(ch.datasetId,ch.sourceFileId); toast('Швидкий графік створено');}
 function quickChartFromTable(tb){const ds=dataset(tb.datasetId); if(!ds){toast('Таблицю-джерело не знайдено'); return;} const selected=(tb.columns&&tb.columns.length?tb.columns:columns(ds).map(c=>c.name)); const metas=columns(ds); const isNumber=c=>metas.find(m=>m.name===c)?.type==='number'; const y=selected.find(isNumber) || numberCols(ds)[0]; const x=selected.find(c=>!isNumber(c)) || textCols(ds)[0]; if(!x||!y){toast('Для графіка потрібна 1 текстова і 1 числова колонка'); return;} const ch={id:uid('ch'),title:`${y} по ${x}`,type:'bar',datasetId:ds.id,x,y,agg:'sum',top:10,sort:'desc',sourceFileId:tb.sourceFileId||ds.sourceFileId||''}; inheritSourceMeta(ch, ds); ch._baseTitle=ch.title; REPORT.charts.push(ch); refresh(); openDataset(ds.id,ch.sourceFileId); toast('Графік створено з таблички');}
-async function handleFiles(fileList){if(!guardAdmin()) {toast('Редагування вимкнено'); return;} const before=new Set((REPORT.datasets||[]).map(d=>d.id)); let count=0; for(const file of fileList){await addFile(file); count++;} refresh(); const added=(REPORT.datasets||[]).filter(d=>!before.has(d.id)); if(added.length===1) showImportSuccess(added[0]); else if(added.length>1) showNotice(`Додано ${added.length} таблиць із ${count} файлів.`,'success'); else if(count) showNotice(`Додано файлів: ${count}.`,'success');}
-async function addFile(file){const ext=(file.name.split('.').pop()||'').toLowerCase(); const id=uid('file'); const co=company(state.activeCompany); const companyId=co?.id||''; const companyPath=co?('companies/'+co.folder+'/'):'data/'; if(['csv','tsv'].includes(ext)){const text=await file.text(); const matrix=parseCsv(text, ext==='tsv'?'\t':undefined); const rows=rowsFromMatrix(matrix); const rec={id,name:file.name,path:companyPath+file.name,folder:co?.name||'Дані',companyId,ext,type:file.type||'text/csv',size:file.size,isData:true,contentText:text}; REPORT.files.push(rec); const ds={id:uid('ds'),name:file.name.replace(/\.[^.]+$/,''),sourceFileId:id,createdAt:new Date().toISOString(),rows,columns:inferColumns(rows)}; REPORT.datasets.push(ds); state.activeDataset=ds.id; toast(`Додано таблицю: ${file.name}`); return;}
+async function handleFiles(fileList){if(!guardAdmin()) {toast('Редагування вимкнено'); return;} const files=[...fileList]; if(files.length>MAX_IMPORT_FILES){showNotice(`За один раз можна додати не більше ${MAX_IMPORT_FILES} файлів.`,'error');return;} const before=new Set((REPORT.datasets||[]).map(d=>d.id)); let count=0; for(const file of files){try{await addFile(file); count++;}catch(e){console.warn('[import] skipped:',file?.name,e?.message||e);showNotice(e?.message||`Не вдалося додати ${file?.name||'файл'}.`,'error');}} refresh(); const added=(REPORT.datasets||[]).filter(d=>!before.has(d.id)); if(added.length===1) showImportSuccess(added[0]); else if(added.length>1) showNotice(`Додано ${added.length} таблиць із ${count} файлів.`,'success'); else if(count) showNotice(`Додано файлів: ${count}.`,'success');}
+async function addFile(file){assertSafeImportFile(file); const ext=(file.name.split('.').pop()||'').toLowerCase(); const id=uid('file'); const co=company(state.activeCompany); const companyId=co?.id||''; const companyPath=co?('companies/'+co.folder+'/'):'data/'; if(['csv','tsv'].includes(ext)){const text=await file.text(); const matrix=parseCsv(text, ext==='tsv'?'\t':undefined); const rows=rowsFromMatrix(matrix); const rec={id,name:file.name,path:companyPath+file.name,folder:co?.name||'Дані',companyId,ext,type:file.type||'text/csv',size:file.size,isData:true,contentText:text}; REPORT.files.push(rec); const ds={id:uid('ds'),name:file.name.replace(/\.[^.]+$/,''),sourceFileId:id,createdAt:new Date().toISOString(),rows,columns:inferColumns(rows)}; REPORT.datasets.push(ds); state.activeDataset=ds.id; toast(`Додано таблицю: ${file.name}`); return;}
   if(ext==='json'){const text=await file.text(); let rows=[]; let obj=null; try{obj=JSON.parse(text); if(obj && Array.isArray(obj.datasets)){REPORT=stripLegacyTrueSavageDemoPack(stripLegacyCaspianPack(normalizeReport(obj))); state.activeDataset=REPORT.datasets[0]?.id||null; state.openTabs=[]; initState(); toast('Проєкт JSON завантажено'); return;} rows=jsonRows(obj);}catch(e){toast('JSON не прочитався');} const rec={id,name:file.name,path:companyPath+file.name,folder:co?.name||'Дані',companyId,ext,type:file.type||'application/json',size:file.size,isData:rows.length>0,contentText:text}; REPORT.files.push(rec); if(rows.length){const ds={id:uid('ds'),name:file.name.replace(/\.[^.]+$/,''),sourceFileId:id,createdAt:new Date().toISOString(),rows,columns:inferColumns(rows)}; REPORT.datasets.push(ds); state.activeDataset=ds.id; toast(`Додано JSON-таблицю: ${file.name}`);} return;}
   if(ext==='xlsx'){const ab=await file.arrayBuffer(); const b64=abToBase64(ab); const rec={id,name:file.name,path:companyPath+file.name,folder:co?.name||'Дані',companyId,ext,type:file.type||'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',size:file.size,isData:true,contentBase64:b64}; REPORT.files.push(rec); try{const sheets=await parseXlsx(ab); let added=0; for(const sh of sheets){if(sh.rows.length){REPORT.datasets.push({id:uid('ds'),name:file.name.replace(/\.[^.]+$/,'')+' / '+sh.name,sourceFileId:id,createdAt:new Date().toISOString(),rows:sh.rows,columns:inferColumns(sh.rows)}); added++;}} if(added){state.activeDataset=REPORT.datasets[REPORT.datasets.length-1].id; toast(`Excel прочитано: ${added} лист(ів)`);} else toast('Excel відкрито, але таблиць не знайдено');}catch(e){console.error(e); toast('Не вдалося прочитати .xlsx');} return;}
   if(ext==='md' && /YT_VIDEO_VISUALIZATION_/i.test(file.name)){
@@ -4385,6 +4442,7 @@ function inheritSourceMeta(target, source){
   return target;
 }
 async function structuredDatasetsFromFile(file, ext){
+  assertSafeImportFile(file);
   const base=pathName(file?.name||'file').replace(new RegExp(`\\.${ext}$`,'i'),'');
   if(ext==='csv' || ext==='tsv'){
     const text=await file.text();
@@ -4469,8 +4527,65 @@ async function syncStructuredDataFromFsRoots(force=false, opts={}){
 function rowsFromMatrix(matrix){if(!matrix.length) return []; const headers=uniqueHeaders(matrix[0].map(h=>String(h||'').trim()||'column')); return matrix.slice(1).filter(r=>r.some(c=>String(c??'').trim()!=='')).map(r=>{const obj={}; headers.forEach((h,i)=>{const v=r[i]??''; obj[h]=isNum(v)?num(v):v;}); return obj;});}
 function uniqueHeaders(hs){const seen={}; return hs.map((h,i)=>{h=h||'column_'+(i+1); if(seen[h]){seen[h]++; return h+'_'+seen[h];} seen[h]=1; return h;});}
 function jsonRows(obj){if(Array.isArray(obj)) return obj.filter(x=>x&&typeof x==='object'); if(Array.isArray(obj.rows)) return obj.rows; if(Array.isArray(obj.data)) return obj.data; if(Array.isArray(obj.entities)) return obj.entities; return [];}
-async function parseXlsx(ab){if(typeof JSZip==='undefined') throw new Error('JSZip missing'); const zip=await JSZip.loadAsync(ab); const xml=async p=>zip.file(p)?await zip.file(p).async('text'):''; const parser=new DOMParser(); const workbook=parser.parseFromString(await xml('xl/workbook.xml'),'application/xml'); const rels=parser.parseFromString(await xml('xl/_rels/workbook.xml.rels'),'application/xml'); const relMap={}; [...rels.getElementsByTagName('Relationship')].forEach(r=>{relMap[r.getAttribute('Id')]=r.getAttribute('Target')}); const shared=[]; const ss=await xml('xl/sharedStrings.xml'); if(ss){const doc=parser.parseFromString(ss,'application/xml'); [...doc.getElementsByTagName('si')].forEach(si=>{shared.push([...si.getElementsByTagName('t')].map(t=>t.textContent).join(''));});}
-  const sheets=[]; const sheetNodes=[...workbook.getElementsByTagName('sheet')]; for(const s of sheetNodes){const name=s.getAttribute('name')||'Sheet'; const rid=s.getAttribute('r:id')||s.getAttribute('id'); let target=relMap[rid]||''; if(!target) continue; target=target.replace(/^\//,''); const path=target.startsWith('xl/')?target:'xl/'+target; const sheetXml=await xml(path); if(!sheetXml) continue; const doc=parser.parseFromString(sheetXml,'application/xml'); const matrix=[]; [...doc.getElementsByTagName('row')].forEach(rowEl=>{const arr=[]; [...rowEl.getElementsByTagName('c')].forEach(c=>{const ref=c.getAttribute('r')||''; const idx=colIndex(ref.replace(/\d/g,'')); arr[idx]=cellValue(c,shared);}); matrix.push(arr.map(v=>v??''));}); sheets.push({name, rows:rowsFromMatrix(matrix)});} return sheets;}
+async function parseXlsx(ab){
+  if(typeof JSZip==='undefined') throw new Error('JSZip missing');
+  if(Number(ab?.byteLength||0)>MAX_IMPORT_FILE_BYTES) throw new Error('XLSX-файл завеликий.');
+  const zip=await JSZip.loadAsync(ab);
+  assertSafeArchive(zip,'XLSX');
+  const parser=new DOMParser();
+  const parseXml=(text,label)=>{
+    const doc=parser.parseFromString(text,'application/xml');
+    if(doc.querySelector('parsererror')) throw new Error(`Некоректний XML у ${label}.`);
+    return doc;
+  };
+  const workbook=parseXml(await safeZipText(zip,'xl/workbook.xml'),'workbook.xml');
+  const rels=parseXml(await safeZipText(zip,'xl/_rels/workbook.xml.rels'),'workbook.xml.rels');
+  const relMap={};
+  [...rels.getElementsByTagName('Relationship')].forEach(r=>{relMap[r.getAttribute('Id')]=r.getAttribute('Target')});
+  const shared=[];
+  const ss=await safeZipText(zip,'xl/sharedStrings.xml');
+  if(ss){
+    const doc=parseXml(ss,'sharedStrings.xml');
+    for(const si of doc.getElementsByTagName('si')){
+      shared.push([...si.getElementsByTagName('t')].map(t=>t.textContent).join(''));
+      if(shared.length>MAX_SHEET_CELLS) throw new Error('XLSX містить забагато спільних значень.');
+    }
+  }
+
+  const sheets=[];
+  const sheetNodes=[...workbook.getElementsByTagName('sheet')];
+  if(sheetNodes.length>200) throw new Error('XLSX містить забагато аркушів.');
+  let totalCells=0;
+  for(const s of sheetNodes){
+    const name=s.getAttribute('name')||'Sheet';
+    const rid=s.getAttribute('r:id')||s.getAttribute('id');
+    let target=String(relMap[rid]||'').replace(/^\//,'');
+    if(!target) continue;
+    const path=(target.startsWith('xl/')?target:'xl/'+target).replace(/\\/g,'/');
+    if(path.includes('../') || !path.startsWith('xl/')) throw new Error('XLSX містить небезпечний шлях до аркуша.');
+    const sheetXml=await safeZipText(zip,path);
+    if(!sheetXml) continue;
+    const doc=parseXml(sheetXml,path);
+    const rowNodes=[...doc.getElementsByTagName('row')];
+    if(rowNodes.length>MAX_SHEET_ROWS) throw new Error(`Аркуш ${name} містить забагато рядків.`);
+    const matrix=[];
+    for(const rowEl of rowNodes){
+      const arr=[];
+      const cells=[...rowEl.getElementsByTagName('c')];
+      totalCells+=cells.length;
+      if(totalCells>MAX_SHEET_CELLS) throw new Error('XLSX містить забагато клітинок.');
+      for(const c of cells){
+        const ref=c.getAttribute('r')||'';
+        const idx=colIndex(ref.replace(/\d/g,''));
+        if(idx<0 || idx>=MAX_SHEET_COLUMNS) throw new Error(`Аркуш ${name} містить завеликий індекс колонки.`);
+        arr[idx]=cellValue(c,shared);
+      }
+      matrix.push(arr.map(v=>v??''));
+    }
+    sheets.push({name,rows:rowsFromMatrix(matrix)});
+  }
+  return sheets;
+}
 function colIndex(letters){let n=0; letters=(letters||'A').toUpperCase(); for(let i=0;i<letters.length;i++) n=n*26+(letters.charCodeAt(i)-64); return n-1;}
 function cellValue(c,shared){const t=c.getAttribute('t'); const v=c.getElementsByTagName('v')[0]?.textContent ?? ''; if(t==='s') return shared[Number(v)] ?? ''; if(t==='b') return v==='1'?'TRUE':'FALSE'; if(t==='inlineStr') return [...c.getElementsByTagName('t')].map(x=>x.textContent).join(''); return isNum(v)?num(v):v;}
 function abToBase64(ab){let binary=''; const bytes=new Uint8Array(ab); const chunk=0x8000; for(let i=0;i<bytes.length;i+=chunk){binary+=String.fromCharCode.apply(null,bytes.subarray(i,i+chunk));} return btoa(binary);}
@@ -4495,6 +4610,7 @@ async function buildClientBundleFromFs(reportBase){
       if(!handle || handle.kind!=='file') continue;
       try{
         const file=await handle.getFile();
+        assertSafeImportFile(file);
         const ext=extFromName(file.name);
         const relNorm=String(relPath||file.name).replace(/\\/g,'/');
         const fullPath=`folders/${rootName}/${relNorm}`;
@@ -4688,15 +4804,15 @@ async function openMembersModal(){
 }
 function toggleEditMode(){
   if(isClientLocked()){toast('Клієнтська версія зафіксована й не має режиму редагування.');return;}
-  if(HOSTED_MODE&&cloudSync.ready&&!cloudCanWrite()){toast('Ваша роль у робочому просторі дозволяє лише перегляд.');return;}
-  if(HOSTED_MODE&&!cloudSync.ready){toast('Редагування стане доступним після підключення до спільного сховища.');return;}
+  if(HOSTED_MODE&&!BROWSER_ONLY_MODE&&cloudSync.ready&&!cloudCanWrite()){toast('Ваша роль у робочому просторі дозволяє лише перегляд.');return;}
+  if(HOSTED_MODE&&!BROWSER_ONLY_MODE&&!cloudSync.ready){toast('Редагування стане доступним після підключення до спільного сховища.');return;}
   state.access=state.access==='viewer'?'admin':'viewer';
   REPORT.meta.accessMode=state.access;
   refresh();
   toast(state.access==='admin'?'Режим редагування':'Режим перегляду');
 }
 function bind(){
-  $('pasteBtn').onclick=()=>openDataModal(); $('uploadFilesBtn').onclick=()=>$('fileInput').click(); $('connectFolderBtn').onclick=()=>pickAndConnectFolder(); $('saveDiskBtn').onclick=()=>{toast('Зберігаю HTML-файл на диск...'); saveProjectHtmlOnly();}; $('saveHtmlBtn').onclick=saveHtml; $('saveClientHtmlBtn').onclick=saveClientHtml; $('exportJsonBtn').onclick=exportJson; $('membersBtn').onclick=openMembersModal; $('clearReaderBtn').onclick=()=>{state.openTabs=[]; state.activeFile=null; reader.innerHTML=`<div class="empty">${t('emptyReader')}</div>`; renderReaderTabs(); renderSide();}; $('unlockAdminBtn').onclick=toggleEditMode; $('cloudStatus').onclick=()=>{if(cloudSync.conflict){toast('Збережіть свою копію локально, потім перезавантажте сторінку.');return;} if(cloudSync.ready&&cloudSync.dirty){saveReportToCloud();return;} if(cloudSync.ready) reloadCloudReport(); else if(HOSTED_MODE) initCloudSync();}; $('langBtn').onclick=()=>setLanguage(state.lang==='uk'?'en':'uk'); $('themeBtn').onclick=()=>{state.theme=state.theme==='dark'?'light':'dark'; app.dataset.theme=state.theme}; $('modalClose').onclick=closeModal; $('appNoticeClose').onclick=hideNotice; $('modalBackdrop').addEventListener('click',e=>{if(e.target.id==='modalBackdrop')closeModal();}); document.addEventListener('keydown',handleModalKeydown); $('fileInput').addEventListener('change',e=>{handleFiles(e.target.files); e.target.value='';}); search.addEventListener('input',renderSide); sideList.addEventListener('click', onSideListClick);
+  $('pasteBtn').onclick=()=>openDataModal(); $('uploadFilesBtn').onclick=()=>$('fileInput').click(); $('connectFolderBtn').onclick=()=>pickAndConnectFolder(); $('saveDiskBtn').onclick=()=>{toast('Зберігаю HTML-файл на диск...'); saveProjectHtmlOnly();}; $('saveHtmlBtn').onclick=saveHtml; $('saveClientHtmlBtn').onclick=saveClientHtml; $('exportJsonBtn').onclick=exportJson; $('membersBtn').onclick=openMembersModal; $('clearReaderBtn').onclick=()=>{state.openTabs=[]; state.activeFile=null; reader.innerHTML=`<div class="empty">${t('emptyReader')}</div>`; renderReaderTabs(); renderSide();}; $('unlockAdminBtn').onclick=toggleEditMode; $('cloudStatus').onclick=()=>{if(BROWSER_ONLY_MODE){toast('Файли й дані залишаються лише у цьому браузері.');return;} if(cloudSync.conflict){toast('Збережіть свою копію локально, потім перезавантажте сторінку.');return;} if(cloudSync.ready&&cloudSync.dirty){saveReportToCloud();return;} if(cloudSync.ready) reloadCloudReport(); else if(HOSTED_MODE) initCloudSync();}; $('langBtn').onclick=()=>setLanguage(state.lang==='uk'?'en':'uk'); $('themeBtn').onclick=()=>{state.theme=state.theme==='dark'?'light':'dark'; app.dataset.theme=state.theme}; $('modalClose').onclick=closeModal; $('appNoticeClose').onclick=hideNotice; $('modalBackdrop').addEventListener('click',e=>{if(e.target.id==='modalBackdrop')closeModal();}); document.addEventListener('keydown',handleModalKeydown); $('fileInput').addEventListener('change',e=>{handleFiles(e.target.files); e.target.value='';}); search.addEventListener('input',renderSide); sideList.addEventListener('click', onSideListClick);
   $('companyNameInput')?.addEventListener('input',e=>{REPORT.meta=REPORT.meta||{}; REPORT.meta.companyName=String(e.target.value||'').trim(); renderReportTitle(); schedulePersist();});
   renderReportTitle();
   analytics.addEventListener('click',e=>{

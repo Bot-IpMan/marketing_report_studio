@@ -1,7 +1,6 @@
 name = "marketing-report-studio"
 main = "worker.js"
 compatibility_date = "2026-06-12"
-keep_vars = true
 
 [build]
 command = "node scripts/build.mjs"
@@ -11,16 +10,4 @@ directory = "./dist"
 binding = "ASSETS"
 run_worker_first = ["/api", "/api/*", "/marketing_report_studio_v8_access_folders_fixed"]
 
-[[d1_databases]]
-binding = "DB"
-database_name = "marketing-report-studio"
-database_id = "replace-with-d1-database-id"
-
-[[r2_buckets]]
-binding = "REPORTS_BUCKET"
-bucket_name = "marketing-report-studio-reports"
-
-[vars]
-ACCESS_TEAM_DOMAIN = "https://your-team.cloudflareaccess.com"
-ACCESS_AUD = "replace-with-access-application-aud"
-BOOTSTRAP_OWNER_EMAIL = "owner@example.com"
+# No database, object storage, Access variables, or secrets are required.

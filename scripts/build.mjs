@@ -38,12 +38,6 @@ await writeFile(
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="16" fill="#315cf6"/><text x="32" y="42" text-anchor="middle" font-family="Arial, sans-serif" font-size="34" font-weight="900" fill="white">M</text></svg>\n',
   'utf8',
 );
-await writeFile(
-  resolve(outputDir, '_routes.json'),
-  `${JSON.stringify({ version: 1, include: ['/api/*'], exclude: [] }, null, 2)}\n`,
-  'utf8',
-);
-
 console.log(`Built ${outputHtml}`);
 console.log(`Built ${legacyOutputHtml}`);
 console.log(`CSP contains ${scriptHashes.length} inline script hash(es).`);
@@ -104,16 +98,16 @@ function createHeaders(hashes) {
     "default-src 'none'",
     `script-src 'self' ${hashes.join(' ')}`,
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob: https:",
+    "img-src 'self' data: blob:",
     "font-src 'self' data:",
-    "connect-src 'self' data: blob: https:",
-    "frame-src 'self' data: blob: https:",
-    "media-src 'self' data: blob: https:",
+    "connect-src 'none'",
+    "frame-src 'self' data: blob:",
+    "media-src 'self' data: blob:",
     "worker-src 'self' blob:",
     "manifest-src 'self'",
     "object-src 'none'",
     "base-uri 'none'",
-    "form-action 'self'",
+    "form-action 'none'",
     "frame-ancestors 'none'",
     'upgrade-insecure-requests',
   ].join('; ');
@@ -122,11 +116,16 @@ function createHeaders(hashes) {
     '/*',
     `  Content-Security-Policy: ${csp}`,
     '  Cache-Control: private, no-store, max-age=0',
+    '  Cross-Origin-Opener-Policy: same-origin',
+    '  Cross-Origin-Resource-Policy: same-origin',
+    '  Origin-Agent-Cluster: ?1',
     '  Referrer-Policy: no-referrer',
+    '  Strict-Transport-Security: max-age=31536000',
     '  X-Content-Type-Options: nosniff',
     '  X-Frame-Options: DENY',
+    '  X-Permitted-Cross-Domain-Policies: none',
     '  X-Robots-Tag: noindex, nofollow, noarchive',
-    '  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), bluetooth=()',
+    '  Permissions-Policy: accelerometer=(), camera=(), display-capture=(), geolocation=(), gyroscope=(), microphone=(), payment=(), usb=(), serial=(), bluetooth=()',
     '',
   ].join('\n');
 }
