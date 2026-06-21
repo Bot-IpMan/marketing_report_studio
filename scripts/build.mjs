@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -19,12 +19,10 @@ const sourceHtml = await readFile(sourcePath, 'utf8');
 const html = createHostedShell(sourceHtml);
 const scriptHashes = getExecutableInlineScriptHashes(html);
 
-if (scriptHashes.length === 0) {
-  throw new Error('No executable inline scripts found; refusing to emit an invalid CSP.');
-}
-
 await rm(outputDir, { recursive: true, force: true });
 await mkdir(outputDir, { recursive: true });
+await cp(resolve(projectRoot, 'vendor'), resolve(outputDir, 'vendor'), { recursive: true });
+await cp(resolve(projectRoot, 'app.js'), resolve(outputDir, 'app.js'));
 await writeFile(outputHtml, html, 'utf8');
 await writeFile(legacyOutputHtml, html, 'utf8');
 await writeFile(resolve(outputDir, '_headers'), createHeaders(scriptHashes), 'utf8');

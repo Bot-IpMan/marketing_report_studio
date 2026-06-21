@@ -16,6 +16,8 @@ Production URL: <https://mrsai.lookdata.live/>
 - `/api/*` is intentionally disabled by both the Worker and the Pages fallback.
 - The production Content Security Policy sets `connect-src 'none'`, blocking
   `fetch`, XHR, WebSocket, EventSource, and beacon requests from the page.
+- The application does not include third-party analytics, tracking pixels,
+  telemetry SDKs, hidden data-collection iframes, or background downloaders.
 
 GitHub stores only application source code. Cloudflare serves the static build
 and does not receive the contents of files selected inside the application.
@@ -34,7 +36,7 @@ opened.
 
 ## Security Controls
 
-- restrictive CSP with hashed inline scripts and no network connections;
+- restrictive CSP with self-hosted scripts and no network connections;
 - HSTS, frame blocking, no-referrer, MIME sniffing protection, COOP, and CORP;
 - sandboxed HTML and PDF previews;
 - escaped user data in generated UI;
@@ -73,6 +75,9 @@ creates the production build in `dist/`.
 dist/
 ├── index.html
 ├── marketing_report_studio_v8_access_folders_fixed.html
+├── app.js
+├── vendor/
+│   └── jszip-3.10.1.min.js
 ├── _headers
 ├── favicon.svg
 └── robots.txt

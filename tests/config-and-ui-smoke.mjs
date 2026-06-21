@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 
 const wrangler = readFileSync('wrangler.toml', 'utf8');
 const html = readFileSync('marketing_report_studio_v8_access_folders_fixed.html', 'utf8');
+const appSource = readFileSync('app.js', 'utf8');
 const buildScript = readFileSync('scripts/build.mjs', 'utf8');
 const api = readFileSync('functions/api/[[path]].js', 'utf8');
 const worker = readFileSync('worker.js', 'utf8');
@@ -23,12 +24,12 @@ assert.match(html, /<section class="panel analytics">/, 'UI must keep the charts
 assert.match(html, /<section class="panel reader">/, 'UI must keep the open-files zone');
 assert.match(html, /<aside class="panel files">/, 'UI must keep the file-system zone');
 assert.match(html, /data-theme="dark"/, 'dark theme should remain available');
-assert.match(html, /const BROWSER_ONLY_MODE = true/, 'hosted UI must be locked to browser-only mode');
-assert.match(html, /if\(BROWSER_ONLY_MODE\)/, 'network API calls must have a browser-only guard');
-assert.doesNotMatch(html, /\bfetch\s*\(/, 'standalone UI must not contain a network request path');
-assert.match(html, /MAX_IMPORT_FILE_BYTES/, 'file imports must have a size limit');
-assert.match(html, /MAX_ARCHIVE_UNCOMPRESSED_BYTES/, 'compressed imports must have an expanded-size limit');
-assert.match(html, /sandbox="" referrerpolicy="no-referrer"/, 'embedded file previews must be sandboxed');
+assert.match(appSource, /const BROWSER_ONLY_MODE = true/, 'hosted UI must be locked to browser-only mode');
+assert.match(appSource, /if\(BROWSER_ONLY_MODE\)/, 'network API calls must have a browser-only guard');
+assert.doesNotMatch(appSource, /\bfetch\s*\(/, 'standalone UI must not contain a network request path');
+assert.match(appSource, /MAX_IMPORT_FILE_BYTES/, 'file imports must have a size limit');
+assert.match(appSource, /MAX_ARCHIVE_UNCOMPRESSED_BYTES/, 'compressed imports must have an expanded-size limit');
+assert.match(appSource, /sandbox="" referrerpolicy="no-referrer"/, 'embedded file previews must be sandboxed');
 
 assert.match(buildScript, /favicon\.svg/, 'build should emit a favicon');
 assert.match(buildScript, /"connect-src 'none'"/, 'hosted CSP must block all browser network connections');
