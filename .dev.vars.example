@@ -1,1 +1,8 @@
 # Browser-only deployment requires no runtime variables or secrets.
+#
+# Optional local-only AI provider placeholders. Do not commit real secrets.
+# Real AI remains disabled unless AI_SERVER_ENABLED=true and the Worker secret is set.
+AI_SERVER_ENABLED=false
+AI_PROVIDER=dry_run
+OPENAI_API_KEY=
+OPENAI_MODEL=

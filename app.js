@@ -7,10 +7,90 @@ const DEFAULT = {
   files:[],
   charts:[],
   tables:[],
+  competitorProfiles:{items:[], updatedAt:null},
+  pricingFeatureMatrix:null,
+  materialsInventory:{items:[], updatedAt:null},
+  sourceRegistry:{items:[], updatedAt:null},
+  evidenceCards:{items:[], updatedAt:null},
+  aiAssistance:{aiEnabled:false, aiMode:'disabled', taskDrafts:[], suggestions:[], updatedAt:null},
+  aiReviewQueue:{items:[], updatedAt:null},
+  aiAuditLog:{events:[], provenance:[], updatedAt:null},
+  versionRetentionPolicy:null,
+  versionRetentionState:{pinnedVersionIds:[], archivedVersionIds:[], cleanupCandidateVersionIds:[], updatedAt:null},
+  governanceSettings:null,
+  onboardingState:null,
+  firstReportFlow:null,
   ci:null
 };
 const CI_SCHEMA_VERSION = 'ci_os_unified_v1';
 const CI_LINEAGE_RULE = 'Recommendation -> Insight -> Fact -> Source';
+const REPORT_SCHEMA_VERSION = 2;
+const REPORT_SECTION_STATUS = ['empty','draft','needs_review','approved'];
+const MATERIAL_STATUS = ['available','needs_review','linked','ignored'];
+const MATERIAL_TYPES = ['spreadsheet','csv','json','pdf','docx','markdown','html','image','text','unknown'];
+const SOURCE_TYPES = ['spreadsheet','document','webpage','image','dataset','note','unknown'];
+const SOURCE_TEXT_STATUS = ['not_applicable','pending','available','failed'];
+const SOURCE_EVIDENCE_STATUS = ['unused','candidate','used','ignored'];
+const SOURCE_CREDIBILITY_STATUS = ['unreviewed','trusted','needs_review','weak'];
+const COMPETITOR_PROFILE_STATUS = ['active','archived','ignored'];
+const COMPETITOR_PRIORITY = ['low','medium','high'];
+const COMPETITOR_REVIEW_STATUS = ['draft','needs_review','approved'];
+const PRICE_PERIODS = ['monthly','yearly','one_time','usage_based','custom','unknown'];
+const PUBLIC_PRICING_STATUS = ['yes','no','partial','unknown'];
+const FEATURE_CATEGORIES = ['core_product','pricing','integrations','analytics','automation','reporting','collaboration','security','support','marketing','content','seo','advertising','other'];
+const MATRIX_AVAILABILITY_STATUS = ['yes','no','partial','unknown','not_applicable'];
+const EVIDENCE_TYPES = ['fact','metric','quote','observation','comparison','risk','opportunity','recommendation_input'];
+const EVIDENCE_REVIEW_STATUS = ['draft','needs_review','approved','rejected'];
+const EVIDENCE_CONFIDENCE_STATUS = ['unknown','low','medium','high'];
+const EVIDENCE_CREDIBILITY_STATUS = ['unreviewed','trusted','needs_review','weak'];
+const DRAFT_BLOCK_TYPES = ['paragraph','bullet_list','metric','comparison_note','risk_note','opportunity_note','recommendation_note'];
+const DRAFT_BLOCK_STATUS = ['draft','needs_review','approved'];
+const ENABLE_AI_ASSISTANCE = false;
+const AI_TASK_TYPES = ['extract_evidence_candidates','summarize_approved_evidence','suggest_report_sections','suggest_recommendations','improve_executive_summary','check_source_coverage'];
+const AI_SUGGESTION_STATUS = ['draft','ready_for_review','accepted','rejected'];
+const AI_REVIEW_SUGGESTION_TYPES = ['evidence_candidate','recommendation','executive_summary','source_coverage_gap','section_draft','unknown'];
+const AI_REVIEW_STATUSES = ['draft','ready_for_review','accepted','rejected','converted'];
+const AI_REVIEW_GENERATORS = ['ai_preview','ai_dry_run','rule_based','unknown'];
+const AI_AUDIT_EVENT_TYPES = ['ai_preview_requested','ai_preview_completed','ai_preview_failed','suggestion_created','suggestion_sent_to_queue','suggestion_edited','suggestion_accepted','suggestion_rejected','suggestion_converted','evidence_card_created_from_suggestion','draft_block_created_from_suggestion','checklist_item_created_from_suggestion','export_excluded_ai_draft','export_included_reviewed_output','report_version_restored','version_retention_previewed','version_pinned','version_unpinned','version_archived','version_cleanup_previewed','version_cleanup_rejected_protected','version_cleanup_policy_updated','governance_settings_viewed','governance_settings_updated','governance_settings_reset_to_defaults','governance_policy_validation_failed','workspace_onboarding_started','workspace_onboarding_step_completed','workspace_onboarding_completed','workspace_onboarding_dismissed','workspace_onboarding_reset','workspace_onboarding_applied_settings','unknown'];
+const VERSION_CLEANUP_ENABLED = false;
+const VERSION_RETENTION_MODES = ['disabled','preview_only','archive_only','delete_allowed'];
+const ONBOARDING_VERSION = 1;
+const ONBOARDING_STEPS = ['welcome','workspaceBasics','rolesAndAccess','exportSafety','aiPolicy','reviewPolicy','versionRetention','restorePolicy','demoReport','finalChecklist'];
+const FIRST_REPORT_FLOW_VERSION = 1;
+const FIRST_REPORT_STEPS = ['createReport','addClientBasics','addCompetitors','uploadMaterials','reviewMaterialsInventory','buildSourceRegistry','addEvidence','reviewEvidence','buildDraft','runQualityChecklist','exportClientReport'];
+const AI_PROVIDER_MODES = ['disabled','dry_run','real_provider','unknown'];
+const AI_INPUT_REF_TYPES = ['section','source','evidence_card','material','draft_block','recommendation','checklist_item','unknown'];
+const AI_OUTPUT_REF_TYPES = ['ai_suggestion','evidence_card','draft_block','checklist_item','source_coverage_gap','unknown'];
+const AI_DRY_RUN_AVAILABLE = true;
+const AI_TASK_DEFINITIONS = {
+  extract_evidence_candidates:{label:'Extract evidence candidates',disabled:true,inputRefs:['materialsInventory','sourceRegistry'],output:'candidateEvidenceCards'},
+  summarize_approved_evidence:{label:'Summarize approved evidence',disabled:true,inputRefs:['evidenceCards','sourceRegistry'],output:'executiveSummarySuggestion'},
+  suggest_report_sections:{label:'Suggest report sections',disabled:true,inputRefs:['reportSections','evidenceCards'],output:'sectionDraftSuggestions'},
+  suggest_recommendations:{label:'Suggest recommendations',disabled:true,inputRefs:['approvedEvidence','sourceRegistry'],output:'recommendationSuggestions'},
+  improve_executive_summary:{label:'Improve executive summary',disabled:true,inputRefs:['executiveSummary','approvedEvidence'],output:'executiveSummarySuggestion'},
+  check_source_coverage:{label:'Check source coverage',disabled:true,inputRefs:['sourceRegistry','evidenceCards'],output:'sourceCoverageSuggestions'}
+};
+const AI_OUTPUT_CONTRACTS = {
+  candidateEvidenceCards:{type:'object',required:['candidates'],properties:{candidates:{type:'array',items:{required:['claim','sourceIds','sectionId','evidenceType'],enums:{evidenceType:EVIDENCE_TYPES,reviewStatus:['draft','needs_review']}}}}},
+  sectionDraftSuggestions:{type:'object',required:['sections'],properties:{sections:{type:'array',items:{required:['sectionId','blocks'],enums:{blockType:DRAFT_BLOCK_TYPES,status:['draft','needs_review']}}}}},
+  recommendationSuggestions:{type:'object',required:['recommendations'],properties:{recommendations:{type:'array',items:{required:['text','evidenceCardIds','sourceIds'],enums:{status:['draft','needs_review']}}}}},
+  executiveSummarySuggestion:{type:'object',required:['summary'],properties:{summary:{type:'string'},evidenceCardIds:{type:'array'},sourceIds:{type:'array'}}},
+  sourceCoverageSuggestions:{type:'object',required:['issues'],properties:{issues:{type:'array',items:{required:['sourceId','message','severity'],enums:{severity:['warning','blocker','info']}}}}}
+};
+const REPORT_SECTION_DEFINITIONS = [
+  ['cover','Cover'],
+  ['executiveSummary','Executive Summary'],
+  ['researchScope','Research Scope'],
+  ['competitiveLandscape','Competitive Landscape'],
+  ['competitors','Competitors'],
+  ['pricing','Pricing'],
+  ['features','Features'],
+  ['messaging','Messaging / Positioning'],
+  ['channels','Channels / Content / SEO'],
+  ['risksOpportunities','Risks and Opportunities'],
+  ['recommendations','Recommendations'],
+  ['sourcesEvidence','Sources and Evidence']
+];
 const REPORT_STORAGE_KEY = `marketing_report_studio_v8:${location.pathname}:report`;
 const LANG_STORAGE_KEY = `marketing_report_studio_v8:${location.pathname}:lang`;
 const LOCALSTORAGE_MAX_BYTES = 4 * 1024 * 1024;
@@ -24,36 +104,240 @@ const MAX_SHEET_ROWS = 100000;
 const MAX_SHEET_COLUMNS = 10000;
 const MAX_SHEET_CELLS = 1000000;
 const PERSIST_DEBOUNCE_MS = 500;
+const SIDE_SEARCH_RENDER_DEBOUNCE_MS = 120;
 const CLOUD_PERSIST_DEBOUNCE_MS = 1400;
 const CLOUD_RETRY_DELAYS_MS = [3000, 10000, 30000, 60000];
 const BROWSER_ONLY_MODE = true;
 const HOSTED_MODE = location.protocol==='https:' || location.protocol==='http:';
 let persistTimer = null;
+let sideSearchRenderTimer = null;
 let localStorageDisabledBySize = false;
 let REPORT = normalizeReport(loadReport() || DEFAULT);
-const state = {activeDataset: REPORT.datasets[0]?.id || null, activeFile:null, openTabs:[], theme:'dark', access:((HOSTED_MODE&&!BROWSER_ONLY_MODE)||REPORT.meta?.clientLocked)?'viewer':(REPORT.meta?.accessMode || 'admin'), activeCompany:null, compareA:null, compareB:null, compareOnly:false, openFolders:{}, showCompare:false, fsOpen:{}, fsRoots:[], fsPollTimer:null, analyticsSite:'all', analyticsResearch:'all', lastVizFsSync:0, widgetSnapshots:{}, lang:(REPORT.meta?.lang || getSavedLang() || 'uk')};
+const state = {activeDataset: REPORT.datasets[0]?.id || null, activeFile:null, openTabs:[], theme:'dark', access:((HOSTED_MODE&&!BROWSER_ONLY_MODE)||REPORT.meta?.clientLocked)?'viewer':(REPORT.meta?.accessMode || 'admin'), activeCompany:null, compareA:null, compareB:null, compareOnly:false, openFolders:{}, showCompare:false, fsOpen:{}, fsRoots:[], fsPollTimer:null, analyticsSite:'all', analyticsResearch:'all', materialType:'all', reviewFilter:'all', competitorFilter:'all', matrixFilter:'all', aiStatus:null, aiStatusLoaded:false, aiSectionId:'', aiQueueType:'all', aiQueueStatus:'all', aiAuditFilter:'all', versionDiffFilter:'all', sidePanelView:'materials', lastVizFsSync:0, widgetSnapshots:{}, lang:(REPORT.meta?.lang || getSavedLang() || 'uk')};
 const cloudSync = {enabled:HOSTED_MODE&&!BROWSER_ONLY_MODE, ready:false, localFallback:BROWSER_ONLY_MODE, saving:false, dirty:false, conflict:false, suppress:false, saveTimer:null, retryCount:0, reportId:null, version:null, role:null, user:null, workspace:null};
+let VERSION_DIFF_BASELINE = null;
+let VERSION_DIFF_BASELINE_REPORT = null;
 const $ = id => document.getElementById(id);
 const app = $('app'), analytics = $('analyticsContent'), reader = $('readerContent'), readerTabs = $('readerTabs'), sideList = $('sideList'), search = $('search');
 const UI_TEXT = {
   uk: {
-    appTitle: 'Ринкова конкурентна розвідка',
-    reportTitlePrefix: 'Ринкова конкурентна розвідка для: {company}',
+    appTitle: 'Marketing Report Studio',
+    reportTitlePrefix: 'Marketing Report Studio',
     reportTitleDefaultCompany: 'ваша компанія',
-    reportSubtitle: 'адмін редагує · клієнт переглядає',
+    reportSubtitle: 'Завантажте матеріали -> перевірте докази -> експортуйте звіт для клієнта',
     companyName: 'Назва компанії',
-    pasteCsv: 'Додати дані',
+    pasteCsv: 'Завантажити матеріали',
+    pasteTitle: 'Додати таблицю, файли або папку',
     exportCiJson: 'CI JSON',
     exportCiJsonTitle: 'Експорт у єдиній CI OS структурі',
     saveDisk: 'Зберегти на диск',
     saveAdmin: 'Зберегти адмін',
     saveClient: 'Для клієнта',
+    saveClientPackage: 'Пакет для клієнта',
+    internalAuditPackage: 'Внутрішній аудит',
+    internalAuditPackageTitle: 'Лише для аналітиків. Не для клієнтів.',
+    clientPackageBlocked: 'Пакет для клієнта заблоковано: {message}',
+    fixClientPackageBlockers: 'Виправте блокери експорту перед створенням пакета для клієнта',
+    clientPackageWarnings: 'Пакет для клієнта має попередження: {message}',
+    jszipClientPackageUnavailable: 'JSZip недоступний. Неможливо створити ZIP-пакет для клієнта.',
+    preparingClientPackage: 'Готую пакет для клієнта...',
+    clientPackageCreated: 'Пакет для клієнта створено ({files} файлів ресурсів)',
+    couldNotBuildClientPackage: 'Не вдалося зібрати пакет для клієнта',
+    internalAuditUnavailableClientLocked: 'Експорт внутрішнього аудиту недоступний у clientLocked-режимі.',
+    internalAuditConfirm: 'Цей пакет містить внутрішні review та audit metadata. Не надсилайте його клієнтам без перевірки.',
+    buildingInternalAuditPackage: 'Збираю пакет внутрішнього аудиту...',
+    internalAuditPackageExported: 'Пакет внутрішнього аудиту експортовано',
+    internalAuditPackageFailed: 'Не вдалося зібрати пакет внутрішнього аудиту: {message}',
+    couldNotBuildInternalAuditPackage: 'Не вдалося зібрати пакет внутрішнього аудиту',
+    editModeEnabled: 'Режим редагування',
+    viewModeEnabled: 'Режим перегляду',
+    clientLockedEditUnavailable: 'Клієнтська версія зафіксована й не має режиму редагування.',
+    viewerRoleOnly: 'Ваша роль у робочому просторі дозволяє лише перегляд.',
+    sharedStorageRequired: 'Редагування стане доступним після підключення до спільного сховища.',
+    firstReportFallback: 'Перший звіт',
+    firstReportContinue: 'Продовжити',
+    firstReportCreateReport: 'Створити звіт',
+    firstReportAddClientBasics: 'Додати клієнта',
+    firstReportAddCompetitors: 'Додати конкурентів',
+    firstReportUploadMaterials: 'Завантажити матеріали',
+    firstReportReviewMaterials: 'Перевірити матеріали',
+    firstReportBuildSources: 'Зібрати джерела',
+    firstReportRefreshSources: 'Оновити джерела',
+    firstReportAddEvidence: 'Додати докази',
+    firstReportReviewEvidence: 'Перевірити докази',
+    firstReportBuildDraft: 'Зібрати чернетку',
+    firstReportRunQualityChecklist: 'Перевірити чекліст',
+    firstReportExportClientReport: 'Експорт для клієнта',
+    firstReportNameReport: 'Назвати звіт',
+    firstReportAddClient: 'Додати клієнта',
+    firstReportTitleEmpty: 'Створіть перший marketing intelligence звіт',
+    firstReportTitleContinue: 'Продовжуйте звіт',
+    firstReportSubtitleEmpty: 'Почніть із клієнта, конкурентів і дослідницьких матеріалів. Потім перетворіть їх на розділи з доказами та готовий клієнтський експорт.',
+    firstReportSubtitleContinue: 'Рухайтесь від матеріалів до джерел, доказів, чернетки, чекліста та клієнтського експорту.',
+    firstReportSampleData: 'Ви переглядаєте демонстраційні дані.',
+    firstReportLocalOnly: 'Локальний guide: зміни застосовуються до цього файлу звіту або сесії браузера.',
+    firstReportProgress: 'Прогрес {percent}% - наступний крок: {step}',
+    firstReportOpenDemo: 'Відкрити демо-звіт',
+    firstReportSkipStep: 'Пропустити крок',
+    firstReportHideGuide: 'Сховати guide',
+    firstReportStartGuided: 'Запустити guided report',
+    firstReportPasteTable: 'Вставити таблицю',
+    firstReportConnectLocalFolder: 'Підключити локальну папку',
+    firstReportImportSpreadsheet: 'Імпорт CSV/XLSX',
+    workflowUploadMaterialsTitle: 'Завантажте матеріали',
+    workflowUploadMaterialsBody: 'Таблиці, PDF, DOCX, Markdown, скриншоти, зображення, JSON і нотатки.',
+    workflowStructureTitle: 'Структуруйте',
+    workflowStructureBody: 'Організуйте конкурентів, ціни, функції, графіки, таблиці та джерела.',
+    workflowReviewEvidenceTitle: 'Перевірте докази',
+    workflowReviewEvidenceBody: 'Тримайте висновки привʼязаними до джерел перед передачею клієнту.',
+    workflowExportReportTitle: 'Експортуйте звіт',
+    workflowExportReportBody: 'Створюйте клієнтський HTML, ZIP-пакети та результат, готовий для друку або PDF.',
+    workflowBestFor: 'Кому підходить',
+    workflowBestForAgencies: 'Маркетингові агенції',
+    workflowBestForCiTeams: 'Команди конкурентної розвідки',
+    workflowBestForConsultants: 'Консультанти й аналітики',
+    workflowBestForFounders: 'Засновники, що готують market research',
+    workflowBestForResearchTeams: 'Content та research команди',
+    workflowClientReceives: 'Що отримує клієнт',
+    workflowClientSummary: 'Чіткий executive summary',
+    workflowClientComparison: 'Порівняння конкурентів',
+    workflowClientPricing: 'Таблиці цін і функцій',
+    workflowClientCharts: 'Графіки та візуальні інсайти',
+    workflowClientSources: 'Висновки з посиланням на джерела',
+    workflowClientReport: 'Інтерактивний клієнтський звіт',
+    all: 'Усі',
+    totalCount: '{count} всього',
+    sourceSingular: 'джерело',
+    sourcePlural: 'джерел',
+    evidenceCardSingular: 'картка доказу',
+    evidenceCardPlural: 'карток доказів',
+    competitorProfilesTitle: 'Профілі конкурентів',
+    activeCount: 'Активні {count}',
+    archivedCount: 'Архівні {count}',
+    needsReviewCount: 'Потребують перевірки {count}',
+    active: 'активні',
+    archived: 'архівні',
+    needsReview: 'потребують перевірки',
+    high: 'високий',
+    noWebsite: 'Без сайту',
+    noCategory: 'Без категорії',
+    priorityLabel: 'пріоритет',
+    edit: 'Редагувати',
+    addSummaryToDraft: 'Додати summary до чернетки',
+    archive: 'Архівувати',
+    addCompetitor: 'Додати конкурента',
+    competitorProfilesEmpty: 'Додайте конкурентів, щоб організувати positioning, pricing, features, sources та evidence. Scraping або AI не використовується.',
+    pricingFeatureMatrixTitle: 'Матриця цін і функцій',
+    coverageLabel: '{score}% покриття',
+    competitorsCount: 'Конкуренти {count}',
+    pricingTiersCount: 'Тарифні рівні {count}',
+    featureRowsCount: 'Рядки функцій {count}',
+    cellsNeedingReviewCount: 'Клітинки для перевірки {count}',
+    allRows: 'Усі рядки',
+    pricing: 'ціни',
+    coreProduct: 'основний продукт',
+    integrations: 'інтеграції',
+    reporting: 'звітність',
+    security: 'безпека',
+    missingSources: 'бракує джерел',
+    addCompetitorToMatrix: 'Додати конкурента до матриці',
+    addPricingTier: 'Додати тариф',
+    addFeatureRow: 'Додати рядок функції',
+    addMatrixSummaryToDraft: 'Додати summary матриці до чернетки',
+    featurePricing: 'Функція / ціна',
+    importanceLabel: 'важливість',
+    srcAbbr: 'джер.',
+    evAbbr: 'док.',
+    untitledTier: 'Тариф без назви',
+    publicPricing: 'публічні ціни',
+    noMatrixRowsYet: 'Рядків матриці ще немає.',
+    materialsInventoryTitle: 'Інвентар матеріалів',
+    materialsInventoryEmpty: 'Завантажте таблиці, PDF, DOCX, Markdown, скриншоти або дослідницькі файли, щоб почати створювати звіт.',
+    showingMaterials: 'Показано 12 із {count} матеріалів.',
+    linkedCompany: 'Привʼязана компанія',
+    reportSection: 'Розділ звіту',
+    notLinked: 'Не привʼязано',
+    statusAvailable: 'доступно',
+    statusLinked: 'привʼязано',
+    statusIgnored: 'ігноровано',
+    statusDraft: 'чернетка',
+    statusApproved: 'затверджено',
+    statusRejected: 'відхилено',
+    statusUnknown: 'невідомо',
+    statusTrusted: 'надійне',
+    statusWeak: 'слабке',
+    statusUnreviewed: 'не перевірено',
+    statusUsed: 'використано',
+    statusCandidate: 'кандидат',
+    statusPending: 'очікує',
+    statusFailed: 'помилка',
+    statusYes: 'так',
+    statusNo: 'ні',
+    statusPartial: 'частково',
+    statusNotApplicable: 'не застосовується',
+    priorityLow: 'низький',
+    priorityMedium: 'середній',
+    priorityHigh: 'високий',
+    typeSpreadsheet: 'таблиця',
+    typeImage: 'зображення',
+    typeText: 'текст',
+    typeUnknown: 'невідомо',
+    sourceRegistryTitle: 'Реєстр джерел',
+    refreshSourcesFromMaterials: 'Оновити джерела з матеріалів',
+    sourceRegistryEmpty: 'Джерела зʼявляться тут після завантаження або імпорту дослідницьких матеріалів.',
+    sectionsCount: '{count} розд.',
+    evidenceLabel: 'докази',
+    credibilityLabel: 'надійність',
+    showingSources: 'Показано 10 із {count} джерел.',
+    evidenceCardsTitle: 'Картки доказів',
+    addEvidenceCard: 'Додати картку доказу',
+    evidenceCardsEmpty: 'Картки доказів зʼявляться тут після привʼязки висновків до джерел.',
+    unlinkedSection: 'Розділ не привʼязано',
+    missingSection: 'Розділ відсутній',
+    untitledEvidenceCard: 'Картка доказу без назви',
+    confidenceLabel: 'довіра',
+    showingEvidenceCards: 'Показано 10 із {count} карток доказів.',
+    evidenceReviewTitle: 'Перевірка доказів',
+    approvedCount: 'Затверджено {count}',
+    rejectedCount: 'Відхилено {count}',
+    draftCount: 'Чернетки {count}',
+    approve: 'Затвердити',
+    reject: 'Відхилити',
+    saveNotes: 'Зберегти нотатки',
+    reviewNotesPlaceholder: 'Нотатки перевірки або причина відхилення',
+    showingFilteredEvidenceCards: 'Показано 8 відфільтрованих карток доказів.',
+    approvedCardsReady: '{count} затверджених карток готові для майбутньої генерації звіту.',
+    draftBuilderTitle: 'Конструктор чернетки звіту',
+    blocksCount: '{count} блоків',
+    buildDraftFromEvidence: 'Зібрати чернетку з затверджених доказів',
+    clearGeneratedDraft: 'Очистити згенеровану чернетку',
+    approveEvidenceFirst: 'Спочатку затвердьте картки доказів, потім збирайте чернетку звіту.',
+    generatedBlocksCount: '{blocks} згенер. блоків',
+    evidenceCardsCount: '{count} карток доказів',
+    draftBlockNoPreview: 'У draft-блоку немає preview-тексту.',
+    noGeneratedDraftBlocks: 'Згенерованих draft-блоків ще немає.',
+    approvedEvidenceAvailable: '{count} затверджених карток доказів доступно. Згенерований текст є чернеткою.',
+    ready: 'Готово',
+    blocked: 'Заблоковано',
+    exportReadinessTitle: 'Готовність до експорту',
+    completenessLabel: 'Повнота',
+    clientSafetyLabel: 'Безпека для клієнта',
+    blockersCount: 'Блокери {count}',
+    warningsCount: 'Попередження {count}',
+    passedCount: 'Пройдено {count}',
+    clientReport: 'Клієнтський звіт',
+    evidenceBackedReport: 'Marketing intelligence звіт із доказами.',
+    noApprovedDraftSections: 'Затверджених draft-розділів звіту ще немає.',
+    evidenceRefLabel: 'Докази',
+    sourceRefLabel: 'Джерела',
+    untitledSource: 'Джерело без назви',
+    sourcesEvidenceTitle: 'Джерела й докази',
     admin: 'Адмін',
     viewer: 'Перегляд',
     unlockAdmin: 'Увімкнути режим адміністратора',
     theme: 'Тема',
-    analytics: 'Графіки',
-    analyticsHint: 'клік по графіку відкриває таблицю-джерело',
+    analytics: 'Report workspace',
+    analyticsHint: 'Матеріали -> структура -> перевірка -> експорт',
     reader: 'Робоча область',
     clear: 'Очистити',
     dataFiles: 'Матеріали',
@@ -74,26 +358,234 @@ const UI_TEXT = {
     switchLanguage: 'English',
     emptyReader: 'Клікни на таблицю, графік або файл справа.',
     viewOnly: 'Цей звіт відкрито для перегляду. Редагування вимкнено.',
-    savingHtml: 'Зберігаю HTML-файл на диск...'
+    savingHtml: 'Зберігаю HTML-файл на диск...',
+    saveDiskTitle: 'Зберегти поточний проєкт у HTML-файл на диск',
+    members: 'Користувачі',
+    cloudLocal: 'Локально',
+    cloudStatusTitle: 'Стан спільного збереження',
+    closeNotice: 'Закрити повідомлення',
+    closeDialog: 'Закрити діалог',
+    uploadFilesTitle: 'Вибрати один або кілька файлів з диска',
+    connectFolderTitle: 'Підключити локальну папку з матеріалами'
   },
   en: {
-    appTitle: 'Market competitive intelligence',
-    reportTitlePrefix: 'Market competitive intelligence for: {company}',
+    appTitle: 'Marketing Report Studio',
+    reportTitlePrefix: 'Marketing Report Studio',
     reportTitleDefaultCompany: 'your company',
-    reportSubtitle: 'admin edits · client views',
+    reportSubtitle: 'Upload materials -> review evidence -> export client report',
     companyName: 'Company name',
-    pasteCsv: 'Add data',
+    pasteCsv: 'Upload materials',
+    pasteTitle: 'Add a table, files, or a folder',
     exportCiJson: 'CI JSON',
     exportCiJsonTitle: 'Export to unified CI OS structure',
     saveDisk: 'Save to disk',
     saveAdmin: 'Save admin',
     saveClient: 'For client',
+    saveClientPackage: 'Client package',
+    internalAuditPackage: 'Export internal audit package',
+    internalAuditPackageTitle: 'For analysts only. Not for clients.',
+    clientPackageBlocked: 'Client package blocked: {message}',
+    fixClientPackageBlockers: 'Fix export blockers before client package',
+    clientPackageWarnings: 'Client package has warnings: {message}',
+    jszipClientPackageUnavailable: 'JSZip is unavailable. Client package ZIP cannot be created.',
+    preparingClientPackage: 'Preparing client package...',
+    clientPackageCreated: 'Client package created ({files} asset files)',
+    couldNotBuildClientPackage: 'Could not build client package',
+    internalAuditUnavailableClientLocked: 'Internal audit export is unavailable in clientLocked mode.',
+    internalAuditConfirm: 'This package contains internal review and audit metadata. Do not send it to clients unless reviewed.',
+    buildingInternalAuditPackage: 'Building internal audit package...',
+    internalAuditPackageExported: 'Internal audit package exported',
+    internalAuditPackageFailed: 'Internal audit package failed: {message}',
+    couldNotBuildInternalAuditPackage: 'Could not build internal audit package',
+    editModeEnabled: 'Edit mode',
+    viewModeEnabled: 'View mode',
+    clientLockedEditUnavailable: 'The client version is locked and has no edit mode.',
+    viewerRoleOnly: 'Your workspace role allows view-only access.',
+    sharedStorageRequired: 'Editing will become available after connecting shared storage.',
+    firstReportFallback: 'First report',
+    firstReportContinue: 'Continue',
+    firstReportCreateReport: 'Create report',
+    firstReportAddClientBasics: 'Add client basics',
+    firstReportAddCompetitors: 'Add competitors',
+    firstReportUploadMaterials: 'Upload materials',
+    firstReportReviewMaterials: 'Review materials',
+    firstReportBuildSources: 'Build sources',
+    firstReportRefreshSources: 'Refresh sources',
+    firstReportAddEvidence: 'Add evidence',
+    firstReportReviewEvidence: 'Review evidence',
+    firstReportBuildDraft: 'Build draft',
+    firstReportRunQualityChecklist: 'Run quality checklist',
+    firstReportExportClientReport: 'Export client report',
+    firstReportNameReport: 'Name report',
+    firstReportAddClient: 'Add client',
+    firstReportTitleEmpty: 'Build your first marketing intelligence report',
+    firstReportTitleContinue: 'Continue your report',
+    firstReportSubtitleEmpty: 'Start with a client, competitors, and research materials. Then turn them into evidence-backed sections and a client-ready export.',
+    firstReportSubtitleContinue: 'Keep moving from materials to sources, evidence, draft, checklist, and client export.',
+    firstReportSampleData: 'You are viewing sample data.',
+    firstReportLocalOnly: 'Local-only guide: changes apply to this report file/browser session.',
+    firstReportProgress: 'Progress {percent}% - next: {step}',
+    firstReportOpenDemo: 'Open demo report',
+    firstReportSkipStep: 'Skip step',
+    firstReportHideGuide: 'Hide guide',
+    firstReportStartGuided: 'Start guided report',
+    firstReportPasteTable: 'Paste table',
+    firstReportConnectLocalFolder: 'Connect local folder',
+    firstReportImportSpreadsheet: 'Import CSV/XLSX',
+    workflowUploadMaterialsTitle: 'Upload materials',
+    workflowUploadMaterialsBody: 'Spreadsheets, PDFs, DOCX, Markdown, screenshots, images, JSON, and notes.',
+    workflowStructureTitle: 'Structure',
+    workflowStructureBody: 'Organize competitors, pricing, features, charts, tables, and sources.',
+    workflowReviewEvidenceTitle: 'Review evidence',
+    workflowReviewEvidenceBody: 'Keep findings tied to source material before client delivery.',
+    workflowExportReportTitle: 'Export report',
+    workflowExportReportBody: 'Create client-ready HTML, ZIP bundles, and browser print/PDF-ready output.',
+    workflowBestFor: 'Best for',
+    workflowBestForAgencies: 'Marketing agencies',
+    workflowBestForCiTeams: 'Competitive intelligence teams',
+    workflowBestForConsultants: 'Consultants and analysts',
+    workflowBestForFounders: 'Founders preparing market research',
+    workflowBestForResearchTeams: 'Content and research teams',
+    workflowClientReceives: 'What the client receives',
+    workflowClientSummary: 'Clear executive summary',
+    workflowClientComparison: 'Competitor comparison',
+    workflowClientPricing: 'Pricing and feature tables',
+    workflowClientCharts: 'Charts and visual insights',
+    workflowClientSources: 'Source-backed findings',
+    workflowClientReport: 'Client-facing interactive report',
+    all: 'All',
+    totalCount: '{count} total',
+    sourceSingular: 'source',
+    sourcePlural: 'sources',
+    evidenceCardSingular: 'evidence card',
+    evidenceCardPlural: 'evidence cards',
+    competitorProfilesTitle: 'Competitor Profiles',
+    activeCount: 'Active {count}',
+    archivedCount: 'Archived {count}',
+    needsReviewCount: 'Needs review {count}',
+    active: 'active',
+    archived: 'archived',
+    needsReview: 'needs review',
+    high: 'high',
+    noWebsite: 'No website',
+    noCategory: 'No category',
+    priorityLabel: 'priority',
+    edit: 'Edit',
+    addSummaryToDraft: 'Add summary to draft',
+    archive: 'Archive',
+    addCompetitor: 'Add competitor',
+    competitorProfilesEmpty: 'Add competitors to organize positioning, pricing, features, sources, and evidence. No scraping or AI is used.',
+    pricingFeatureMatrixTitle: 'Pricing & Feature Matrix',
+    coverageLabel: '{score}% coverage',
+    competitorsCount: 'Competitors {count}',
+    pricingTiersCount: 'Pricing tiers {count}',
+    featureRowsCount: 'Feature rows {count}',
+    cellsNeedingReviewCount: 'Cells needing review {count}',
+    allRows: 'All rows',
+    pricing: 'pricing',
+    coreProduct: 'core product',
+    integrations: 'integrations',
+    reporting: 'reporting',
+    security: 'security',
+    missingSources: 'missing sources',
+    addCompetitorToMatrix: 'Add competitor to matrix',
+    addPricingTier: 'Add pricing tier',
+    addFeatureRow: 'Add feature row',
+    addMatrixSummaryToDraft: 'Add matrix summary to draft',
+    featurePricing: 'Feature / pricing',
+    importanceLabel: 'importance',
+    srcAbbr: 'src',
+    evAbbr: 'ev',
+    untitledTier: 'Untitled tier',
+    publicPricing: 'public pricing',
+    noMatrixRowsYet: 'No matrix rows yet.',
+    materialsInventoryTitle: 'Materials Inventory',
+    materialsInventoryEmpty: 'Upload spreadsheets, PDFs, DOCX, Markdown, screenshots, or research files to start building your report.',
+    showingMaterials: 'Showing 12 of {count} materials.',
+    linkedCompany: 'Linked company',
+    reportSection: 'Report section',
+    notLinked: 'Not linked',
+    statusAvailable: 'available',
+    statusLinked: 'linked',
+    statusIgnored: 'ignored',
+    statusDraft: 'draft',
+    statusApproved: 'approved',
+    statusRejected: 'rejected',
+    statusUnknown: 'unknown',
+    statusTrusted: 'trusted',
+    statusWeak: 'weak',
+    statusUnreviewed: 'unreviewed',
+    statusUsed: 'used',
+    statusCandidate: 'candidate',
+    statusPending: 'pending',
+    statusFailed: 'failed',
+    statusYes: 'yes',
+    statusNo: 'no',
+    statusPartial: 'partial',
+    statusNotApplicable: 'not applicable',
+    priorityLow: 'low',
+    priorityMedium: 'medium',
+    priorityHigh: 'high',
+    typeSpreadsheet: 'spreadsheet',
+    typeImage: 'image',
+    typeText: 'text',
+    typeUnknown: 'unknown',
+    sourceRegistryTitle: 'Source Registry',
+    refreshSourcesFromMaterials: 'Refresh sources from materials',
+    sourceRegistryEmpty: 'Sources will appear here after you upload or import research materials.',
+    sectionsCount: '{count} section(s)',
+    evidenceLabel: 'evidence',
+    credibilityLabel: 'credibility',
+    showingSources: 'Showing 10 of {count} sources.',
+    evidenceCardsTitle: 'Evidence Cards',
+    addEvidenceCard: 'Add evidence card',
+    evidenceCardsEmpty: 'Evidence cards will appear here after you connect findings to sources.',
+    unlinkedSection: 'Unlinked section',
+    missingSection: 'Missing section',
+    untitledEvidenceCard: 'Untitled evidence card',
+    confidenceLabel: 'confidence',
+    showingEvidenceCards: 'Showing 10 of {count} evidence cards.',
+    evidenceReviewTitle: 'Evidence Review',
+    approvedCount: 'Approved {count}',
+    rejectedCount: 'Rejected {count}',
+    draftCount: 'Draft {count}',
+    approve: 'Approve',
+    reject: 'Reject',
+    saveNotes: 'Save notes',
+    reviewNotesPlaceholder: 'Review notes or rejection reason',
+    showingFilteredEvidenceCards: 'Showing 8 filtered evidence cards.',
+    approvedCardsReady: '{count} approved cards are ready for future report generation.',
+    draftBuilderTitle: 'Report Draft Builder',
+    blocksCount: '{count} blocks',
+    buildDraftFromEvidence: 'Build draft from approved evidence',
+    clearGeneratedDraft: 'Clear generated draft',
+    approveEvidenceFirst: 'Approve evidence cards first, then build a draft report.',
+    generatedBlocksCount: '{blocks} generated block(s)',
+    evidenceCardsCount: '{count} evidence card(s)',
+    draftBlockNoPreview: 'Draft block has no preview text.',
+    noGeneratedDraftBlocks: 'No generated draft blocks yet.',
+    approvedEvidenceAvailable: '{count} approved evidence cards available. Generated text is a draft.',
+    ready: 'Ready',
+    blocked: 'Blocked',
+    exportReadinessTitle: 'Export Readiness',
+    completenessLabel: 'Completeness',
+    clientSafetyLabel: 'Client safety',
+    blockersCount: 'Blockers {count}',
+    warningsCount: 'Warnings {count}',
+    passedCount: 'Passed {count}',
+    clientReport: 'Client Report',
+    evidenceBackedReport: 'Evidence-backed marketing intelligence report.',
+    noApprovedDraftSections: 'No approved draft report sections are available yet.',
+    evidenceRefLabel: 'Evidence',
+    sourceRefLabel: 'Sources',
+    untitledSource: 'Untitled source',
+    sourcesEvidenceTitle: 'Sources and Evidence',
     admin: 'Admin',
     viewer: 'View',
     unlockAdmin: 'Enable admin mode',
     theme: 'Theme',
-    analytics: 'Charts',
-    analyticsHint: 'click a chart to open its source table',
+    analytics: 'Report workspace',
+    analyticsHint: 'Upload materials -> Structure -> Review -> Export',
     reader: 'Workspace',
     clear: 'Clear',
     dataFiles: 'Materials',
@@ -114,7 +606,15 @@ const UI_TEXT = {
     switchLanguage: 'Українська',
     emptyReader: 'Click a table, chart, or file on the right.',
     viewOnly: 'This report is open in view-only mode. Editing is disabled.',
-    savingHtml: 'Saving HTML file to disk...'
+    savingHtml: 'Saving HTML file to disk...',
+    saveDiskTitle: 'Save the current project as an HTML file',
+    members: 'Users',
+    cloudLocal: 'Local',
+    cloudStatusTitle: 'Shared save status',
+    closeNotice: 'Close notice',
+    closeDialog: 'Close dialog',
+    uploadFilesTitle: 'Choose one or more files from disk',
+    connectFolderTitle: 'Connect a local materials folder'
   }
 };
 const TEXT_REPLACEMENTS = [
@@ -322,6 +822,258 @@ const TEXT_REPLACEMENTS = [
   ['Графік', 'Chart'],
   ['Табличка', 'Table']
 ];
+const ADDITIONAL_TEXT_REPLACEMENTS = [
+  ['Додати вибраних кандидатів до карток доказів', 'Add selected candidates to Evidence Cards'],
+  ['Надіслати вибрані пропозиції на перевірку', 'Send selected suggestions to review queue'],
+  ['Додати вибрані рекомендації до чернетки', 'Add selected recommendations to draft'],
+  ['Додати вибрані блоки summary до чернетки', 'Add selected summary blocks to draft'],
+  ['Додати вибрані прогалини до чекліста', 'Add selected gaps to checklist'],
+  ['Додати вибрані блоки до чернетки розділу', 'Add selected blocks to section draft'],
+  ['Усі', 'All'],
+  ['Усі статуси', 'All statuses'],
+  ['Готові', 'Ready'],
+  ['Зберегти', 'Save'],
+  ['Скасувати', 'Cancel'],
+  ['Редагувати', 'Edit'],
+  ['Відхилити', 'Reject'],
+  ['Переглянути', 'View'],
+  ['Закрити', 'Close'],
+  ['Дозволено', 'allowed'],
+  ['Не дозволено', 'not allowed'],
+  ['робочий простір', 'workspace'],
+  ['подій', 'events'],
+  ['всього', 'total'],
+  ['AI-помічник', 'AI Assistance'],
+  ['AI suggestions require review before export. AI output is not added to the client report automatically.', 'AI suggestions require review before export. AI output is not added to the client report automatically.'],
+  ['AI-пропозиції потребують перевірки перед експортом. AI-вивід не додається до клієнтського звіту автоматично.', 'AI suggestions require review before export. AI output is not added to the client report automatically.'],
+  ['AI-сервер', 'AI server'],
+  ['Провайдер', 'Provider'],
+  ['Дозвіл', 'Permission'],
+  ['Клієнтський режим', 'Client mode'],
+  ['Режим', 'Mode'],
+  ['Пропозиції', 'Suggestions'],
+  ['Виберіть розділ для чернетки', 'Select section for draft'],
+  ['Попередній перегляд кандидатів доказів', 'Preview evidence candidates'],
+  ['Попередній перегляд executive summary', 'Preview executive summary'],
+  ['Попередній перегляд рекомендацій', 'Preview recommendations'],
+  ['Попередній перегляд покриття джерел', 'Preview source coverage'],
+  ['Попередній перегляд чернетки розділу', 'Preview section draft'],
+  ['Лише попередній перегляд evidence suggestions. Без автоматичного затвердження.', 'Preview evidence suggestions only. No automatic approval.'],
+  ['Лише попередній перегляд recommendation suggestions. Без автоматичного затвердження.', 'Preview recommendation suggestions only. No automatic approval.'],
+  ['Лише попередній перегляд executive summary suggestions. Без автоматичного затвердження.', 'Preview executive summary suggestions only. No automatic approval.'],
+  ['Лише попередній перегляд прогалин покриття джерел. Без автоматичних виправлень.', 'Preview source coverage gaps only. No automatic fixes.'],
+  ['Лише попередній перегляд блоків чернетки розділу. Без автоматичного затвердження.', 'Preview section draft blocks only. No automatic approval.'],
+  ['вимкнено', 'disabled'],
+  ['контракт готовий', 'contract ready'],
+  ['Черга перевірки AI', 'AI Review Queue'],
+  ['Переглянути', 'View'],
+  ['Прийняти', 'Accept'],
+  ['Прийняти й перетворити на чернетку для перевірки', 'Accept and convert to needs-review draft'],
+  ['Усі статуси', 'All statuses'],
+  ['AI-пропозиції, надіслані на перевірку, зʼявляться тут.', 'AI suggestions sent for review will appear here.'],
+  ['AI-аудит і походження', 'AI Audit & Provenance'],
+  ['Усі події', 'All events'],
+  ['Preview-запуски', 'Preview runs'],
+  ['Створені пропозиції', 'Created suggestions'],
+  ['Прийняті', 'Accepted'],
+  ['Відхилені', 'Rejected'],
+  ['Перетворені', 'Converted'],
+  ['Помилки', 'Errors'],
+  ['Переглянути походження', 'View provenance'],
+  ['Запуски задач', 'Task runs'],
+  ['Остання AI/dry-run активність', 'Last AI/dry-run activity'],
+  ['AI preview та review-дії зʼявляться тут.', 'AI preview and review actions will appear here.'],
+  ['Деталі AI-пропозиції', 'AI suggestion details'],
+  ['Редагувати AI-пропозицію', 'Edit AI suggestion'],
+  ['Заголовок', 'Title'],
+  ['Summary', 'Summary'],
+  ['Текст / claim / recommendation', 'Text / claim / recommendation'],
+  ['Нотатки аналітика', 'Analyst notes'],
+  ['Закрити', 'Close'],
+  ['Опційна причина відхилення', 'Optional rejection reason'],
+  ['Пропозицію оновлено', 'Suggestion updated'],
+  ['Пропозицію прийнято', 'Suggestion accepted'],
+  ['Пропозицію відхилено', 'Suggestion rejected'],
+  ['Пропозицію перетворено для перевірки', 'Suggestion converted for review'],
+  ['Не вдалося перетворити пропозицію', 'Could not convert suggestion'],
+  ['Картку доказу збережено', 'Evidence card saved'],
+  ['Картку доказу видалено', 'Evidence card deleted'],
+  ['Редагувати картку доказу', 'Edit evidence card'],
+  ['Додати картку доказу', 'Add evidence card'],
+  ['Зберегти картку доказу', 'Save evidence card'],
+  ['Видалити', 'Delete'],
+  ['Claim', 'Claim'],
+  ['Короткий доказовий висновок', 'Short evidence-backed claim'],
+  ['Короткий контекст або деталь підтвердження', 'Brief context or supporting detail'],
+  ['Тип доказу', 'Evidence type'],
+  ['Джерела', 'Sources'],
+  ['Джерел ще немає', 'No sources available yet'],
+  ['Утримуйте Ctrl або Cmd, щоб вибрати кілька джерел.', 'Hold Ctrl or Cmd to select multiple sources.'],
+  ['Статус перевірки', 'Review status'],
+  ['Довіра', 'Confidence'],
+  ['Надійність', 'Credibility'],
+  ['ID компанії / конкурента', 'Company / competitor ID'],
+  ['Необовʼязково', 'Optional'],
+  ['Відсутнє джерело', 'Missing source'],
+  ['Профіль конкурента збережено', 'Competitor profile saved'],
+  ['Потрібна назва конкурента.', 'Competitor name is required.'],
+  ['Не вдалося зберегти профіль конкурента', 'Could not save competitor profile'],
+  ['Редагувати профіль конкурента', 'Edit competitor profile'],
+  ['Додати профіль конкурента', 'Add competitor profile'],
+  ['Зберегти конкурента', 'Save competitor'],
+  ['Назва *', 'Name *'],
+  ['Вебсайт', 'Website'],
+  ['Категорія', 'Category'],
+  ['Ринок', 'Market'],
+  ['Короткий опис', 'Short description'],
+  ['Позиціонування', 'Positioning'],
+  ['Нотатки щодо цін', 'Pricing notes'],
+  ['Нотатки щодо функцій', 'Feature notes'],
+  ['Нотатки щодо каналів / контенту', 'Channels / content notes'],
+  ['Сильні сторони', 'Strengths'],
+  ['Слабкі сторони', 'Weaknesses'],
+  ['Ризики', 'Risks'],
+  ['Можливості', 'Opportunities'],
+  ['Пріоритет', 'Priority'],
+  ['Матеріали', 'Materials'],
+  ['Картки доказів', 'Evidence cards'],
+  ['Розділи звіту', 'Report sections'],
+  ['Матеріалів ще немає', 'No materials available'],
+  ['Доказових карток ще немає', 'No evidence cards available'],
+  ['Додати конкурента до матриці', 'Add competitor to matrix'],
+  ['Конкурент', 'Competitor'],
+  ['Активних конкурентів ще немає', 'No active competitors available'],
+  ['Редагувати рядок функції', 'Edit feature row'],
+  ['Додати рядок функції', 'Add feature row'],
+  ['Назва функції *', 'Feature name *'],
+  ['Важливість', 'Importance'],
+  ['Опис', 'Description'],
+  ['Зберегти рядок', 'Save row'],
+  ['Рядок матриці збережено', 'Matrix row saved'],
+  ['Не вдалося зберегти рядок', 'Could not save row'],
+  ['Додати тариф', 'Add pricing tier'],
+  ['Компанія', 'Company'],
+  ['Назва тарифу', 'Tier name'],
+  ['Сума ціни', 'Price amount'],
+  ['Невідомо, якщо порожньо', 'Unknown if blank'],
+  ['Валюта', 'Currency'],
+  ['Період', 'Period'],
+  ['Публічна ціна', 'Public pricing'],
+  ['Платіжні нотатки', 'Billing notes'],
+  ['Зберегти тариф', 'Save tier'],
+  ['Тариф додано', 'Pricing tier added'],
+  ['Клітинка матриці', 'Matrix cell'],
+  ['Доступність', 'Availability'],
+  ['Значення', 'Value'],
+  ['Посилання на джерела', 'Source links'],
+  ['Посилання на докази', 'Evidence links'],
+  ['Зберегти клітинку', 'Save cell'],
+  ['Клітинку матриці збережено', 'Matrix cell saved'],
+  ['Походження пропозиції', 'Suggestion provenance'],
+  ['Тип задачі', 'Task type'],
+  ['Режим провайдера', 'Provider mode'],
+  ['Вхідні посилання', 'Input refs'],
+  ['Вихідні посилання', 'Output refs'],
+  ['Історія перевірки', 'Review history'],
+  ['Походження недоступне.', 'No provenance available.'],
+  ['Налаштування governance збережено', 'Governance settings saved'],
+  ['Налаштування governance скинуто', 'Governance settings reset'],
+  ['Скинути governance settings до безпечних стандартних значень?', 'Reset governance settings to safe defaults?'],
+  ['Відновити вибрану версію', 'Restore selected version'],
+  ['Вибрана версія', 'Selected version'],
+  ['Поточна версія', 'Current version'],
+  ['Рівень ризику', 'Risk level'],
+  ['Готовність після відновлення', 'Readiness after restore'],
+  ['Чому ви відновлюєте цю версію?', 'Why are you restoring this version?'],
+  ['Необовʼязкова причина відновлення', 'Optional restore reason'],
+  ['Введіть RESTORE для підтвердження', 'Type RESTORE to confirm'],
+  ['Позначте для підтвердження', 'Check to confirm'],
+  ['Відновити цю версію як нову поточну версію', 'Restore this version as a new current version'],
+  ['Це відновлення може знизити готовність експорту або прибрати перевірені звʼязки доказів/джерел.', 'This restore may reduce export readiness or remove reviewed evidence/source links.'],
+  ['Підготовлено для', 'Prepared for'],
+  ['Назва звіту', 'Report title'],
+  ['Зберегти basics', 'Save basics'],
+  ['Назва клієнта', 'Client name'],
+  ['Зберегти клієнта', 'Save client'],
+  ['Нотатки або URL', 'Notes or URL'],
+  ['Додайте 2-5 конкурентів, якщо знаєте їх. Guide не парсить сайти й не генерує claims.', 'Add 2-5 competitors if you know them. The guide will not scrape websites or generate claims.'],
+  ['Зберегти конкурентів', 'Save competitors'],
+  ['Профілі конкурентів збережено', 'Competitor profiles saved'],
+  ['Крок матеріалів позначено завершеним', 'Materials step marked complete'],
+  ['Використайте Evidence Review, щоб затвердити, позначити як needs review або відхилити докази.', 'Use Evidence Review to approve, mark needs review, or reject evidence.'],
+  ['Чекліст якості оновлено', 'Quality checklist refreshed'],
+  ['Сховано guide першого звіту', 'First report guide hidden'],
+  ['Крок guide пропущено', 'Guide step skipped'],
+  ['Показано guide першого звіту', 'First report guide shown'],
+  ['Демо-звіт завантажено з вигаданими sample data.', 'Demo report loaded with fictional sample data.'],
+  ['Відкрити demo report? Це замінить поточний робочий простір у памʼяті. Спершу експортуйте або збережіть роботу, якщо вона потрібна.', 'Open demo report? This will replace the current in-memory workspace. Export or save your work first if you need it.'],
+  ['Дані додано', 'Data added'],
+  ['Користувачі спільного звіту', 'Shared report users'],
+  ['Користувачі', 'Users'],
+  ['Завантаження...', 'Loading...'],
+  ['Завантаження…', 'Loading...'],
+  ['Роль', 'Role'],
+  ['Імʼя', 'Name'],
+  ['Ім\'я', 'Name'],
+  ['Немає користувачів', 'No users'],
+  ['Додати / оновити', 'Add / update'],
+  ['Користувач також має бути дозволений у політиці Cloudflare Access. Роль тут визначає права всередині робочого простору.', 'The user must also be allowed in the Cloudflare Access policy. The role here controls permissions inside the workspace.'],
+  ['Керування користувачами доступне лише власнику', 'User management is available only to the owner'],
+  ['Вкажіть email користувача', 'Enter user email'],
+  ['Доступ користувача оновлено', 'User access updated'],
+  ['Не вдалося завантажити користувачів', 'Could not load users'],
+  ['Готово', 'Done'],
+  ['Відкрити таблицю', 'Open table'],
+  ['Створити авто-звіт', 'Create auto report'],
+  ['Додати дані', 'Add data'],
+  ['Вставити таблицю', 'Paste table'],
+  ['CSV або TSV з Excel чи Google Sheets', 'CSV or TSV from Excel or Google Sheets'],
+  ['Excel, CSV, JSON, документи та зображення', 'Excel, CSV, JSON, documents and images'],
+  ['Працювати з локальною структурою файлів', 'Work with a local file structure'],
+  ['Вставте таблицю, щоб перевірити її перед імпортом.', 'Paste a table to validate it before import.'],
+  ['Створити таблицю', 'Create table'],
+  ['Пакет для клієнта заблоковано', 'Client package blocked'],
+  ['Виправте блокери експорту перед клієнтським експортом', 'Fix export blockers before client export'],
+  ['Клієнтський експорт заблоковано', 'Client export blocked'],
+  ['Клієнтський експорт має попередження', 'Client export has warnings'],
+  ['Демо-звіт - вигадані sample data', 'Demo report - fictional sample data'],
+  ['Хмара', 'Cloud'],
+  ['Збереження спільного звіту', 'Saving shared report'],
+  ['Збережено', 'Saved'],
+  ['Конфлікт', 'Conflict'],
+  ['Інший користувач уже змінив цей звіт', 'Another user has already changed this report'],
+  ['Хмара: повтор', 'Cloud: retrying'],
+  ['Помилка збереження', 'Save error'],
+  ['Повтор через', 'Retry in'],
+  ['Спільний звіт', 'Shared report'],
+  ['Оновлення...', 'Refreshing...'],
+  ['Оновлення…', 'Refreshing...'],
+  ['Хмара: помилка', 'Cloud: error'],
+  ['Помилка завантаження', 'Load error'],
+  ['Лише браузер', 'Browser only'],
+  ['Файли й дані не відправляються на сервер', 'Files and data are not sent to the server'],
+  ['Клієнтська копія', 'Client copy'],
+  ['Підключення...', 'Connecting...'],
+  ['Підключення…', 'Connecting...'],
+  ['Підключення до спільного сховища', 'Connecting to shared storage'],
+  ['Хмарне сховище ще не налаштоване', 'Cloud storage is not configured yet'],
+  ['Помилка підключення', 'Connection error'],
+  ['Не вдалося зберегти звіт у хмарі. Повторю автоматично.', 'Could not save the report to the cloud. I will retry automatically.'],
+  ['Спочатку дочекайтеся збереження локальних змін', 'Wait for local changes to finish saving first'],
+  ['Завантажено актуальну версію звіту', 'Loaded the current report version'],
+  ['Хмарне сховище ще не налаштоване. Дані зберігаються лише в цьому браузері.', 'Cloud storage is not configured yet. Data is stored only in this browser.'],
+  ['Власник керує користувачами та governance. Редактор редагує звіти. Переглядач має лише перегляд.', 'Owner manages users and governance. Editor edits reports. Viewer is read-only.'],
+  ['Поточна кількість учасників доступна в наявній панелі Members, коли API увімкнено. Роль:', 'Current member count is available in the existing Members panel when the API is enabled. Role:'],
+  ['Локальний режим не має серверного командного доступу або Cloudflare Access enforcement.', 'Local mode has no server-side team access or Cloudflare Access enforcement.'],
+  ['Відкрити користувачів', 'Open members'],
+  ['Використайте вигадані sample data, щоб побачити workflow materials -> evidence -> report, або залиште поточний workspace порожнім.', 'Use fictional sample data to see the materials -> evidence -> report workflow, or keep the current workspace empty.'],
+  ['Залишити поточний workspace', 'Keep current workspace'],
+  ['Якщо поточний звіт має дані, demo loading попросить підтвердження перед заміною workspace у памʼяті.', 'If the current report has data, demo loading asks for confirmation before replacing the in-memory workspace.'],
+  ['Налаштування робочого простору пропущено', 'Workspace setup skipped'],
+  ['Базові дані звіту збережено', 'Report basics saved'],
+  ['Дані клієнта збережено', 'Client basics saved'],
+  ['Поточна версія залишиться доступною через звичайну історію збережень/експортів. Вибрана версія копіюється в новий активний локальний snapshot.', 'Current version will remain available through normal saved/exported history. The selected version is copied into a new active local snapshot.']
+];
 const MESSAGE_REPLACEMENTS = [
   [/^Видалити файл "(.+)" з проєкту\?$/u, 'Delete file "$1" from the project?'],
   [/^Видалити папку "(.+)" і всі файли з проєкту\?$/u, 'Delete folder "$1" and all files from the project?'],
@@ -467,6 +1219,51 @@ const MESSAGE_REPLACEMENTS = [
   [/^назва компанії \/ папки$/iu, 'company / folder name'],
   [/^Новий конкурент$/u, 'New competitor']
 ];
+const EN_MESSAGE_REPLACEMENTS = [
+  [/^Evidence marked (.+)$/u, 'Доказ позначено як $1'],
+  [/^Built (\d+) draft blocks$/u, 'Зібрано $1 блок(ів) чернетки'],
+  [/^Cleared (\d+) generated draft blocks$/u, 'Очищено $1 згенерованих блоків чернетки'],
+  [/^No generated draft blocks to clear$/u, 'Немає згенерованих блоків чернетки для очищення'],
+  [/^Previewed (\d+) candidate evidence item(s?)$/u, 'Попередньо переглянуто $1 кандидат(ів) доказів'],
+  [/^No evidence candidates found$/u, 'Кандидатів доказів не знайдено'],
+  [/^Added (\d+) candidate(s?) to Evidence Cards for review$/u, 'Додано $1 кандидат(ів) до карток доказів для перевірки'],
+  [/^Queued (\d+) suggestion(s?) for review$/u, 'Поставлено $1 пропозицій у чергу перевірки'],
+  [/^Previewed (\d+) recommendation(s?)$/u, 'Попередньо переглянуто $1 рекомендацій'],
+  [/^No recommendations suggested$/u, 'Рекомендацій не запропоновано'],
+  [/^Added (\d+) recommendation(s?) to draft for review$/u, 'Додано $1 рекомендацій до чернетки для перевірки'],
+  [/^Previewed (\d+) summary block(s?)$/u, 'Попередньо переглянуто $1 summary-блоків'],
+  [/^No summary blocks suggested$/u, 'Summary-блоків не запропоновано'],
+  [/^Added (\d+) summary block(s?) to draft for review$/u, 'Додано $1 summary-блоків до чернетки для перевірки'],
+  [/^Coverage preview: (.+) \((\d+)%\)$/u, 'Попередній перегляд покриття: $1 ($2%)'],
+  [/^Added (\d+) coverage gap(s?) for review$/u, 'Додано $1 прогалин покриття для перевірки'],
+  [/^Previewed (\d+) section draft block(s?)$/u, 'Попередньо переглянуто $1 блоків чернетки розділу'],
+  [/^No section draft blocks suggested$/u, 'Блоків чернетки розділу не запропоновано'],
+  [/^Added (\d+) section draft block(s?) for review$/u, 'Додано $1 блоків чернетки розділу для перевірки'],
+  [/^Cleanup preview: (\d+) cleanup candidate\(s\), (\d+) protected$/u, 'Попередній перегляд очищення: $1 кандидат(ів), $2 захищено'],
+  [/^Restored as (.+)\. Recheck export readiness before client export\.$/u, 'Відновлено як $1. Перевірте готовність експорту перед клієнтським експортом.'],
+  [/^Client export blocked: (.+)$/u, 'Клієнтський експорт заблоковано: $1'],
+  [/^Client export has warnings: (.+)$/u, 'Клієнтський експорт має попередження: $1'],
+  [/^Queued (.+) suggestion(s?) for review$/u, 'Поставлено $1 пропозицій у чергу перевірки'],
+  [/^Select (.+) first\.$/u, 'Спочатку виберіть $1.']
+];
+const TRANSLATION_CACHE = {en:null, uk:null};
+function translationPairsForLang(lang){
+  const key=lang==='en'?'en':'uk';
+  if(TRANSLATION_CACHE[key]) return TRANSLATION_CACHE[key];
+  const base=key==='en'?[...TEXT_REPLACEMENTS,...ADDITIONAL_TEXT_REPLACEMENTS]:ADDITIONAL_TEXT_REPLACEMENTS;
+  const pairs=key==='en' ? base : base.map(([uk,en])=>[en,uk]);
+  const seen=new Set();
+  TRANSLATION_CACHE[key]=pairs
+    .filter(([from,to])=>{
+      if(!from || !to || from===to) return false;
+      const k=`${from}\u0000${to}`;
+      if(seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    })
+    .sort((a,b)=>String(b[0]).length-String(a[0]).length);
+  return TRANSLATION_CACHE[key];
+}
 function uiLocale(){return state.lang==='en'?'en-US':'uk-UA';}
 function formatText(template, values={}){
   return String(template||'').replace(/\{(\w+)\}/g, (_, key)=>String(values[key] ?? ''));
@@ -481,12 +1278,13 @@ function getSavedLang(){
 }
 function translateText(value){
   let text=String(value ?? '');
-  if(state.lang!=='en') return text;
-  for(const [from,to] of TEXT_REPLACEMENTS){
-    text=text.split(from).join(to);
-  }
-  for(const [pattern, replacement] of MESSAGE_REPLACEMENTS){
+  const lang=state.lang==='en'?'en':'uk';
+  const messageReplacements=lang==='en'?MESSAGE_REPLACEMENTS:EN_MESSAGE_REPLACEMENTS;
+  for(const [pattern, replacement] of messageReplacements){
     text=text.replace(pattern, replacement);
+  }
+  for(const [from,to] of translationPairsForLang(lang)){
+    text=text.split(from).join(to);
   }
   return text;
 }
@@ -494,6 +1292,58 @@ function t(key, values={}){
   const lang=state.lang==='en'?'en':'uk';
   const template=UI_TEXT[lang]?.[key] ?? UI_TEXT.uk?.[key] ?? key;
   return translateText(formatText(template, values));
+}
+function countLabel(count, singularKey, pluralKey){
+  return `${count} ${t(count===1?singularKey:pluralKey)}`;
+}
+function statusLabel(value){
+  const key=String(value||'unknown');
+  return ({
+    available:t('statusAvailable'),
+    needs_review:t('needsReview'),
+    linked:t('statusLinked'),
+    ignored:t('statusIgnored'),
+    draft:t('statusDraft'),
+    approved:t('statusApproved'),
+    rejected:t('statusRejected'),
+    active:t('active'),
+    archived:t('archived'),
+    trusted:t('statusTrusted'),
+    weak:t('statusWeak'),
+    unreviewed:t('statusUnreviewed'),
+    used:t('statusUsed'),
+    candidate:t('statusCandidate'),
+    pending:t('statusPending'),
+    failed:t('statusFailed'),
+    yes:t('statusYes'),
+    no:t('statusNo'),
+    partial:t('statusPartial'),
+    not_applicable:t('statusNotApplicable'),
+    unknown:t('statusUnknown')
+  })[key]||key.replace(/_/g,' ');
+}
+function priorityLabel(value){
+  const key=String(value||'medium');
+  return ({low:t('priorityLow'),medium:t('priorityMedium'),high:t('priorityHigh')})[key]||key;
+}
+function featureCategoryLabel(value){
+  const key=String(value||'unknown');
+  return ({
+    pricing:t('pricing'),
+    core_product:t('coreProduct'),
+    integrations:t('integrations'),
+    reporting:t('reporting'),
+    security:t('security')
+  })[key]||key.replace(/_/g,' ');
+}
+function materialTypeLabel(type){
+  const key=String(type||'unknown');
+  return ({
+    spreadsheet:t('typeSpreadsheet'),
+    image:t('typeImage'),
+    text:t('typeText'),
+    unknown:t('typeUnknown')
+  })[key]||key.toUpperCase();
 }
 function setLanguage(nextLang, opts={}){
   const lang=nextLang==='en'?'en':'uk';
@@ -509,31 +1359,37 @@ function setLanguage(nextLang, opts={}){
 function applyLanguage(){
   document.documentElement.lang=state.lang;
   if(app) app.dataset.lang=state.lang;
-  $('reportSubtitle') && ($('reportSubtitle').textContent=t('reportSubtitle'));
+  $('reportSubtitle') && ($('reportSubtitle').textContent=REPORT.meta?.isDemoReport?translateText('Demo report - fictional sample data'):t('reportSubtitle'));
   $('companyNameInput') && ($('companyNameInput').placeholder=t('companyName'));
-  $('pasteBtn') && ($('pasteBtn').innerHTML=`<span class="hideMob">${state.lang==='en'?'Add data':'Додати дані'}</span>`);
+  $('pasteBtn') && ($('pasteBtn').innerHTML=`<span class="hideMob">${t('pasteCsv')}</span>`, $('pasteBtn').setAttribute('aria-label',t('pasteCsv')), $('pasteBtn').title=t('pasteTitle'));
   $('exportJsonBtn') && ($('exportJsonBtn').innerHTML=`<span class="hideMob">${t('exportCiJson')}</span>`);
   $('exportJsonBtn') && ($('exportJsonBtn').title=t('exportCiJsonTitle'));
-  $('saveDiskBtn') && ($('saveDiskBtn').textContent=t('saveDisk'));
+  $('saveDiskBtn') && ($('saveDiskBtn').textContent=t('saveDisk'), $('saveDiskBtn').title=t('saveDiskTitle'));
   $('saveHtmlBtn') && ($('saveHtmlBtn').textContent=t('saveAdmin'));
   $('saveClientHtmlBtn') && ($('saveClientHtmlBtn').textContent=t('saveClient'));
+  $('saveClientPackageBtn') && ($('saveClientPackageBtn').textContent=t('saveClientPackage'));
+  $('internalAuditPackageBtn') && ($('internalAuditPackageBtn').textContent=t('internalAuditPackage'), $('internalAuditPackageBtn').title=t('internalAuditPackageTitle'));
+  $('membersBtn') && ($('membersBtn').textContent=t('members'));
+  $('cloudStatus') && ($('cloudStatus').title=t('cloudStatusTitle'), $('cloudStatus').textContent=$('cloudStatus').dataset.state==='local'?t('cloudLocal'):$('cloudStatus').textContent);
   $('unlockAdminBtn') && ($('unlockAdminBtn').title=t('unlockAdmin'));
   $('themeBtn') && ($('themeBtn').title=t('theme'));
   $('langBtn') && ($('langBtn').textContent=t('langCode'));
   $('langBtn') && ($('langBtn').title=t('switchLanguage'));
+  $('appNoticeClose') && ($('appNoticeClose').setAttribute('aria-label',t('closeNotice')));
+  $('modalClose') && ($('modalClose').setAttribute('aria-label',t('closeDialog')));
   $('analyticsPanelTitle') && ($('analyticsPanelTitle').textContent=t('analytics'));
   $('analyticsHint') && ($('analyticsHint').textContent=t('analyticsHint'));
   $('readerPanelTitle') && ($('readerPanelTitle').textContent=t('reader'));
   $('filesPanelTitle') && ($('filesPanelTitle').textContent=t('dataFiles'));
   $('clearReaderBtn') && ($('clearReaderBtn').textContent=t('clear'));
-  $('connectFolderBtn') && ($('connectFolderBtn').textContent=t('connectFolder'));
-  $('uploadFilesBtn') && ($('uploadFilesBtn').textContent=t('uploadFiles'));
+  $('connectFolderBtn') && ($('connectFolderBtn').textContent=t('connectFolder'), $('connectFolderBtn').title=t('connectFolderTitle'));
+  $('uploadFilesBtn') && ($('uploadFilesBtn').textContent=t('uploadFiles'), $('uploadFilesBtn').title=t('uploadFilesTitle'), $('uploadFilesBtn').setAttribute('aria-label',t('uploadFiles')));
   $('search').placeholder=t('searchPlaceholder');
   const drop=$('dropZone');
   if(drop) drop.innerHTML = `${t('dropZone')}<br><small>${t('dropZoneSmall')}</small>`;
   const headTitle=$('reportTitle');
-  if(headTitle) headTitle.textContent = t('reportTitlePrefix', {company:String(REPORT.meta?.companyName||'').trim() || t('reportTitleDefaultCompany')});
-  document.title=t('reportTitlePrefix', {company:String(REPORT.meta?.companyName||'').trim() || t('reportTitleDefaultCompany')});
+  if(headTitle) headTitle.textContent = t('reportTitlePrefix');
+  document.title=t('reportTitlePrefix');
   const rp=$('rolePill');
   if(rp) rp.textContent=isAdmin()?t('admin'):t('viewer');
   const stat=$('storageStat');
@@ -720,8 +1576,8 @@ function setCloudStatus(status,label,title=''){
   const el=$('cloudStatus');
   if(!el) return;
   el.dataset.state=status;
-  el.textContent=label;
-  el.title=title||label;
+  el.textContent=translateText(label);
+  el.title=translateText(title||label);
 }
 function cloudSnapshot(){
   const snapshot=persistedReportSnapshot();
@@ -1492,7 +2348,3988 @@ function companyRows(id, dsId){const ds=dataset(dsId||state.activeDataset); cons
 function companyRow(id, dsId){return companyRows(id,dsId)[0] || null}
 function ensureCompany(name,type, report=REPORT){name=String(name||'').trim(); if(!name) return null; report.companies=Array.isArray(report.companies)?report.companies:[]; let c=report.companies.find(x=>String(x.name||'').toLowerCase()===name.toLowerCase()); if(!c){c={id:uid('co'),name,type:type||'competitor',folder:slugify(name),createdAt:new Date().toISOString()}; report.companies.push(c);} else if(type==='client'){c.type='client'} return c;}
 function syncCompaniesFromRows(r){r.companies=Array.isArray(r.companies)?r.companies:[]; for(const ds of r.datasets||[]){const nameCol=strongCompanyNameCol(ds); if(!nameCol) continue; for(const row of ds.rows||[]){const nm=String(row[nameCol]||'').trim(); if(!nm) continue; const type=String(row.type||row.role||'').toLowerCase()==='client'?'client':'competitor'; const c=ensureCompany(nm,type,r); row._companyId=c.id;}}}
-function normalizeReport(r){r=clone(r); r.meta=r.meta||{}; r.datasets=Array.isArray(r.datasets)?r.datasets:[]; r.files=Array.isArray(r.files)?r.files:[]; r.charts=Array.isArray(r.charts)?r.charts:[]; r.tables=Array.isArray(r.tables)?r.tables:[]; r.companies=Array.isArray(r.companies)?r.companies:[]; r.ci=normalizeCiModel(r.ci); stripLiveMarkdownDerived(r); for(const ds of r.datasets){ds.id=ds.id||uid('ds'); ds.name=ds.name||'Таблиця'; ds.rows=Array.isArray(ds.rows)?ds.rows:[]; ds.columns=inferColumns(ds.rows);} syncCompaniesFromRows(r); for(const f of r.files){f.id=f.id||uid('file'); f.folder=f.folder||'Загальні'; f.path=f.path||((f.companyId?((company(f.companyId,r)?.folder||'company')+'/'):'')+f.name);} return r;}
+function createDefaultReportSections(){
+  return REPORT_SECTION_DEFINITIONS.map(([id,title],idx)=>({
+    id,
+    title,
+    type:id,
+    order:idx+1,
+    blocks:[],
+    status:'empty'
+  }));
+}
+function normalizeReportSection(section, fallback){
+  const base=fallback||{};
+  const out=section&&typeof section==='object'?{...section}:{};
+  out.id=String(out.id||base.id||uid('section'));
+  out.title=String(out.title||base.title||out.id);
+  out.type=String(out.type||base.type||out.id);
+  out.order=Number.isFinite(Number(out.order))?Number(out.order):(Number(base.order)||0);
+  out.blocks=Array.isArray(out.blocks)?out.blocks:[];
+  out.status=REPORT_SECTION_STATUS.includes(String(out.status))?String(out.status):(base.status||'empty');
+  return out;
+}
+function normalizeReportSchema(reportData){
+  const report=reportData&&typeof reportData==='object'?reportData:{};
+  report.reportSchemaVersion=Number(report.reportSchemaVersion)>=REPORT_SCHEMA_VERSION
+    ? Number(report.reportSchemaVersion)
+    : REPORT_SCHEMA_VERSION;
+  const existing=Array.isArray(report.reportSections)
+    ? report.reportSections
+    : (report.reportSections&&typeof report.reportSections==='object'
+      ? Object.entries(report.reportSections).map(([id,section])=>section&&typeof section==='object'?{id,...section}:{id})
+      : []);
+  const existingById=new Map(existing.filter(Boolean).map(section=>[String(section.id||''),section]));
+  const defaults=createDefaultReportSections();
+  const normalized=defaults.map(section=>normalizeReportSection(existingById.get(section.id),section));
+  const defaultIds=new Set(defaults.map(section=>section.id));
+  for(const section of existing){
+    const id=String(section?.id||'');
+    if(!id||defaultIds.has(id)) continue;
+    normalized.push(normalizeReportSection(section,{order:normalized.length+1}));
+  }
+  report.reportSections=normalized.sort((a,b)=>num(a.order)-num(b.order));
+  return report;
+}
+function getReportSection(reportData, sectionId){
+  const report=normalizeReportSchema(reportData);
+  return (report.reportSections||[]).find(section=>section.id===sectionId)||null;
+}
+function updateReportSection(reportData, sectionId, patch){
+  const report=normalizeReportSchema(reportData);
+  const section=getReportSection(report, sectionId);
+  if(!section) return null;
+  Object.assign(section, patch&&typeof patch==='object'?patch:{});
+  Object.assign(section, normalizeReportSection(section, section));
+  return section;
+}
+function createDemoReportData(){
+  const now=new Date().toISOString();
+  const sections=createDefaultReportSections();
+  const setStatus=(id,status='draft')=>{
+    const section=sections.find(item=>item.id===id);
+    if(section) section.status=status;
+  };
+  ['cover','executiveSummary','researchScope','competitiveLandscape','competitors','pricing','features','messaging','channels','risksOpportunities','recommendations','sourcesEvidence'].forEach(id=>setStatus(id));
+  const companies=[
+    {id:'demo-co-apex',name:'Apex Analytics',type:'competitor',folder:'apex-analytics',createdAt:now},
+    {id:'demo-co-signalforge',name:'SignalForge',type:'competitor',folder:'signalforge',createdAt:now},
+    {id:'demo-co-marketlens',name:'MarketLens',type:'competitor',folder:'marketlens',createdAt:now}
+  ];
+  const files=[
+    {id:'demo-file-pricing',name:'competitor-pricing.csv',path:'demo/competitor-pricing.csv',folder:'Demo materials',ext:'csv',type:'text/csv',size:318,isData:true,contentText:'company,tier,monthly_price_usd,key_limit\nApex Analytics,Pro,149,5 dashboards\nSignalForge,Growth,199,10 workspaces\nMarketLens,Team,99,3 projects',createdAt:now},
+    {id:'demo-file-positioning',name:'website-positioning-notes.md',path:'demo/website-positioning-notes.md',folder:'Demo materials',ext:'md',type:'text/markdown',size:512,isData:false,contentText:'# Demo positioning notes\n\nFictional sample notes for showing source traceability only. Apex emphasizes dashboards, SignalForge emphasizes automation, and MarketLens emphasizes approachable research workflows.',createdAt:now},
+    {id:'demo-file-screenshot',name:'market-screenshots.zip',path:'demo/market-screenshots.zip',folder:'Demo materials',ext:'zip',type:'application/zip',size:2048,isData:false,createdAt:now},
+    {id:'demo-file-summary',name:'analyst-summary.docx',path:'demo/analyst-summary.docx',folder:'Demo materials',ext:'docx',type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',size:1536,isData:false,createdAt:now}
+  ];
+  const pricingRows=[
+    {company:'Apex Analytics',tier:'Pro',monthly_price_usd:149,key_limit:'5 dashboards',positioning:'Dashboard-led analytics',_companyId:'demo-co-apex'},
+    {company:'SignalForge',tier:'Growth',monthly_price_usd:199,key_limit:'10 workspaces',positioning:'Automation for campaign teams',_companyId:'demo-co-signalforge'},
+    {company:'MarketLens',tier:'Team',monthly_price_usd:99,key_limit:'3 projects',positioning:'Accessible market research',_companyId:'demo-co-marketlens'}
+  ];
+  const featureRows=[
+    {feature:'Dashboard templates','Apex Analytics':'Yes','SignalForge':'Yes','MarketLens':'Limited'},
+    {feature:'Workflow automation','Apex Analytics':'Limited','SignalForge':'Strong','MarketLens':'No'},
+    {feature:'Research brief export','Apex Analytics':'PDF','SignalForge':'HTML','MarketLens':'DOCX/PDF'},
+    {feature:'Positioning notes','Apex Analytics':'Moderate','SignalForge':'Strong','MarketLens':'Strong'}
+  ];
+  const datasets=[
+    {id:'demo-ds-pricing',name:'Demo competitor pricing',sourceFileId:'demo-file-pricing',createdAt:now,rows:pricingRows,columns:inferColumns(pricingRows)},
+    {id:'demo-ds-features',name:'Demo feature comparison',sourceFileId:'demo-file-summary',createdAt:now,rows:featureRows,columns:inferColumns(featureRows)}
+  ];
+  const sourceRegistry={
+    items:[
+      {id:'source:file:demo-file-pricing',materialId:'file:demo-file-pricing',title:'Demo competitor pricing CSV',sourceType:'spreadsheet',sourceKind:'file',mimeType:'text/csv',extension:'csv',fileName:'competitor-pricing.csv',url:'',localPathLabel:'demo/competitor-pricing.csv',linkedCompanyId:'',linkedSectionIds:['pricing','competitiveLandscape'],extractedTextStatus:'not_applicable',evidenceStatus:'used',credibilityStatus:'trusted',notes:'Sample/demo data only.',createdAt:now,updatedAt:now},
+      {id:'source:file:demo-file-positioning',materialId:'file:demo-file-positioning',title:'Demo website positioning notes',sourceType:'document',sourceKind:'file',mimeType:'text/markdown',extension:'md',fileName:'website-positioning-notes.md',url:'https://example.com/demo-positioning',localPathLabel:'demo/website-positioning-notes.md',linkedCompanyId:'',linkedSectionIds:['messaging','channels'],extractedTextStatus:'available',evidenceStatus:'used',credibilityStatus:'trusted',notes:'Fictional sample notes.',createdAt:now,updatedAt:now},
+      {id:'source:file:demo-file-screenshot',materialId:'file:demo-file-screenshot',title:'Demo market screenshots archive',sourceType:'image',sourceKind:'file',mimeType:'application/zip',extension:'zip',fileName:'market-screenshots.zip',url:'',localPathLabel:'demo/market-screenshots.zip',linkedCompanyId:'',linkedSectionIds:['features'],extractedTextStatus:'not_applicable',evidenceStatus:'candidate',credibilityStatus:'needs_review',notes:'Sample screenshot bundle placeholder.',createdAt:now,updatedAt:now},
+      {id:'source:file:demo-file-summary',materialId:'file:demo-file-summary',title:'Demo analyst summary document',sourceType:'document',sourceKind:'file',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',extension:'docx',fileName:'analyst-summary.docx',url:'',localPathLabel:'demo/analyst-summary.docx',linkedCompanyId:'',linkedSectionIds:['executiveSummary','recommendations'],extractedTextStatus:'pending',evidenceStatus:'used',credibilityStatus:'trusted',notes:'Sample analyst memo.',createdAt:now,updatedAt:now}
+    ],
+    updatedAt:now
+  };
+  const evidenceCards={items:[
+    createEvidenceCard({id:'demo-ev-pricing',claim:'MarketLens is the lowest-priced sample competitor at $99/month for the Team tier.',summary:'The demo pricing table positions MarketLens below Apex Analytics and SignalForge on entry team pricing.',sourceIds:['source:file:demo-file-pricing'],sectionId:'pricing',materialIds:['file:demo-file-pricing'],competitorId:'demo-co-marketlens',companyId:'demo-co-marketlens',evidenceType:'metric',reviewStatus:'approved',confidenceStatus:'high',credibilityStatus:'trusted',analystNotes:'Demo evidence. Not real market research.',reviewedAt:now,reviewedBy:'demo analyst',reviewNotes:'Approved for demo draft.',createdAt:now,updatedAt:now}),
+    createEvidenceCard({id:'demo-ev-positioning',claim:'SignalForge sample positioning emphasizes workflow automation for campaign teams.',summary:'The demo notes describe SignalForge as automation-oriented compared with the other fictional competitors.',sourceIds:['source:file:demo-file-positioning'],sectionId:'messaging',materialIds:['file:demo-file-positioning'],competitorId:'demo-co-signalforge',companyId:'demo-co-signalforge',evidenceType:'observation',reviewStatus:'approved',confidenceStatus:'medium',credibilityStatus:'trusted',analystNotes:'Demo evidence. Not real market research.',reviewedAt:now,reviewedBy:'demo analyst',reviewNotes:'Approved for demo draft.',createdAt:now,updatedAt:now}),
+    createEvidenceCard({id:'demo-ev-risk',claim:'Screenshot review may reveal UX gaps, but the sample screenshot archive still needs analyst review.',summary:'This placeholder demonstrates a needs-review evidence card that should not be exported as approved.',sourceIds:['source:file:demo-file-screenshot'],sectionId:'risksOpportunities',materialIds:['file:demo-file-screenshot'],evidenceType:'risk',reviewStatus:'needs_review',confidenceStatus:'low',credibilityStatus:'needs_review',analystNotes:'Needs real review in a real project.',reviewedAt:now,reviewedBy:'demo analyst',reviewNotes:'Needs review.',createdAt:now,updatedAt:now}),
+    createEvidenceCard({id:'demo-ev-rejected',claim:'Apex Analytics has twice the automation coverage of all competitors.',summary:'Rejected because the sample materials do not support this exact claim.',sourceIds:['source:file:demo-file-summary'],sectionId:'features',materialIds:['file:demo-file-summary'],competitorId:'demo-co-apex',companyId:'demo-co-apex',evidenceType:'comparison',reviewStatus:'rejected',confidenceStatus:'low',credibilityStatus:'weak',analystNotes:'Unsupported demo claim.',reviewedAt:now,reviewedBy:'demo analyst',reviewNotes:'Rejected: unsupported by demo sources.',rejectionReason:'Unsupported by sample data.',createdAt:now,updatedAt:now}),
+    createEvidenceCard({id:'demo-ev-draft',claim:'MarketLens may be strongest for founder-led research teams.',summary:'Draft idea for later review.',sourceIds:['source:file:demo-file-summary'],sectionId:'recommendations',materialIds:['file:demo-file-summary'],competitorId:'demo-co-marketlens',companyId:'demo-co-marketlens',evidenceType:'recommendation_input',reviewStatus:'draft',confidenceStatus:'unknown',credibilityStatus:'unreviewed',analystNotes:'Draft demo note.',createdAt:now,updatedAt:now})
+  ],updatedAt:now};
+  const competitorProfiles={items:[
+    createCompetitorProfile({id:'demo-co-apex',name:'Apex Analytics',website:'https://example.com/apex-demo',category:'Analytics',market:'Marketing intelligence',shortDescription:'Fictional demo competitor for dashboard-led analytics positioning.',positioning:'Dashboard-led analytics for teams that need reporting speed.',pricingNotes:'Sample Pro tier shown at $149/month in demo CSV.',featureNotes:'Demo notes: dashboard templates yes, workflow automation limited.',channelNotes:'Sample content notes only.',strengths:'Clear dashboards and reporting packaging.',weaknesses:'Automation coverage is limited in the sample feature table.',risks:'Rejected demo claim shows unsupported automation comparison risk.',opportunities:'Could be compared against automation-focused competitors.',priority:'medium',status:'active',linkedMaterialIds:['file:demo-file-pricing','file:demo-file-summary'],linkedSourceIds:['source:file:demo-file-pricing','source:file:demo-file-summary'],linkedEvidenceCardIds:['demo-ev-rejected'],linkedSectionIds:['competitiveLandscape','pricing','features'],confidenceStatus:'medium',reviewStatus:'needs_review',analystNotes:'Demo/sample profile only. Do not treat as real market research.',createdAt:now,updatedAt:now}),
+    createCompetitorProfile({id:'demo-co-signalforge',name:'SignalForge',website:'https://example.com/signalforge-demo',category:'Marketing automation',market:'Marketing intelligence',shortDescription:'Fictional demo competitor for automation-oriented positioning.',positioning:'Automation for campaign teams and workflow-heavy marketing operations.',pricingNotes:'Sample Growth tier shown at $199/month in demo CSV.',featureNotes:'Demo notes: workflow automation strong; dashboards available.',channelNotes:'Sample positioning notes only.',strengths:'Strong sample automation positioning.',weaknesses:'Higher sample price than MarketLens.',risks:'Needs real source validation in live projects.',opportunities:'Useful comparison for automation-oriented client needs.',priority:'high',status:'active',linkedMaterialIds:['file:demo-file-pricing','file:demo-file-positioning'],linkedSourceIds:['source:file:demo-file-pricing','source:file:demo-file-positioning'],linkedEvidenceCardIds:['demo-ev-positioning'],linkedSectionIds:['messaging','channels','pricing'],confidenceStatus:'medium',reviewStatus:'needs_review',analystNotes:'Demo/sample profile only. Do not treat as real market research.',createdAt:now,updatedAt:now}),
+    createCompetitorProfile({id:'demo-co-marketlens',name:'MarketLens',website:'https://example.com/marketlens-demo',category:'Market research',market:'Marketing intelligence',shortDescription:'Fictional demo competitor for approachable research workflow positioning.',positioning:'Accessible market research workflows for smaller teams.',pricingNotes:'Sample Team tier shown at $99/month in demo CSV.',featureNotes:'Demo notes: research brief export available, limited dashboards.',channelNotes:'Sample channel notes only.',strengths:'Lowest sample price among demo competitors.',weaknesses:'Dashboard and automation depth appear limited in sample data.',risks:'Draft recommendation still needs analyst review.',opportunities:'May fit founder-led or lean research teams after validation.',priority:'high',status:'active',linkedMaterialIds:['file:demo-file-pricing','file:demo-file-summary'],linkedSourceIds:['source:file:demo-file-pricing','source:file:demo-file-summary'],linkedEvidenceCardIds:['demo-ev-pricing','demo-ev-draft'],linkedSectionIds:['pricing','recommendations'],confidenceStatus:'medium',reviewStatus:'needs_review',analystNotes:'Demo/sample profile only. Do not treat as real market research.',createdAt:now,updatedAt:now})
+  ],updatedAt:now};
+  const pricingFeatureMatrix=createPricingFeatureMatrix({
+    title:'Demo Pricing & Feature Matrix',
+    description:'Fictional sample matrix for showing how pricing and features can be linked to sources and evidence.',
+    competitorIds:['demo-co-apex','demo-co-signalforge','demo-co-marketlens'],
+    pricingTiers:[
+      {id:'demo-tier-apex-pro',competitorId:'demo-co-apex',tierName:'Pro',priceAmount:'149',priceCurrency:'USD',pricePeriod:'monthly',priceLabel:'$149/month',publicPricingAvailable:'yes',sourceIds:['source:file:demo-file-pricing'],evidenceCardIds:['demo-ev-rejected'],confidenceStatus:'medium',reviewStatus:'needs_review',analystNotes:'Fictional demo pricing.'},
+      {id:'demo-tier-signalforge-growth',competitorId:'demo-co-signalforge',tierName:'Growth',priceAmount:'199',priceCurrency:'USD',pricePeriod:'monthly',priceLabel:'$199/month',publicPricingAvailable:'yes',sourceIds:['source:file:demo-file-pricing'],evidenceCardIds:['demo-ev-positioning'],confidenceStatus:'medium',reviewStatus:'needs_review',analystNotes:'Fictional demo pricing.'},
+      {id:'demo-tier-marketlens-team',competitorId:'demo-co-marketlens',tierName:'Team',priceAmount:'99',priceCurrency:'USD',pricePeriod:'monthly',priceLabel:'$99/month',publicPricingAvailable:'yes',sourceIds:['source:file:demo-file-pricing'],evidenceCardIds:['demo-ev-pricing'],confidenceStatus:'high',reviewStatus:'needs_review',analystNotes:'Fictional demo pricing.'}
+    ],
+    featureRows:[
+      {id:'demo-feature-dashboards',featureName:'Dashboard templates',category:'reporting',importance:'medium',sourceIds:['source:file:demo-file-summary'],evidenceCardIds:[]},
+      {id:'demo-feature-automation',featureName:'Workflow automation',category:'automation',importance:'high',sourceIds:['source:file:demo-file-positioning'],evidenceCardIds:['demo-ev-positioning']},
+      {id:'demo-feature-export',featureName:'Research brief export',category:'reporting',importance:'high',sourceIds:['source:file:demo-file-summary'],evidenceCardIds:['demo-ev-draft']}
+    ],
+    matrixCells:[
+      {rowId:'demo-feature-dashboards',competitorId:'demo-co-apex',value:'Yes',normalizedValue:'true',availabilityStatus:'yes',sourceIds:['source:file:demo-file-summary'],reviewStatus:'needs_review',confidenceStatus:'medium'},
+      {rowId:'demo-feature-dashboards',competitorId:'demo-co-signalforge',value:'Yes',normalizedValue:'true',availabilityStatus:'yes',sourceIds:['source:file:demo-file-summary'],reviewStatus:'needs_review',confidenceStatus:'medium'},
+      {rowId:'demo-feature-dashboards',competitorId:'demo-co-marketlens',value:'Limited',normalizedValue:'partial',availabilityStatus:'partial',sourceIds:['source:file:demo-file-summary'],reviewStatus:'needs_review',confidenceStatus:'medium'},
+      {rowId:'demo-feature-automation',competitorId:'demo-co-apex',value:'Limited',normalizedValue:'partial',availabilityStatus:'partial',evidenceCardIds:['demo-ev-rejected'],sourceIds:['source:file:demo-file-summary'],reviewStatus:'needs_review',confidenceStatus:'low'},
+      {rowId:'demo-feature-automation',competitorId:'demo-co-signalforge',value:'Strong',normalizedValue:'true',availabilityStatus:'yes',evidenceCardIds:['demo-ev-positioning'],sourceIds:['source:file:demo-file-positioning'],reviewStatus:'needs_review',confidenceStatus:'medium'},
+      {rowId:'demo-feature-automation',competitorId:'demo-co-marketlens',value:'No',normalizedValue:'false',availabilityStatus:'no',sourceIds:['source:file:demo-file-summary'],reviewStatus:'needs_review',confidenceStatus:'medium'},
+      {rowId:'demo-feature-export',competitorId:'demo-co-apex',value:'PDF',normalizedValue:'custom text',availabilityStatus:'partial',sourceIds:['source:file:demo-file-summary'],reviewStatus:'needs_review',confidenceStatus:'medium'},
+      {rowId:'demo-feature-export',competitorId:'demo-co-signalforge',value:'HTML',normalizedValue:'custom text',availabilityStatus:'yes',sourceIds:['source:file:demo-file-summary'],reviewStatus:'needs_review',confidenceStatus:'medium'},
+      {rowId:'demo-feature-export',competitorId:'demo-co-marketlens',value:'DOCX/PDF',normalizedValue:'custom text',availabilityStatus:'yes',evidenceCardIds:['demo-ev-draft'],sourceIds:['source:file:demo-file-summary'],reviewStatus:'needs_review',confidenceStatus:'unknown'}
+    ],
+    notes:'Demo/sample matrix only. Do not treat as real market research.',
+    reviewStatus:'needs_review',
+    confidenceStatus:'medium',
+    createdAt:now,
+    updatedAt:now
+  });
+  const report={
+    meta:{title:'Marketing Report Studio Demo Report',companyName:'Sample Client',updatedAt:now,lang:state?.lang||'uk',accessMode:'admin',isDemoReport:true,demoLabel:'Demo report - fictional sample data'},
+    reportSchemaVersion:REPORT_SCHEMA_VERSION,
+    reportSections:sections,
+    datasets,
+    companies,
+    files,
+    charts:[],
+    tables:[
+      {id:'demo-table-pricing',title:'Demo pricing tiers',datasetId:'demo-ds-pricing',columns:['company','tier','monthly_price_usd','key_limit'],top:10,sourceFileId:'demo-file-pricing'},
+      {id:'demo-table-features',title:'Demo feature comparison',datasetId:'demo-ds-features',columns:['feature','Apex Analytics','SignalForge','MarketLens'],top:10,sourceFileId:'demo-file-summary'}
+    ],
+    materialsInventory:{items:[],updatedAt:null},
+    competitorProfiles,
+    pricingFeatureMatrix,
+    sourceRegistry,
+    evidenceCards,
+    ci:null
+  };
+  const normalized=normalizeReport(report);
+  buildRuleBasedReportDraft(normalized);
+  const cover=getReportSection(normalized,'cover');
+  if(cover){
+    cover.blocks.unshift(normalizeDraftBlock({id:'demo-cover-block',type:'paragraph',title:'Demo cover',text:'This is fictional sample data showing the Marketing Report Studio workflow from materials to evidence-backed client export.',sectionId:'cover',evidenceCardIds:[],sourceIds:[],generatedBy:'demo_seed',createdAt:now,updatedAt:now,status:'approved'}));
+    cover.status='approved';
+  }
+  const executive=getReportSection(normalized,'executiveSummary');
+  if(executive){
+    executive.blocks.unshift(normalizeDraftBlock({id:'demo-exec-block',type:'paragraph',title:'Demo executive summary',text:'This fictional demo shows how approved evidence becomes a concise client-ready marketing intelligence draft.',sectionId:'executiveSummary',evidenceCardIds:['demo-ev-pricing','demo-ev-positioning'],sourceIds:['source:file:demo-file-pricing','source:file:demo-file-positioning'],generatedBy:'demo_seed',createdAt:now,updatedAt:now,status:'approved'}));
+    executive.status='approved';
+  }
+  const recommendations=getReportSection(normalized,'recommendations');
+  if(recommendations){
+    recommendations.blocks.unshift(normalizeDraftBlock({id:'demo-recommendation-block',type:'recommendation_note',title:'Demo recommendation',text:'Use the approved pricing and positioning evidence to prioritize a client-facing comparison of value, automation, and research workflow fit.',sectionId:'recommendations',evidenceCardIds:['demo-ev-pricing','demo-ev-positioning'],sourceIds:['source:file:demo-file-pricing','source:file:demo-file-positioning'],generatedBy:'demo_seed',createdAt:now,updatedAt:now,status:'draft'}));
+    recommendations.status='draft';
+  }
+  normalized.clientExportV2=buildClientExportDataV2(normalized);
+  return normalized;
+}
+function resetDemoReportIfNeeded(reportData){
+  const report=reportData&&typeof reportData==='object'?reportData:REPORT;
+  if(report.meta?.isDemoReport) report.meta.demoResetAt=new Date().toISOString();
+  return report;
+}
+function hasActiveUserReport(){
+  if(REPORT.meta?.isDemoReport) return false;
+  return reportContentScore(REPORT)>0 || (REPORT.reportSections||[]).some(section=>(section.blocks||[]).length) || (REPORT.evidenceCards?.items||[]).length;
+}
+function loadDemoReport(){
+  if(!guardAdmin()) return;
+  if(hasActiveUserReport() && !confirmI18n('Open demo report? This will replace the current in-memory workspace. Export or save your work first if you need it.')) return;
+  REPORT=resetDemoReportIfNeeded(createDemoReportData());
+  state.activeDataset=REPORT.datasets[0]?.id||null;
+  state.openTabs=[];
+  state.activeFile=null;
+  state.activeCompany=REPORT.companies[0]?.id||null;
+  state.compareA=REPORT.companies[0]?.id||null;
+  state.compareB=REPORT.companies[1]?.id||null;
+  initState();
+  refresh();
+  reader.innerHTML=`<div class="empty">Demo report loaded. Review the Materials, Sources, Evidence, Draft Builder, and Client Export flow.</div>`;
+  showNotice('Demo report loaded with fictional sample data.','success');
+}
+function createDefaultMaterialsInventory(){
+  return {items:[], updatedAt:null};
+}
+function getMaterialType(material){
+  const ext=String(material?.extension||material?.ext||material?.name||'').split('.').pop().toLowerCase();
+  const mime=String(material?.mimeType||material?.type||'').toLowerCase();
+  if(['xlsx','xls'].includes(ext)||/spreadsheet|excel/.test(mime)) return 'spreadsheet';
+  if(['csv','tsv'].includes(ext)||/csv|tab-separated/.test(mime)) return 'csv';
+  if(ext==='json'||/json/.test(mime)) return 'json';
+  if(ext==='pdf'||/pdf/.test(mime)) return 'pdf';
+  if(ext==='docx'||/wordprocessingml|msword/.test(mime)) return 'docx';
+  if(['md','markdown'].includes(ext)||/markdown/.test(mime)) return 'markdown';
+  if(['html','htm'].includes(ext)||/html/.test(mime)) return 'html';
+  if(['png','jpg','jpeg','webp','gif','bmp','svg'].includes(ext)||/^image\//.test(mime)) return 'image';
+  if(['txt','text'].includes(ext)||/^text\//.test(mime)) return 'text';
+  return 'unknown';
+}
+function normalizeMaterialItem(item){
+  const out=item&&typeof item==='object'?{...item}:{};
+  out.id=String(out.id||uid('material'));
+  out.name=String(out.name||'Untitled material');
+  out.extension=String(out.extension||out.ext||extFromName(out.name)||'').toLowerCase();
+  out.mimeType=String(out.mimeType||out.type||'');
+  out.type=MATERIAL_TYPES.includes(String(out.type))?String(out.type):getMaterialType(out);
+  out.sourceKind=String(out.sourceKind||'manual');
+  out.sizeLabel=String(out.sizeLabel||bytes(out.size||0));
+  out.linkedCompanyId=String(out.linkedCompanyId||out.companyId||'');
+  out.linkedSectionId=String(out.linkedSectionId||'');
+  out.createdAt=String(out.createdAt||'');
+  out.updatedAt=String(out.updatedAt||out.createdAt||'');
+  out.status=MATERIAL_STATUS.includes(String(out.status))?String(out.status):(out.linkedCompanyId||out.linkedSectionId?'linked':'available');
+  return out;
+}
+function normalizeMaterialsInventory(reportData){
+  const report=reportData&&typeof reportData==='object'?reportData:{};
+  const inv=report.materialsInventory&&typeof report.materialsInventory==='object'
+    ? report.materialsInventory
+    : createDefaultMaterialsInventory();
+  inv.items=Array.isArray(inv.items)?inv.items.map(normalizeMaterialItem):[];
+  inv.updatedAt=inv.updatedAt||null;
+  report.materialsInventory=inv;
+  return inv;
+}
+function collectMaterialsFromCurrentState(reportData, fsRoots=[]){
+  const report=reportData&&typeof reportData==='object'?reportData:{};
+  const previous=new Map((normalizeMaterialsInventory(report).items||[]).map(item=>[String(item.id),item]));
+  const items=[];
+  const add=(raw)=>{
+    const prior=previous.get(String(raw.id||''));
+    const item=normalizeMaterialItem({...prior,...raw});
+    items.push(item);
+  };
+  for(const f of (report.files||[])){
+    add({
+      id:`file:${f.id}`,
+      name:f.name||f.path||'File',
+      sourceKind:f.sourceKind||'file',
+      mimeType:f.type||mimeFromExt(f.ext),
+      extension:f.ext||extFromName(f.name),
+      size:f.size||0,
+      sizeLabel:bytes(f.size||0),
+      linkedCompanyId:f.companyId||'',
+      createdAt:f.createdAt||'',
+      updatedAt:f.updatedAt||f.createdAt||'',
+      status:f.companyId?'linked':'available'
+    });
+  }
+  for(const ds of (report.datasets||[])){
+    const sourceFile=(report.files||[]).find(f=>String(f.id||'')===String(ds.sourceFileId||''));
+    add({
+      id:`dataset:${ds.id}`,
+      name:ds.name||'Table',
+      sourceKind:ds.sourceKind||'dataset',
+      mimeType:sourceFile?.type||'application/x-report-table',
+      extension:sourceFile?.ext||'',
+      size:0,
+      sizeLabel:`${(ds.rows||[]).length} rows`,
+      linkedCompanyId:'',
+      createdAt:ds.createdAt||'',
+      updatedAt:ds.updatedAt||ds.createdAt||'',
+      status:'available'
+    });
+  }
+  for(const root of (fsRoots||[])){
+    if(!root?.index || !(root.index instanceof Map)) continue;
+    for(const [relPath, handle] of root.index.entries()){
+      const name=pathName(relPath)||String(handle?.name||'File');
+      const ext=extFromName(name);
+      add({
+        id:`fs:${root.id}:${relPath}`,
+        name,
+        sourceKind:'connected-folder',
+        mimeType:mimeFromExt(ext),
+        extension:ext,
+        size:Number(handle?.size||0),
+        sizeLabel:'connected folder',
+        linkedCompanyId:'',
+        createdAt:'',
+        updatedAt:'',
+        status:'available'
+      });
+    }
+  }
+  report.materialsInventory={items, updatedAt:new Date().toISOString()};
+  return report.materialsInventory;
+}
+function createDefaultSourceRegistry(){
+  return {items:[], updatedAt:null};
+}
+function materialSourceType(material){
+  const type=String(material?.type||'unknown');
+  const kind=String(material?.sourceKind||'');
+  if(kind==='dataset') return 'dataset';
+  if(['spreadsheet','csv','json'].includes(type)) return 'spreadsheet';
+  if(['pdf','docx','markdown','html','text'].includes(type)) return 'document';
+  if(type==='image') return 'image';
+  return 'unknown';
+}
+function defaultSourceTextStatus(material){
+  const type=String(material?.type||'unknown');
+  if(['spreadsheet','csv','json','image'].includes(type)) return 'not_applicable';
+  if(['pdf','docx','markdown','html','text'].includes(type)) return 'pending';
+  return 'pending';
+}
+function normalizeSourceRegistryItem(item){
+  const out=item&&typeof item==='object'?{...item}:{};
+  out.id=String(out.id||uid('source'));
+  out.materialId=String(out.materialId||'');
+  out.title=String(out.title||out.fileName||'Untitled source');
+  out.sourceType=SOURCE_TYPES.includes(String(out.sourceType))?String(out.sourceType):'unknown';
+  out.sourceKind=String(out.sourceKind||'manual');
+  out.mimeType=String(out.mimeType||'');
+  out.extension=String(out.extension||'').toLowerCase();
+  out.fileName=String(out.fileName||out.title||'');
+  out.url=String(out.url||'');
+  out.localPathLabel=String(out.localPathLabel||'');
+  out.linkedCompanyId=String(out.linkedCompanyId||'');
+  out.linkedSectionIds=Array.isArray(out.linkedSectionIds)?out.linkedSectionIds.map(String).filter(Boolean):[];
+  out.extractedTextStatus=SOURCE_TEXT_STATUS.includes(String(out.extractedTextStatus))?String(out.extractedTextStatus):'pending';
+  out.evidenceStatus=SOURCE_EVIDENCE_STATUS.includes(String(out.evidenceStatus))?String(out.evidenceStatus):'unused';
+  out.credibilityStatus=SOURCE_CREDIBILITY_STATUS.includes(String(out.credibilityStatus))?String(out.credibilityStatus):'unreviewed';
+  out.notes=String(out.notes||'');
+  out.createdAt=String(out.createdAt||'');
+  out.updatedAt=String(out.updatedAt||out.createdAt||'');
+  return out;
+}
+function normalizeSourceRegistry(reportData){
+  const report=reportData&&typeof reportData==='object'?reportData:{};
+  const registry=Array.isArray(report.sourceRegistry)
+    ? {items:report.sourceRegistry, updatedAt:null}
+    : (report.sourceRegistry&&typeof report.sourceRegistry==='object'
+      ? report.sourceRegistry
+      : createDefaultSourceRegistry());
+  registry.items=Array.isArray(registry.items)?registry.items.map(normalizeSourceRegistryItem):[];
+  registry.updatedAt=registry.updatedAt||null;
+  report.sourceRegistry=registry;
+  return registry;
+}
+function sourceFromMaterial(material, prior){
+  const now=new Date().toISOString();
+  const materialId=String(material?.id||'');
+  const existing=prior&&typeof prior==='object'?prior:{};
+  const linkedSectionIds=new Set(Array.isArray(existing.linkedSectionIds)?existing.linkedSectionIds.map(String):[]);
+  if(material.linkedSectionId) linkedSectionIds.add(String(material.linkedSectionId));
+  return normalizeSourceRegistryItem({
+    ...existing,
+    id:existing.id||`source:${materialId}`,
+    materialId,
+    title:existing.title||material.name||'Untitled source',
+    sourceType:existing.sourceType&&existing.sourceType!=='unknown'?existing.sourceType:materialSourceType(material),
+    sourceKind:material.sourceKind||existing.sourceKind||'material',
+    mimeType:material.mimeType||existing.mimeType||'',
+    extension:material.extension||existing.extension||'',
+    fileName:material.name||existing.fileName||'',
+    localPathLabel:existing.localPathLabel||material.localPathLabel||'',
+    linkedCompanyId:material.linkedCompanyId||existing.linkedCompanyId||'',
+    linkedSectionIds:[...linkedSectionIds],
+    extractedTextStatus:existing.extractedTextStatus||defaultSourceTextStatus(material),
+    evidenceStatus:existing.evidenceStatus||'unused',
+    credibilityStatus:existing.credibilityStatus||'unreviewed',
+    notes:existing.notes||'',
+    createdAt:existing.createdAt||material.createdAt||now,
+    updatedAt:now
+  });
+}
+function buildSourcesFromMaterials(reportData){
+  const report=reportData&&typeof reportData==='object'?reportData:{};
+  const materials=normalizeMaterialsInventory(report).items||[];
+  const registry=normalizeSourceRegistry(report);
+  const priorItems=registry.items||[];
+  const priorByMaterial=new Map(priorItems.filter(item=>item.materialId).map(item=>[String(item.materialId),item]));
+  const priorById=new Map(priorItems.map(item=>[String(item.id),item]));
+  const materialIds=new Set(materials.map(item=>String(item.id)));
+  const items=[];
+  for(const material of materials){
+    const sourceId=`source:${material.id}`;
+    const prior=priorByMaterial.get(String(material.id))||priorById.get(sourceId);
+    items.push(sourceFromMaterial(material, prior));
+  }
+  for(const prior of priorItems){
+    const linked=Array.isArray(prior.linkedSectionIds)&&prior.linkedSectionIds.length;
+    const hasManualValue=String(prior.notes||'').trim()||linked||String(prior.url||'').trim();
+    if(prior.materialId && materialIds.has(String(prior.materialId))) continue;
+    if(!prior.materialId || hasManualValue) items.push(normalizeSourceRegistryItem(prior));
+  }
+  report.sourceRegistry={items, updatedAt:new Date().toISOString()};
+  return report.sourceRegistry;
+}
+function getSourceById(reportData, sourceId){
+  const registry=normalizeSourceRegistry(reportData);
+  return (registry.items||[]).find(source=>source.id===sourceId)||null;
+}
+function linkSourceToSection(reportData, sourceId, sectionId){
+  const source=getSourceById(reportData, sourceId);
+  const section=getReportSection(reportData, sectionId);
+  if(!source||!section) return null;
+  const ids=new Set(Array.isArray(source.linkedSectionIds)?source.linkedSectionIds:[]);
+  ids.add(section.id);
+  source.linkedSectionIds=[...ids];
+  source.updatedAt=new Date().toISOString();
+  return source;
+}
+function updateSourceRegistryItem(reportData, sourceId, patch){
+  const source=getSourceById(reportData, sourceId);
+  if(!source) return null;
+  Object.assign(source, patch&&typeof patch==='object'?patch:{});
+  Object.assign(source, normalizeSourceRegistryItem(source));
+  source.updatedAt=new Date().toISOString();
+  return source;
+}
+function createDefaultCompetitorProfiles(){return {items:[], updatedAt:null};}
+function normalizeStringArray(value){
+  return [...new Set((Array.isArray(value)?value:[]).map(String).map(s=>s.trim()).filter(Boolean))];
+}
+function normalizeCompetitorProfileItem(input={}){
+  const now=new Date().toISOString();
+  const out=input&&typeof input==='object'?{...input}:{};
+  out.id=String(out.id||out.competitorId||out.companyId||uid('competitor'));
+  out.name=String(out.name||'').trim();
+  out.website=String(out.website||'').trim();
+  out.category=String(out.category||'').trim();
+  out.market=String(out.market||'').trim();
+  out.country=String(out.country||'').trim();
+  out.shortDescription=String(out.shortDescription||out.description||'').trim();
+  out.positioning=String(out.positioning||'').trim();
+  out.pricingNotes=String(out.pricingNotes||'').trim();
+  out.featureNotes=String(out.featureNotes||'').trim();
+  out.channelNotes=String(out.channelNotes||out.contentNotes||'').trim();
+  out.seoNotes=String(out.seoNotes||'').trim();
+  out.messagingNotes=String(out.messagingNotes||'').trim();
+  out.strengths=String(out.strengths||'').trim();
+  out.weaknesses=String(out.weaknesses||'').trim();
+  out.risks=String(out.risks||'').trim();
+  out.opportunities=String(out.opportunities||'').trim();
+  out.priority=COMPETITOR_PRIORITY.includes(String(out.priority))?String(out.priority):'medium';
+  out.status=COMPETITOR_PROFILE_STATUS.includes(String(out.status))?String(out.status):'active';
+  out.linkedMaterialIds=normalizeStringArray(out.linkedMaterialIds);
+  out.linkedSourceIds=normalizeStringArray(out.linkedSourceIds);
+  out.linkedEvidenceCardIds=normalizeStringArray(out.linkedEvidenceCardIds);
+  out.linkedSectionIds=normalizeStringArray(out.linkedSectionIds);
+  out.confidenceStatus=EVIDENCE_CONFIDENCE_STATUS.includes(String(out.confidenceStatus))?String(out.confidenceStatus):'unknown';
+  out.reviewStatus=COMPETITOR_REVIEW_STATUS.includes(String(out.reviewStatus))?String(out.reviewStatus):'draft';
+  if(out.reviewStatus==='approved' && !input.reviewedAt) out.reviewStatus='needs_review';
+  out.analystNotes=String(out.analystNotes||'').trim();
+  out.createdAt=String(out.createdAt||now);
+  out.updatedAt=String(out.updatedAt||out.createdAt);
+  return out;
+}
+function normalizeCompetitorProfiles(reportData){
+  const report=reportData&&typeof reportData==='object'?reportData:{};
+  report.competitorProfiles=report.competitorProfiles&&typeof report.competitorProfiles==='object'?report.competitorProfiles:createDefaultCompetitorProfiles();
+  const existing=Array.isArray(report.competitorProfiles.items)?report.competitorProfiles.items:[];
+  const byId=new Map();
+  for(const item of existing){
+    const profile=normalizeCompetitorProfileItem(item);
+    if(profile.name) byId.set(profile.id,profile);
+  }
+  for(const co of (report.companies||[]).filter(c=>c&&c.type!=='client')){
+    const id=String(co.id||stableId('competitor',co.name||'competitor'));
+    if(byId.has(id)) continue;
+    byId.set(id,normalizeCompetitorProfileItem({id,name:co.name||'',website:co.website||'',category:co.category||'',market:co.market||'',shortDescription:co.description||co.notes||'',priority:co.priority||'medium',status:'active',reviewStatus:'draft',createdAt:co.createdAt}));
+  }
+  const materialIds=new Set((report.materialsInventory?.items||[]).map(item=>item.id));
+  const sourceIds=new Set((report.sourceRegistry?.items||[]).map(item=>item.id));
+  const evidenceIds=new Set((report.evidenceCards?.items||[]).map(item=>item.id));
+  const sectionIds=new Set((report.reportSections||[]).map(item=>item.id));
+  report.competitorProfiles.items=[...byId.values()].map(profile=>{
+    profile.linkedMaterialIds=profile.linkedMaterialIds.filter(id=>materialIds.has(id)||String(id).startsWith('file:')||String(id).startsWith('dataset:'));
+    profile.linkedSourceIds=profile.linkedSourceIds.filter(id=>sourceIds.has(id));
+    profile.linkedEvidenceCardIds=profile.linkedEvidenceCardIds.filter(id=>evidenceIds.has(id));
+    profile.linkedSectionIds=profile.linkedSectionIds.filter(id=>sectionIds.has(id));
+    return profile;
+  }).sort((a,b)=>String(a.name).localeCompare(String(b.name)));
+  report.competitorProfiles.updatedAt=report.competitorProfiles.updatedAt||null;
+  return report.competitorProfiles;
+}
+function createCompetitorProfile(input){
+  const profile=normalizeCompetitorProfileItem({...(input||{}),id:(input&&input.id)||uid('competitor'),reviewStatus:(input&&input.reviewStatus)||'draft',status:(input&&input.status)||'active'});
+  if(!profile.name) throw new Error('Competitor name is required.');
+  return profile;
+}
+function getCompetitorProfileById(reportData, competitorId){
+  return (normalizeCompetitorProfiles(reportData).items||[]).find(profile=>profile.id===competitorId)||null;
+}
+function updateCompetitorProfile(reportData, competitorId, patch){
+  const profiles=normalizeCompetitorProfiles(reportData);
+  const profile=(profiles.items||[]).find(item=>item.id===competitorId);
+  if(!profile) return null;
+  const next=normalizeCompetitorProfileItem({...profile,...(patch||{}),id:profile.id,updatedAt:new Date().toISOString()});
+  if(!next.name) throw new Error('Competitor name is required.');
+  Object.assign(profile,next);
+  profiles.updatedAt=new Date().toISOString();
+  const co=ensureCompany(profile.name,'competitor',reportData);
+  if(co){co.website=profile.website||co.website||''; co.category=profile.category||co.category||''; co.market=profile.market||co.market||''; co.notes=profile.shortDescription||co.notes||'';}
+  return profile;
+}
+function deleteCompetitorProfile(reportData, competitorId){return archiveCompetitorProfile(reportData,competitorId);}
+function archiveCompetitorProfile(reportData, competitorId){return updateCompetitorProfile(reportData,competitorId,{status:'archived',updatedAt:new Date().toISOString()});}
+function linkCompetitorToSource(reportData, competitorId, sourceId){
+  const profile=getCompetitorProfileById(reportData,competitorId), source=getSourceById(reportData,sourceId);
+  if(!profile||!source) return null;
+  if(!profile.linkedSourceIds.includes(source.id)) profile.linkedSourceIds.push(source.id);
+  source.linkedCompanyId=profile.id;
+  profile.updatedAt=source.updatedAt=new Date().toISOString();
+  return profile;
+}
+function linkCompetitorToEvidence(reportData, competitorId, evidenceCardId){
+  const profile=getCompetitorProfileById(reportData,competitorId), card=getEvidenceCardById(reportData,evidenceCardId);
+  if(!profile||!card) return null;
+  if(!profile.linkedEvidenceCardIds.includes(card.id)) profile.linkedEvidenceCardIds.push(card.id);
+  updateEvidenceCard(reportData,card.id,{competitorId:profile.id,companyId:profile.id});
+  profile.updatedAt=new Date().toISOString();
+  return profile;
+}
+function linkCompetitorToMaterial(reportData, competitorId, materialId){
+  const profile=getCompetitorProfileById(reportData,competitorId);
+  const material=(normalizeMaterialsInventory(reportData).items||[]).find(item=>item.id===materialId);
+  if(!profile||!material) return null;
+  if(!profile.linkedMaterialIds.includes(material.id)) profile.linkedMaterialIds.push(material.id);
+  material.linkedCompanyId=profile.id;
+  material.updatedAt=profile.updatedAt=new Date().toISOString();
+  return profile;
+}
+function getEvidenceCardsByCompetitor(reportData, competitorId){return getCompetitorEvidence(reportData,competitorId);}
+function getCompetitorEvidence(reportData, competitorId){
+  const profile=getCompetitorProfileById(reportData,competitorId);
+  const ids=new Set(profile?.linkedEvidenceCardIds||[]);
+  return (normalizeEvidenceCards(reportData).items||[]).filter(card=>ids.has(card.id)||card.competitorId===competitorId||card.companyId===competitorId);
+}
+function getCompetitorSources(reportData, competitorId){
+  const profile=getCompetitorProfileById(reportData,competitorId);
+  const ids=new Set(profile?.linkedSourceIds||[]);
+  return (normalizeSourceRegistry(reportData).items||[]).filter(source=>ids.has(source.id)||source.linkedCompanyId===competitorId);
+}
+function getCompetitorMaterials(reportData, competitorId){
+  const profile=getCompetitorProfileById(reportData,competitorId);
+  const ids=new Set(profile?.linkedMaterialIds||[]);
+  return (normalizeMaterialsInventory(reportData).items||[]).filter(item=>ids.has(item.id)||item.linkedCompanyId===competitorId);
+}
+function createDefaultPricingFeatureMatrix(){
+  const now=new Date().toISOString();
+  return {id:'pricing-feature-matrix',title:'Pricing & Feature Matrix',description:'',clientCompanyId:'',competitorIds:[],pricingTiers:[],featureRows:[],matrixCells:[],notes:'',reviewStatus:'draft',confidenceStatus:'unknown',createdAt:now,updatedAt:now};
+}
+function normalizePricingTier(tier={}){
+  const now=new Date().toISOString();
+  const out={...tier};
+  out.id=String(out.id||uid('tier'));
+  out.companyId=String(out.companyId||'');
+  out.competitorId=String(out.competitorId||out.companyId||'');
+  out.tierName=String(out.tierName||'').trim();
+  out.priceAmount=String(out.priceAmount??'').trim();
+  out.priceCurrency=String(out.priceCurrency||'USD').trim().slice(0,12);
+  out.pricePeriod=PRICE_PERIODS.includes(String(out.pricePeriod))?String(out.pricePeriod):'unknown';
+  out.priceLabel=String(out.priceLabel||'').trim();
+  out.billingNotes=String(out.billingNotes||'').trim();
+  out.includedSeats=String(out.includedSeats||'').trim();
+  out.usageLimits=String(out.usageLimits||'').trim();
+  out.targetSegment=String(out.targetSegment||'').trim();
+  out.publicPricingAvailable=PUBLIC_PRICING_STATUS.includes(String(out.publicPricingAvailable))?String(out.publicPricingAvailable):'unknown';
+  out.sourceIds=normalizeStringArray(out.sourceIds);
+  out.evidenceCardIds=normalizeStringArray(out.evidenceCardIds);
+  out.confidenceStatus=EVIDENCE_CONFIDENCE_STATUS.includes(String(out.confidenceStatus))?String(out.confidenceStatus):'unknown';
+  out.reviewStatus=COMPETITOR_REVIEW_STATUS.includes(String(out.reviewStatus))?String(out.reviewStatus):'draft';
+  if(out.reviewStatus==='approved' && !tier.reviewedAt) out.reviewStatus='needs_review';
+  out.analystNotes=String(out.analystNotes||'').trim();
+  out.createdAt=String(out.createdAt||now);
+  out.updatedAt=String(out.updatedAt||out.createdAt);
+  return out;
+}
+function normalizeFeatureRow(row={}){
+  const now=new Date().toISOString();
+  const out={...row};
+  out.id=String(out.id||uid('feature'));
+  out.featureName=String(out.featureName||'').trim();
+  out.category=FEATURE_CATEGORIES.includes(String(out.category))?String(out.category):'other';
+  out.description=String(out.description||'').trim();
+  out.importance=COMPETITOR_PRIORITY.includes(String(out.importance))?String(out.importance):'medium';
+  out.clientRelevance=String(out.clientRelevance||'').trim();
+  out.sourceIds=normalizeStringArray(out.sourceIds);
+  out.evidenceCardIds=normalizeStringArray(out.evidenceCardIds);
+  out.createdAt=String(out.createdAt||now);
+  out.updatedAt=String(out.updatedAt||out.createdAt);
+  return out;
+}
+function normalizeMatrixCell(cell={}){
+  const now=new Date().toISOString();
+  const out={...cell};
+  out.rowId=String(out.rowId||'');
+  out.companyId=String(out.companyId||out.competitorId||'');
+  out.competitorId=String(out.competitorId||out.companyId||'');
+  out.id=String(out.id||stableId('cell',out.rowId,out.competitorId||out.companyId));
+  out.value=String(out.value||'').trim();
+  out.normalizedValue=String(out.normalizedValue||'unknown').trim()||'unknown';
+  out.availabilityStatus=MATRIX_AVAILABILITY_STATUS.includes(String(out.availabilityStatus))?String(out.availabilityStatus):'unknown';
+  out.notes=String(out.notes||'').trim();
+  out.sourceIds=normalizeStringArray(out.sourceIds);
+  out.evidenceCardIds=normalizeStringArray(out.evidenceCardIds);
+  out.confidenceStatus=EVIDENCE_CONFIDENCE_STATUS.includes(String(out.confidenceStatus))?String(out.confidenceStatus):'unknown';
+  out.reviewStatus=COMPETITOR_REVIEW_STATUS.includes(String(out.reviewStatus))?String(out.reviewStatus):'draft';
+  if(out.reviewStatus==='approved' && !cell.lastReviewedAt) out.reviewStatus='needs_review';
+  if(!out.sourceIds.length&&!out.evidenceCardIds.length&&out.reviewStatus==='approved') out.reviewStatus='needs_review';
+  out.lastReviewedAt=String(out.lastReviewedAt||'');
+  out.createdAt=String(out.createdAt||now);
+  out.updatedAt=String(out.updatedAt||out.createdAt);
+  return out;
+}
+function createPricingFeatureMatrix(input){
+  const matrix={...createDefaultPricingFeatureMatrix(),...(input||{})};
+  matrix.reviewStatus=COMPETITOR_REVIEW_STATUS.includes(String(matrix.reviewStatus))?String(matrix.reviewStatus):'draft';
+  if(matrix.reviewStatus==='approved'&&!input?.reviewedAt) matrix.reviewStatus='needs_review';
+  matrix.confidenceStatus=EVIDENCE_CONFIDENCE_STATUS.includes(String(matrix.confidenceStatus))?String(matrix.confidenceStatus):'unknown';
+  matrix.competitorIds=normalizeStringArray(matrix.competitorIds);
+  matrix.pricingTiers=(Array.isArray(matrix.pricingTiers)?matrix.pricingTiers:[]).map(normalizePricingTier);
+  matrix.featureRows=(Array.isArray(matrix.featureRows)?matrix.featureRows:[]).map(normalizeFeatureRow).filter(row=>row.featureName);
+  matrix.matrixCells=(Array.isArray(matrix.matrixCells)?matrix.matrixCells:[]).map(normalizeMatrixCell).filter(cell=>cell.rowId&&(cell.companyId||cell.competitorId));
+  return matrix;
+}
+function normalizePricingFeatureMatrix(reportData){
+  const report=reportData&&typeof reportData==='object'?reportData:{};
+  const base=createPricingFeatureMatrix(report.pricingFeatureMatrix&&typeof report.pricingFeatureMatrix==='object'?report.pricingFeatureMatrix:{});
+  const competitorIds=new Set((normalizeCompetitorProfiles(report).items||[]).filter(profile=>profile.status!=='ignored').map(profile=>profile.id));
+  const client=(report.companies||[]).find(c=>c.type==='client');
+  base.clientCompanyId=String(base.clientCompanyId||client?.id||'');
+  base.competitorIds=base.competitorIds.filter(id=>competitorIds.has(id));
+  const sourceIds=new Set((report.sourceRegistry?.items||[]).map(source=>source.id));
+  const evidenceIds=new Set((report.evidenceCards?.items||[]).map(card=>card.id));
+  const rowIds=new Set(base.featureRows.map(row=>row.id));
+  const cleanLinks=item=>{item.sourceIds=(item.sourceIds||[]).filter(id=>sourceIds.has(id)); item.evidenceCardIds=(item.evidenceCardIds||[]).filter(id=>evidenceIds.has(id)); return item;};
+  base.pricingTiers=base.pricingTiers.map(cleanLinks);
+  base.featureRows=base.featureRows.map(cleanLinks);
+  base.matrixCells=base.matrixCells.filter(cell=>rowIds.has(cell.rowId)).map(cleanLinks);
+  report.pricingFeatureMatrix=base;
+  return base;
+}
+function getPricingFeatureMatrix(reportData){return normalizePricingFeatureMatrix(reportData);}
+function updatePricingFeatureMatrix(reportData, patch){
+  const matrix=normalizePricingFeatureMatrix(reportData);
+  Object.assign(matrix,patch&&typeof patch==='object'?patch:{}, {updatedAt:new Date().toISOString()});
+  reportData.pricingFeatureMatrix=createPricingFeatureMatrix(matrix);
+  return reportData.pricingFeatureMatrix;
+}
+function addMatrixCompetitor(reportData, competitorId){
+  const profile=getCompetitorProfileById(reportData,competitorId);
+  if(!profile||profile.status==='archived'||profile.status==='ignored') return null;
+  const matrix=normalizePricingFeatureMatrix(reportData);
+  if(!matrix.competitorIds.includes(profile.id)) matrix.competitorIds.push(profile.id);
+  matrix.updatedAt=new Date().toISOString();
+  return matrix;
+}
+function removeMatrixCompetitor(reportData, competitorId){
+  const matrix=normalizePricingFeatureMatrix(reportData);
+  matrix.competitorIds=matrix.competitorIds.filter(id=>id!==competitorId);
+  matrix.updatedAt=new Date().toISOString();
+  return matrix;
+}
+function addPricingTier(reportData,input){const matrix=normalizePricingFeatureMatrix(reportData); const tier=normalizePricingTier(input); matrix.pricingTiers.push(tier); matrix.updatedAt=new Date().toISOString(); return tier;}
+function updatePricingTier(reportData,tierId,patch){const tier=normalizePricingFeatureMatrix(reportData).pricingTiers.find(item=>item.id===tierId); if(!tier) return null; Object.assign(tier,normalizePricingTier({...tier,...(patch||{}),id:tier.id,updatedAt:new Date().toISOString()})); return tier;}
+function deletePricingTier(reportData,tierId){const matrix=normalizePricingFeatureMatrix(reportData); matrix.pricingTiers=matrix.pricingTiers.filter(item=>item.id!==tierId); matrix.updatedAt=new Date().toISOString(); return matrix;}
+function addFeatureRow(reportData,input){const matrix=normalizePricingFeatureMatrix(reportData); const row=normalizeFeatureRow(input); if(!row.featureName) throw new Error('Feature name is required.'); matrix.featureRows.push(row); matrix.updatedAt=new Date().toISOString(); return row;}
+function updateFeatureRow(reportData,featureId,patch){const row=normalizePricingFeatureMatrix(reportData).featureRows.find(item=>item.id===featureId); if(!row) return null; Object.assign(row,normalizeFeatureRow({...row,...(patch||{}),id:row.id,updatedAt:new Date().toISOString()})); if(!row.featureName) throw new Error('Feature name is required.'); return row;}
+function deleteFeatureRow(reportData,featureId){const matrix=normalizePricingFeatureMatrix(reportData); matrix.featureRows=matrix.featureRows.filter(item=>item.id!==featureId); matrix.matrixCells=matrix.matrixCells.filter(cell=>cell.rowId!==featureId); matrix.updatedAt=new Date().toISOString(); return matrix;}
+function getMatrixCell(reportData,rowId,competitorId){const matrix=normalizePricingFeatureMatrix(reportData); return matrix.matrixCells.find(cell=>cell.rowId===rowId&&(cell.competitorId===competitorId||cell.companyId===competitorId))||null;}
+function updateMatrixCell(reportData,rowId,competitorId,patch){
+  const matrix=normalizePricingFeatureMatrix(reportData);
+  let cell=getMatrixCell(reportData,rowId,competitorId);
+  if(!cell){cell=normalizeMatrixCell({rowId,companyId:competitorId,competitorId}); matrix.matrixCells.push(cell);}
+  Object.assign(cell,normalizeMatrixCell({...cell,...(patch||{}),rowId,companyId:competitorId,competitorId,updatedAt:new Date().toISOString()}));
+  matrix.updatedAt=new Date().toISOString();
+  return cell;
+}
+function linkMatrixCellToEvidence(reportData,rowId,competitorId,evidenceCardId){const card=getEvidenceCardById(reportData,evidenceCardId); if(!card) return null; const cell=updateMatrixCell(reportData,rowId,competitorId,{}); if(!cell.evidenceCardIds.includes(card.id)) cell.evidenceCardIds.push(card.id); updateEvidenceCard(reportData,card.id,{matrixCellId:cell.id,featureRowId:rowId}); return cell;}
+function linkMatrixCellToSource(reportData,rowId,competitorId,sourceId){const source=getSourceById(reportData,sourceId); if(!source) return null; const cell=updateMatrixCell(reportData,rowId,competitorId,{}); if(!cell.sourceIds.includes(source.id)) cell.sourceIds.push(source.id); return cell;}
+function getEvidenceCardsByMatrixCell(reportData,rowId,competitorId){const cell=getMatrixCell(reportData,rowId,competitorId); const ids=new Set(cell?.evidenceCardIds||[]); return (normalizeEvidenceCards(reportData).items||[]).filter(card=>ids.has(card.id)||card.matrixCellId===cell?.id);}
+function getMatrixCellsNeedingReview(reportData){return (normalizePricingFeatureMatrix(reportData).matrixCells||[]).filter(cell=>cell.reviewStatus!=='approved'||!cell.sourceIds.length&&!cell.evidenceCardIds.length||getEvidenceCardsByMatrixCell(reportData,cell.rowId,cell.competitorId).some(card=>card.reviewStatus==='rejected'));}
+function getMatrixEvidenceCoverage(reportData){
+  const matrix=normalizePricingFeatureMatrix(reportData), cells=matrix.matrixCells||[];
+  if(!cells.length) return {total:0,covered:0,approvedEvidence:0,score:0};
+  let covered=0, approvedEvidence=0;
+  for(const cell of cells){const evidence=getEvidenceCardsByMatrixCell(reportData,cell.rowId,cell.competitorId).filter(card=>card.reviewStatus!=='rejected'); if(cell.sourceIds.length||evidence.length) covered++; if(evidence.some(card=>card.reviewStatus==='approved')) approvedEvidence++;}
+  return {total:cells.length,covered,approvedEvidence,score:Math.round((covered/cells.length)*100)};
+}
+function suggestMatrixRowsFromImportedTable(reportData, tableId){
+  const table=(reportData.tables||[]).find(t=>t.id===tableId), ds=table?dataset(table.datasetId):null;
+  if(!ds) return [];
+  return columns(ds).map(c=>c.name).filter(name=>/price|pricing|tier|feature|plan|limit|seat|integration|security|support|analytics|automation|report/i.test(name)).slice(0,12).map(name=>({featureName:name,category:/price|tier|plan/i.test(name)?'pricing':'other',sourceDatasetId:ds.id,requiresConfirmation:true}));
+}
+function createDefaultEvidenceCards(){
+  return {items:[], updatedAt:null};
+}
+function normalizeEvidenceCardItem(item){
+  const out=item&&typeof item==='object'?{...item}:{};
+  out.id=String(out.id||uid('evidence'));
+  out.claim=String(out.claim||'');
+  out.summary=String(out.summary||'');
+  out.sourceIds=Array.isArray(out.sourceIds)?out.sourceIds.map(String).filter(Boolean):[];
+  out.sectionId=String(out.sectionId||'');
+  out.materialIds=Array.isArray(out.materialIds)?out.materialIds.map(String).filter(Boolean):[];
+  out.companyId=String(out.companyId||'');
+  out.competitorId=String(out.competitorId||'');
+  out.evidenceType=EVIDENCE_TYPES.includes(String(out.evidenceType))?String(out.evidenceType):'observation';
+  out.reviewStatus=EVIDENCE_REVIEW_STATUS.includes(String(out.reviewStatus))?String(out.reviewStatus):'draft';
+  out.confidenceStatus=EVIDENCE_CONFIDENCE_STATUS.includes(String(out.confidenceStatus))?String(out.confidenceStatus):'unknown';
+  out.credibilityStatus=EVIDENCE_CREDIBILITY_STATUS.includes(String(out.credibilityStatus))?String(out.credibilityStatus):'unreviewed';
+  out.analystNotes=String(out.analystNotes||'');
+  out.reviewedAt=String(out.reviewedAt||'');
+  out.reviewedBy=String(out.reviewedBy||'');
+  out.reviewNotes=String(out.reviewNotes||'');
+  out.rejectionReason=String(out.rejectionReason||'');
+  out.generatedBy=String(out.generatedBy||'');
+  out.createdAt=String(out.createdAt||'');
+  out.updatedAt=String(out.updatedAt||out.createdAt||'');
+  return out;
+}
+function normalizeEvidenceCards(reportData){
+  const report=reportData&&typeof reportData==='object'?reportData:{};
+  const cards=Array.isArray(report.evidenceCards)
+    ? {items:report.evidenceCards, updatedAt:null}
+    : (report.evidenceCards&&typeof report.evidenceCards==='object'
+      ? report.evidenceCards
+      : createDefaultEvidenceCards());
+  cards.items=Array.isArray(cards.items)?cards.items.map(normalizeEvidenceCardItem):[];
+  cards.updatedAt=cards.updatedAt||null;
+  report.evidenceCards=cards;
+  return cards;
+}
+function createEvidenceCard(input={}){
+  const now=new Date().toISOString();
+  return normalizeEvidenceCardItem({
+    id:uid('evidence'),
+    claim:'',
+    summary:'',
+    sourceIds:[],
+    sectionId:'',
+    materialIds:[],
+    companyId:'',
+    competitorId:'',
+    evidenceType:'observation',
+    reviewStatus:'draft',
+    confidenceStatus:'unknown',
+    credibilityStatus:'unreviewed',
+    analystNotes:'',
+    reviewedAt:'',
+    reviewedBy:'',
+    reviewNotes:'',
+    rejectionReason:'',
+    createdAt:now,
+    updatedAt:now,
+    ...(input&&typeof input==='object'?input:{})
+  });
+}
+function getEvidenceCardById(reportData, evidenceCardId){
+  const cards=normalizeEvidenceCards(reportData);
+  return (cards.items||[]).find(card=>card.id===evidenceCardId)||null;
+}
+function updateEvidenceCard(reportData, evidenceCardId, patch){
+  const report=reportData&&typeof reportData==='object'?reportData:{};
+  const card=getEvidenceCardById(report, evidenceCardId);
+  if(!card) return null;
+  Object.assign(card, patch&&typeof patch==='object'?patch:{});
+  Object.assign(card, normalizeEvidenceCardItem(card));
+  card.updatedAt=new Date().toISOString();
+  report.evidenceCards.updatedAt=card.updatedAt;
+  return card;
+}
+function deleteEvidenceCard(reportData, evidenceCardId){
+  const cards=normalizeEvidenceCards(reportData);
+  const before=cards.items.length;
+  cards.items=cards.items.filter(card=>card.id!==evidenceCardId);
+  if(cards.items.length!==before) cards.updatedAt=new Date().toISOString();
+  return cards.items.length!==before;
+}
+function getEvidenceCardsBySection(reportData, sectionId){
+  const cards=normalizeEvidenceCards(reportData);
+  return (cards.items||[]).filter(card=>card.sectionId===sectionId);
+}
+function getEvidenceCardsBySource(reportData, sourceId){
+  const cards=normalizeEvidenceCards(reportData);
+  return (cards.items||[]).filter(card=>(card.sourceIds||[]).includes(sourceId));
+}
+function reviewActorLabel(){
+  return String(cloudSync.user?.email||cloudSync.user?.name||REPORT.meta?.reviewerName||'local analyst');
+}
+function setEvidenceReviewStatus(reportData, evidenceCardId, reviewStatus){
+  if(!EVIDENCE_REVIEW_STATUS.includes(String(reviewStatus))) return null;
+  const now=new Date().toISOString();
+  const patch={reviewStatus:String(reviewStatus), reviewedAt:now, reviewedBy:reviewActorLabel()};
+  if(reviewStatus!=='rejected') patch.rejectionReason='';
+  return updateEvidenceCard(reportData,evidenceCardId,patch);
+}
+function approveEvidenceCard(reportData, evidenceCardId){
+  return setEvidenceReviewStatus(reportData,evidenceCardId,'approved');
+}
+function rejectEvidenceCard(reportData, evidenceCardId){
+  return setEvidenceReviewStatus(reportData,evidenceCardId,'rejected');
+}
+function markEvidenceNeedsReview(reportData, evidenceCardId){
+  return setEvidenceReviewStatus(reportData,evidenceCardId,'needs_review');
+}
+function updateEvidenceAnalystNotes(reportData, evidenceCardId, notes){
+  return updateEvidenceCard(reportData,evidenceCardId,{reviewNotes:String(notes||'')});
+}
+function getEvidenceCardsForReview(reportData, filters={}){
+  const cards=normalizeEvidenceCards(reportData).items||[];
+  const status=String(filters.reviewStatus||filters.status||'all');
+  return status==='all'?cards:cards.filter(card=>card.reviewStatus===status);
+}
+function getApprovedEvidenceCards(reportData){
+  return getEvidenceCardsForReview(reportData,{reviewStatus:'approved'});
+}
+function draftBlockTypeForEvidence(evidenceCard){
+  const map={
+    fact:'paragraph',
+    metric:'metric',
+    quote:'paragraph',
+    observation:'paragraph',
+    comparison:'comparison_note',
+    risk:'risk_note',
+    opportunity:'opportunity_note',
+    recommendation_input:'recommendation_note'
+  };
+  return map[String(evidenceCard?.evidenceType||'')]||'paragraph';
+}
+function normalizeDraftBlock(block){
+  const out=block&&typeof block==='object'?{...block}:{};
+  out.id=String(out.id||uid('draft'));
+  out.type=DRAFT_BLOCK_TYPES.includes(String(out.type))?String(out.type):'paragraph';
+  out.title=String(out.title||'Draft note');
+  out.text=String(out.text||'');
+  out.sectionId=String(out.sectionId||'');
+  out.evidenceCardIds=Array.isArray(out.evidenceCardIds)?out.evidenceCardIds.map(String).filter(Boolean):[];
+  out.sourceIds=Array.isArray(out.sourceIds)?out.sourceIds.map(String).filter(Boolean):[];
+  out.generatedBy=String(out.generatedBy||'rule_based');
+  out.createdAt=String(out.createdAt||'');
+  out.updatedAt=String(out.updatedAt||out.createdAt||'');
+  out.status=DRAFT_BLOCK_STATUS.includes(String(out.status))?String(out.status):'draft';
+  return out;
+}
+function mapEvidenceToReportSection(reportData, evidenceCard){
+  const preferred=String(evidenceCard?.sectionId||'');
+  if(preferred && getReportSection(reportData,preferred)) return preferred;
+  const type=String(evidenceCard?.evidenceType||'');
+  if(type==='risk'||type==='opportunity') return 'risksOpportunities';
+  if(type==='recommendation_input') return 'recommendations';
+  if(type==='comparison') return 'competitiveLandscape';
+  return 'sourcesEvidence';
+}
+function createDraftBlockFromEvidence(evidenceCard, sources){
+  const now=new Date().toISOString();
+  const sourceIds=[...new Set([...(evidenceCard.sourceIds||[]),...(sources||[]).map(source=>source.id).filter(Boolean)])];
+  const text=String(evidenceCard.claim||evidenceCard.summary||'').trim();
+  const type=draftBlockTypeForEvidence(evidenceCard);
+  return normalizeDraftBlock({
+    id:uid('draft'),
+    type,
+    title:String(evidenceCard.evidenceType||'evidence').replace(/_/g,' '),
+    text,
+    sectionId:evidenceCard.sectionId||'',
+    evidenceCardIds:[evidenceCard.id],
+    sourceIds,
+    generatedBy:'rule_based',
+    createdAt:now,
+    updatedAt:now,
+    status:'draft'
+  });
+}
+function buildDraftBlocksForSection(reportData, sectionId){
+  const report=normalizeReportSchema(reportData);
+  normalizeSourceRegistry(report);
+  const sourceMap=new Map((report.sourceRegistry.items||[]).map(source=>[source.id,source]));
+  return getApprovedEvidenceCards(report)
+    .filter(card=>mapEvidenceToReportSection(report,card)===sectionId)
+    .map(card=>{
+      const sources=(card.sourceIds||[]).map(id=>sourceMap.get(id)).filter(Boolean);
+      const block=createDraftBlockFromEvidence({...card,sectionId},sources);
+      block.sectionId=sectionId;
+      return block;
+    })
+    .filter(block=>block.text);
+}
+function clearGeneratedDraftBlocks(reportData){
+  const report=normalizeReportSchema(reportData);
+  let removed=0;
+  for(const section of (report.reportSections||[])){
+    const before=Array.isArray(section.blocks)?section.blocks.length:0;
+    section.blocks=(section.blocks||[]).filter(block=>String(block?.generatedBy||'')!=='rule_based');
+    removed += before-section.blocks.length;
+    if(section.blocks.length===0 && section.status==='draft') section.status='empty';
+  }
+  return removed;
+}
+function buildRuleBasedReportDraft(reportData){
+  const report=normalizeReportSchema(reportData);
+  normalizeEvidenceCards(report);
+  normalizeSourceRegistry(report);
+  clearGeneratedDraftBlocks(report);
+  let blocksCreated=0;
+  const sectionsTouched=new Set();
+  for(const section of (report.reportSections||[])){
+    const blocks=buildDraftBlocksForSection(report,section.id);
+    if(!blocks.length) continue;
+    section.blocks=[...(section.blocks||[]),...blocks];
+    section.status=section.status==='approved'?'approved':'draft';
+    section.updatedAt=new Date().toISOString();
+    blocksCreated += blocks.length;
+    sectionsTouched.add(section.id);
+  }
+  return {blocksCreated, sectionsTouched:[...sectionsTouched]};
+}
+function isBlockClientVisible(block){
+  if(!block || typeof block!=='object') return false;
+  const status=String(block.status||'draft');
+  return DRAFT_BLOCK_STATUS.includes(status) && String(block.text||'').trim();
+}
+function isEvidenceClientVisible(evidenceCard){
+  return evidenceCard && evidenceCard.reviewStatus==='approved';
+}
+function clientBlockSort(a,b){
+  const rank={approved:0,needs_review:1,draft:2};
+  return (rank[String(a.status||'draft')]??9)-(rank[String(b.status||'draft')]??9);
+}
+function buildClientExportDataV2(reportData){
+  const report=normalizeReportSchema(clone(reportData||{}));
+  normalizeSourceRegistry(report);
+  normalizeEvidenceCards(report);
+  const visibleEvidence=(report.evidenceCards.items||[]).filter(isEvidenceClientVisible);
+  const evidenceIds=new Set(visibleEvidence.map(card=>card.id));
+  const usedSourceIds=new Set();
+  const sections=(report.reportSections||[]).map(section=>{
+    const blocks=(section.blocks||[])
+      .map(normalizeDraftBlock)
+      .filter(isBlockClientVisible)
+      .filter(block=>!(block.evidenceCardIds||[]).length || (block.evidenceCardIds||[]).some(id=>evidenceIds.has(id)))
+      .sort(clientBlockSort);
+    for(const block of blocks) (block.sourceIds||[]).forEach(id=>usedSourceIds.add(id));
+    return {
+      id:section.id,
+      title:section.title,
+      order:section.order,
+      blocks
+    };
+  }).filter(section=>section.blocks.length);
+  for(const card of visibleEvidence) (card.sourceIds||[]).forEach(id=>usedSourceIds.add(id));
+  const sectionTitles=new Map((report.reportSections||[]).map(section=>[section.id,section.title]));
+  const sources=(report.sourceRegistry.items||[])
+    .filter(source=>usedSourceIds.has(source.id))
+    .map(source=>({
+      id:source.id,
+      title:source.title,
+      sourceType:source.sourceType,
+      credibilityStatus:source.credibilityStatus,
+      linkedSectionIds:(source.linkedSectionIds||[]).filter(Boolean),
+      linkedSections:(source.linkedSectionIds||[]).map(id=>sectionTitles.get(id)).filter(Boolean)
+    }));
+  const evidence=visibleEvidence.map(card=>({
+    id:card.id,
+    claim:card.claim,
+    summary:card.summary,
+    sectionId:card.sectionId,
+    sourceIds:card.sourceIds||[],
+    evidenceType:card.evidenceType,
+    confidenceStatus:card.confidenceStatus,
+    credibilityStatus:card.credibilityStatus
+  }));
+  return {
+    clientExportVersion:2,
+    generatedAt:new Date().toISOString(),
+    title:report.meta?.title||'Marketing Report Studio',
+    sections,
+    sources,
+    evidence
+  };
+}
+function prepareClientExportReportV2(reportData){
+  const report=clone(reportData||{});
+  report.meta=report.meta||{};
+  if(Number(report.reportSchemaVersion)>=REPORT_SCHEMA_VERSION && Array.isArray(report.reportSections)){
+    report.meta.clientExportVersion=2;
+    report.clientExportV2=buildClientExportDataV2(report);
+    if(report.evidenceCards?.items){
+      report.evidenceCards.items=(report.evidenceCards.items||[])
+        .filter(isEvidenceClientVisible)
+        .map(card=>{
+          const out=normalizeEvidenceCardItem(card);
+          delete out.analystNotes;
+          delete out.reviewNotes;
+          delete out.rejectionReason;
+          delete out.reviewedBy;
+          delete out.generatedBy;
+          return out;
+        });
+    }
+    if(report.sourceRegistry?.items){
+      const usedSourceIds=new Set((report.clientExportV2.sources||[]).map(source=>source.id));
+      report.sourceRegistry.items=(report.sourceRegistry.items||[])
+        .filter(source=>usedSourceIds.has(source.id))
+        .map(source=>({
+          id:source.id,
+          materialId:source.materialId,
+          title:source.title,
+          sourceType:source.sourceType,
+          sourceKind:source.sourceKind,
+          mimeType:source.mimeType,
+          extension:source.extension,
+          fileName:source.fileName,
+          url:source.url,
+          linkedCompanyId:source.linkedCompanyId,
+          linkedSectionIds:source.linkedSectionIds,
+          extractedTextStatus:source.extractedTextStatus,
+          evidenceStatus:source.evidenceStatus,
+          credibilityStatus:source.credibilityStatus,
+          notes:'',
+          createdAt:source.createdAt,
+          updatedAt:source.updatedAt
+        }));
+    }
+    if(report.files?.length){
+      const usedFileIds=new Set((report.sourceRegistry?.items||[])
+        .map(source=>String(source.materialId||'').replace(/^file:/,''))
+        .filter(Boolean));
+      report.files=(report.files||[])
+        .filter(file=>usedFileIds.has(String(file.id||'')))
+        .map(file=>({
+          id:file.id,
+          name:file.name,
+          path:file.path,
+          folder:file.folder,
+          ext:file.ext,
+          type:file.type,
+          size:file.size,
+          isData:Boolean(file.isData),
+          companyId:file.companyId||'',
+          createdAt:file.createdAt||''
+        }));
+    }
+  }
+  delete report.aiAssistance;
+  delete report.aiReviewQueue;
+  report.aiAuditLog=sanitizeAiAuditForClientExport(report);
+  delete report.aiAuditLog;
+  delete report.versionRetentionPolicy;
+  delete report.versionRetentionState;
+  delete report.governanceSettings;
+  delete report.onboardingState;
+  delete report.firstReportFlow;
+  delete report.competitorProfiles;
+  delete report.pricingFeatureMatrix;
+  return report;
+}
+function sanitizeClientExportData(reportData){
+  const report=prepareClientExportReportV2(clone(reportData||{}));
+  report.meta=report.meta||{};
+  report.meta.accessMode='viewer';
+  report.meta.clientLocked=true;
+  report.meta.clientPackageSanitized=true;
+  delete report.meta.accessToken;
+  delete report.meta.cloudflareAccessToken;
+  delete report.meta.apiToken;
+  delete report.meta.workspace;
+  delete report.aiAssistance;
+  delete report.aiReviewQueue;
+  report.aiAuditLog=sanitizeAiAuditForClientExport(report);
+  delete report.aiAuditLog;
+  delete report.versionRetentionPolicy;
+  delete report.versionRetentionState;
+  delete report.governanceSettings;
+  delete report.onboardingState;
+  delete report.firstReportFlow;
+  delete report.competitorProfiles;
+  delete report.pricingFeatureMatrix;
+  return report;
+}
+function buildSourcesIndexForExport(reportData){
+  const report=sanitizeClientExportData(reportData);
+  const sourceIds=new Set((report.clientExportV2?.sources||[]).map(source=>source.id));
+  return (report.sourceRegistry?.items||[])
+    .filter(source=>sourceIds.has(source.id))
+    .map(source=>({
+      id:source.id,
+      title:source.title,
+      sourceType:source.sourceType,
+      fileName:source.fileName,
+      linkedSectionIds:source.linkedSectionIds||[],
+      credibilityStatus:source.credibilityStatus,
+      evidenceStatus:source.evidenceStatus
+    }));
+}
+function buildEvidenceSummaryForExport(reportData){
+  const report=sanitizeClientExportData(reportData);
+  const sections=new Map((report.reportSections||[]).map(section=>[section.id,section.title]));
+  return (report.evidenceCards?.items||[])
+    .filter(isEvidenceClientVisible)
+    .map(card=>({
+      id:card.id,
+      claim:card.claim,
+      summary:card.summary,
+      linkedSectionId:card.sectionId,
+      linkedSectionTitle:sections.get(card.sectionId)||'',
+      sourceIds:card.sourceIds||[],
+      confidenceStatus:card.confidenceStatus,
+      credibilityStatus:card.credibilityStatus
+    }));
+}
+function buildClientPackageManifest(reportData){
+  const report=sanitizeClientExportData(reportData);
+  return {
+    packageVersion:1,
+    exportedAt:new Date().toISOString(),
+    reportTitle:report.meta?.title||'Marketing Report Studio',
+    clientExportVersion:Number(report.meta?.clientExportVersion||0)||2,
+    files:['report.html','report-data.json','sources-index.json','evidence-summary.json','README.txt','print.css']
+  };
+}
+function buildClientReadmeText(reportData, assetCount=0){
+  const manifest=buildClientPackageManifest(reportData);
+  return [
+    `${manifest.reportTitle} - Client Export Package`,
+    '',
+    'This package is a client-facing export from Marketing Report Studio.',
+    '',
+    'Included files:',
+    '- report.html: open this file in a browser to view the client report.',
+    '- report-data.json: sanitized client-facing report snapshot.',
+    '- sources-index.json: source index used by the report.',
+    '- evidence-summary.json: approved, client-safe evidence summary.',
+    '- print.css: print/PDF-ready styles for report.html.',
+    assetCount ? `- assets/: ${assetCount} exported source asset file(s).` : '- assets/: no separate asset files were available for this package.',
+    '',
+    'To create a PDF:',
+    '1. Open report.html in a browser.',
+    '2. Use Print.',
+    '3. Choose Save as PDF.',
+    '',
+    'report.html is locked for client viewing and does not require cloud login or API access.',
+    'Rejected evidence, review controls, editing controls, and analyst-only notes are not included.',
+    '',
+    `Exported at: ${manifest.exportedAt}`,
+    `Package version: ${manifest.packageVersion}`,
+    `Client export version: ${manifest.clientExportVersion}`,
+    ''
+  ].join('\n');
+}
+function buildPrintCss(){
+  return [
+    '@media print {',
+    '  body { background: #fff !important; color: #111 !important; }',
+    '  .topbar, .files, .analytics, .splitX, .splitY, .readerTabs, .appNotice, .toast, .adminOnly, .rolePill, .cloudStatus { display: none !important; }',
+    '  .app, .layout, .reader, .readerBody { display: block !important; height: auto !important; overflow: visible !important; background: #fff !important; color: #111 !important; }',
+    '  .reader { border: 0 !important; box-shadow: none !important; }',
+    '  .clientReportV2 { max-width: 7.2in !important; margin: 0 auto !important; padding: 0 !important; }',
+    '  .heroBlock, .widget, .clientBlock { break-inside: avoid; page-break-inside: avoid; box-shadow: none !important; background: #fff !important; color: #111 !important; }',
+    '  .clientSection { break-before: auto; page-break-before: auto; margin-top: 18pt !important; }',
+    '  .widgetHead, .widgetBody { background: #fff !important; color: #111 !important; border-color: #ccc !important; }',
+    '  .itemMeta, .pill { color: #333 !important; border-color: #999 !important; }',
+    '  a[href]::after { content: " (" attr(href) ")"; font-size: 9pt; }',
+    '}',
+    ''
+  ].join('\n');
+}
+function injectPackagePrintCss(html, css){
+  const style=`<style id="clientPackagePrintCss">\n${css.replace(/<\/style/gi,'<\\/style')}\n</style>`;
+  return String(html||'').replace('</head>', `${style}\n</head>`);
+}
+async function buildClientPackageZip(reportData, reportHtml, zipEntries=[]){
+  if(typeof JSZip==='undefined') throw new Error('JSZip is unavailable. Client package ZIP cannot be created.');
+  const report=sanitizeClientExportData(reportData);
+  const zip=new JSZip();
+  const printCss=buildPrintCss();
+  const assetEntries=Array.isArray(zipEntries)?zipEntries:[];
+  zip.file('report.html', injectPackagePrintCss(reportHtml,printCss));
+  zip.file('report-data.json', JSON.stringify(report,null,2));
+  zip.file('sources-index.json', JSON.stringify(buildSourcesIndexForExport(report),null,2));
+  zip.file('evidence-summary.json', JSON.stringify(buildEvidenceSummaryForExport(report),null,2));
+  zip.file('README.txt', buildClientReadmeText(report,assetEntries.length));
+  zip.file('print.css', printCss);
+  zip.file('manifest.json', JSON.stringify(buildClientPackageManifest(report),null,2));
+  for(const entry of assetEntries){
+    if(!entry?.zipPath || !entry?.bytes) continue;
+    zip.file(`assets/${entry.zipPath}`, entry.bytes);
+  }
+  return zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}});
+}
+function scrubInternalValue(value){
+  if(Array.isArray(value)) return value.map(scrubInternalValue);
+  if(!value||typeof value!=='object') return value;
+  const out={};
+  for(const [key,val] of Object.entries(value)){
+    if(/(api[_-]?key|token|secret|password|authorization|cookie|env|environment|cloudflareAccessToken|accessToken|privateKey|headers|stack|systemPrompt|hiddenPrompt|rawProvider|rawResponse|localHandle|handle)$/i.test(key)) continue;
+    if(key==='localPathLabel' || key==='path') continue;
+    out[key]=scrubInternalValue(val);
+  }
+  return out;
+}
+function sanitizeInternalAuditExport(data){
+  return scrubInternalValue(clone(data||{}));
+}
+function buildInternalAuditManifest(reportData){
+  const report=normalizeReport(clone(reportData||{}));
+  const checklist=runReportQualityChecklist(report);
+  return sanitizeInternalAuditExport({
+    packageType:'internal_audit_package',
+    packageVersion:1,
+    exportedAt:new Date().toISOString(),
+    reportTitle:report.meta?.title||'Marketing Report Studio',
+    reportId:report.meta?.reportId||report.meta?.id||'',
+    reportSchemaVersion:report.reportSchemaVersion||REPORT_SCHEMA_VERSION,
+    clientExportVersion:report.meta?.clientExportVersion||report.clientExportV2?.clientExportVersion||null,
+    auditEventCount:(report.aiAuditLog?.events||[]).length,
+    reviewQueueItemCount:(report.aiReviewQueue?.items||[]).length,
+    evidenceCardCount:(report.evidenceCards?.items||[]).length,
+    sourceCount:(report.sourceRegistry?.items||[]).length,
+    qualityReadinessStatus:checklist.status,
+    exportedByRole:currentAiUser().role,
+    actorLabel:reviewActorLabel(),
+    files:['internal-report-audit.json','ai-review-queue.json','ai-provenance-log.json','evidence-cards.json','source-registry.json','source-coverage-summary.json','quality-checklist.json','report-sections-summary.json','materials-inventory.json','draft-blocks-summary.json','export-readiness-summary.json','README-internal.txt']
+  });
+}
+function buildAiReviewQueueExport(reportData){
+  const queue=normalizeAiReviewQueue(clone(reportData||{}));
+  return sanitizeInternalAuditExport({items:(queue.items||[]).map(item=>({id:item.id,suggestionType:item.suggestionType,title:item.title,summary:item.summary,reviewStatus:item.reviewStatus,confidenceStatus:item.confidenceStatus,sourceIds:item.sourceIds,evidenceCardIds:item.evidenceCardIds,materialIds:item.materialIds,sectionId:item.sectionId,warnings:item.warnings,analystNotes:item.analystNotes,rejectionReason:item.rejectionReason,convertedId:item.convertedId,outputRefs:item.outputRefs,originalTaskRunId:item.originalTaskRunId,originalSuggestionId:item.originalSuggestionId,provenanceId:item.provenanceId,providerMode:item.providerMode,generatedBy:item.generatedBy,createdAt:item.createdAt,updatedAt:item.updatedAt,reviewedAt:item.reviewedAt,reviewedBy:item.reviewedBy})),updatedAt:queue.updatedAt});
+}
+function buildAiProvenanceExport(reportData){
+  const report=clone(reportData||{});
+  const log=normalizeAiAuditLog(report);
+  const events=log.events||[];
+  return sanitizeInternalAuditExport({
+    provenance:(log.provenance||[]).map(record=>({...record,reviewStatusHistory:events.filter(event=>event.suggestionId===record.suggestionId).map(event=>({eventType:event.eventType,statusBefore:event.statusBefore,statusAfter:event.statusAfter,outputType:event.outputType,outputId:event.outputId,createdAt:event.createdAt,warnings:event.warnings,errorCode:event.errorCode}))})),
+    events,
+    updatedAt:log.updatedAt
+  });
+}
+function buildEvidenceCardsAuditExport(reportData){
+  const cards=normalizeEvidenceCards(clone(reportData||{}));
+  return sanitizeInternalAuditExport({items:(cards.items||[]).map(card=>({id:card.id,claim:card.claim,summary:card.summary,evidenceType:card.evidenceType,reviewStatus:card.reviewStatus,confidenceStatus:card.confidenceStatus,credibilityStatus:card.credibilityStatus,sourceIds:card.sourceIds,materialIds:card.materialIds,sectionId:card.sectionId,generatedBy:card.generatedBy,originalSuggestionId:card.originalSuggestionId||'',originalTaskRunId:card.originalTaskRunId||'',provenanceId:card.provenanceId||'',analystNotes:card.analystNotes||'',reviewNotes:card.reviewNotes||'',rejectionReason:card.rejectionReason||'',reviewedAt:card.reviewedAt||'',reviewedBy:card.reviewedBy||'',createdAt:card.createdAt,updatedAt:card.updatedAt})),updatedAt:cards.updatedAt});
+}
+function buildSourceRegistryAuditExport(reportData){
+  const registry=normalizeSourceRegistry(clone(reportData||{}));
+  return sanitizeInternalAuditExport({items:(registry.items||[]).map(source=>({id:source.id,materialId:source.materialId,title:source.title,sourceType:source.sourceType,sourceKind:source.sourceKind,mimeType:source.mimeType,extension:source.extension,fileName:source.fileName,url:source.url,linkedCompanyId:source.linkedCompanyId,linkedSectionIds:source.linkedSectionIds,extractedTextStatus:source.extractedTextStatus,evidenceStatus:source.evidenceStatus,credibilityStatus:source.credibilityStatus,notes:source.notes,createdAt:source.createdAt,updatedAt:source.updatedAt})),updatedAt:registry.updatedAt});
+}
+function buildSourceCoverageSummaryExport(reportData){
+  const report=clone(reportData||{});
+  const preview=latestAiSourceCoveragePreview(report)?.outputPreview||null;
+  const checklist=runReportQualityChecklist(report);
+  return sanitizeInternalAuditExport({preview:preview?{taskRunId:preview.taskRunId||'',taskType:preview.taskType,providerMode:preview.providerMode||'',overallCoverageStatus:preview.overallCoverageStatus,coverageScore:preview.coverageScore,sectionCoverage:preview.sectionCoverage||[],coverageGaps:preview.coverageGaps||[],weakSources:preview.weakSources||[],suggestedNextSources:preview.suggestedNextSources||[],warnings:preview.warnings||[]}:null,checklistSourceItems:checklist.items.filter(item=>['sources','source_coverage'].includes(item.category))});
+}
+function buildQualityChecklistExport(reportData){
+  const result=runReportQualityChecklist(reportData);
+  return sanitizeInternalAuditExport(result);
+}
+function buildReportSectionsSummaryExport(reportData){
+  const report=normalizeReportSchema(clone(reportData||{}));
+  return sanitizeInternalAuditExport({sections:(report.reportSections||[]).map(section=>({id:section.id,title:section.title,type:section.type,order:section.order,status:section.status,blockCount:(section.blocks||[]).length,evidenceCardIds:[...new Set((section.blocks||[]).flatMap(block=>block.evidenceCardIds||[]))],sourceIds:[...new Set((section.blocks||[]).flatMap(block=>block.sourceIds||[]))]}))});
+}
+function buildMaterialsInventoryAuditExport(reportData){
+  const inventory=normalizeMaterialsInventory(clone(reportData||{}));
+  return sanitizeInternalAuditExport({items:(inventory.items||[]).map(item=>({id:item.id,name:item.name,type:item.type,sourceKind:item.sourceKind,mimeType:item.mimeType,extension:item.extension,sizeLabel:item.sizeLabel,linkedCompanyId:item.linkedCompanyId,linkedSectionId:item.linkedSectionId,status:item.status,createdAt:item.createdAt,updatedAt:item.updatedAt})),updatedAt:inventory.updatedAt});
+}
+function buildDraftBlocksSummaryExport(reportData){
+  const report=normalizeReportSchema(clone(reportData||{}));
+  return sanitizeInternalAuditExport({items:(report.reportSections||[]).flatMap(section=>(section.blocks||[]).map(block=>({id:block.id,title:block.title,type:block.type,sectionId:block.sectionId||section.id,status:block.status,generatedBy:block.generatedBy,sourceIds:block.sourceIds||[],evidenceCardIds:block.evidenceCardIds||[],originalSuggestionId:block.originalSuggestionId||'',originalTaskRunId:block.originalTaskRunId||'',provenanceId:block.provenanceId||'',createdAt:block.createdAt,updatedAt:block.updatedAt})))});
+}
+function buildInternalReportAuditJson(reportData){
+  const report=normalizeReport(clone(reportData||{}));
+  return sanitizeInternalAuditExport({manifest:buildInternalAuditManifest(report),meta:{title:report.meta?.title||'',companyName:report.meta?.companyName||'',updatedAt:report.meta?.updatedAt||'',isDemoReport:Boolean(report.meta?.isDemoReport)},readiness:getExportReadinessStatus(report),counts:{sections:(report.reportSections||[]).length,materials:(report.materialsInventory?.items||[]).length,sources:(report.sourceRegistry?.items||[]).length,evidenceCards:(report.evidenceCards?.items||[]).length,reviewQueue:(report.aiReviewQueue?.items||[]).length,auditEvents:(report.aiAuditLog?.events||[]).length}});
+}
+function buildInternalReadmeText(reportData){
+  const manifest=buildInternalAuditManifest(reportData);
+  return [
+    `${manifest.reportTitle} - Internal Audit Package`,
+    '',
+    'This package is for internal analyst/editor review only.',
+    'It is not a client-facing deliverable and should not be sent to clients unless manually reviewed.',
+    '',
+    'It may contain internal review statuses, AI suggestion metadata, provenance records, analyst notes, and readiness risks.',
+    'Client-facing export is separate and remains sanitized.',
+    '',
+    'No API keys, Cloudflare secrets, environment variables, hidden prompts, raw provider headers, or raw provider stack traces are included by design.',
+    'AI suggestions require human review before they become client-ready content.',
+    '',
+    `Exported at: ${manifest.exportedAt}`,
+    `Readiness: ${manifest.qualityReadinessStatus}`,
+    ''
+  ].join('\n');
+}
+async function buildInternalAuditPackage(reportData, options={}){
+  if(typeof JSZip==='undefined') throw new Error('JSZip is unavailable. Internal audit package ZIP cannot be created.');
+  const report=normalizeReport(clone(reportData||{}));
+  const zip=new JSZip();
+  const files={
+    'manifest.json':buildInternalAuditManifest(report),
+    'internal-report-audit.json':buildInternalReportAuditJson(report),
+    'ai-review-queue.json':buildAiReviewQueueExport(report),
+    'ai-provenance-log.json':buildAiProvenanceExport(report),
+    'evidence-cards.json':buildEvidenceCardsAuditExport(report),
+    'source-registry.json':buildSourceRegistryAuditExport(report),
+    'source-coverage-summary.json':buildSourceCoverageSummaryExport(report),
+    'quality-checklist.json':buildQualityChecklistExport(report),
+    'report-sections-summary.json':buildReportSectionsSummaryExport(report),
+    'materials-inventory.json':buildMaterialsInventoryAuditExport(report),
+    'draft-blocks-summary.json':buildDraftBlocksSummaryExport(report),
+    'export-readiness-summary.json':{readiness:getExportReadinessStatus(report),checklist:buildQualityChecklistExport(report)}
+  };
+  for(const [name,value] of Object.entries(files)) zip.file(name, JSON.stringify(sanitizeInternalAuditExport(value),null,2));
+  zip.file('README-internal.txt', buildInternalReadmeText(report));
+  return zip.generateAsync({type:options.type||'blob',compression:'DEFLATE',compressionOptions:{level:6}});
+}
+function createReportVersionSnapshot(reportData){
+  const report=normalizeReport(clone(reportData||{}));
+  const checklist=runReportQualityChecklist(report);
+  return normalizeReportVersionSnapshot(sanitizeInternalAuditExport({
+    id:uid('rvs'),
+    versionId:report.meta?.versionId||cloudSync.version||report.meta?.savedAt||report.meta?.updatedAt||'current',
+    createdAt:new Date().toISOString(),
+    reportTitle:report.meta?.title||'Marketing Report Studio',
+    reportSchemaVersion:report.reportSchemaVersion||REPORT_SCHEMA_VERSION,
+    clientExportVersion:report.meta?.clientExportVersion||report.clientExportV2?.clientExportVersion||null,
+    sections:report.reportSections||[],
+    evidenceCards:report.evidenceCards?.items||[],
+    sourceRegistry:report.sourceRegistry?.items||[],
+    materialsInventory:report.materialsInventory?.items||[],
+    aiReviewQueue:report.aiReviewQueue?.items||[],
+    aiAuditSummary:{eventCount:(report.aiAuditLog?.events||[]).length,provenanceCount:(report.aiAuditLog?.provenance||[]).length,lastEventAt:(report.aiAuditLog?.events||[]).map(event=>event.createdAt).filter(Boolean).sort().pop()||''},
+    qualityChecklist:checklist,
+    canExportClient:!checklist.blockers.length,
+    clientSafetyStatus:checklist.clientSafetyStatus,
+    unsafeClientKeys:findUnsafeClientKeys(sanitizeClientExportData(report)).filter(key=>!/^clientExportV2/.test(key))
+  }));
+}
+function normalizeReportVersionSnapshot(snapshot){
+  const out=snapshot&&typeof snapshot==='object'?{...snapshot}:{};
+  out.id=String(out.id||uid('rvs'));
+  out.versionId=String(out.versionId||out.id);
+  out.createdAt=String(out.createdAt||new Date().toISOString());
+  out.reportTitle=String(out.reportTitle||'Marketing Report Studio');
+  out.sections=Array.isArray(out.sections)?out.sections.map(normalizeReportSection):[];
+  out.evidenceCards=Array.isArray(out.evidenceCards)?out.evidenceCards.map(normalizeEvidenceCardItem):[];
+  out.sourceRegistry=Array.isArray(out.sourceRegistry)?out.sourceRegistry.map(normalizeSourceRegistryItem):[];
+  out.materialsInventory=Array.isArray(out.materialsInventory)?out.materialsInventory.map(normalizeMaterialItem):[];
+  out.aiReviewQueue=Array.isArray(out.aiReviewQueue)?out.aiReviewQueue.map(normalizeAiReviewQueueItem):[];
+  out.aiAuditSummary=out.aiAuditSummary&&typeof out.aiAuditSummary==='object'?out.aiAuditSummary:{eventCount:0,provenanceCount:0,lastEventAt:''};
+  out.qualityChecklist=out.qualityChecklist&&typeof out.qualityChecklist==='object'?out.qualityChecklist:{status:'unknown',items:[],blockers:[],warnings:[],passed:[],clientSafetyStatus:'unknown'};
+  out.canExportClient=Boolean(out.canExportClient);
+  out.clientSafetyStatus=String(out.clientSafetyStatus||out.qualityChecklist.clientSafetyStatus||'unknown');
+  out.unsafeClientKeys=Array.isArray(out.unsafeClientKeys)?out.unsafeClientKeys.map(String):[];
+  return out;
+}
+function stableDiffValue(value){
+  return JSON.stringify(value, Object.keys(value&&typeof value==='object'?value:{}).sort());
+}
+function diffListById(previous,next,idKey,labelFn,changeFn){
+  const prevMap=new Map((previous||[]).map(item=>[String(item?.[idKey]||''),item]).filter(([id])=>id));
+  const nextMap=new Map((next||[]).map(item=>[String(item?.[idKey]||''),item]).filter(([id])=>id));
+  const ids=new Set([...prevMap.keys(),...nextMap.keys()]);
+  const changes=[];
+  for(const id of ids){
+    const before=prevMap.get(id), after=nextMap.get(id);
+    const changeType=!before?'added':(!after?'removed':(stableDiffValue(before)!==stableDiffValue(after)?'changed':'unchanged'));
+    if(changeType==='unchanged') continue;
+    changes.push(changeFn(id,before,after,changeType,labelFn(before||after,id)));
+  }
+  return changes;
+}
+function blockSignature(block){return JSON.stringify({id:block.id,type:block.type,title:block.title,text:block.text,status:block.status,sourceIds:block.sourceIds||[],evidenceCardIds:block.evidenceCardIds||[]});}
+function diffReportSections(previousSnapshot,nextSnapshot){
+  const prev=normalizeReportVersionSnapshot(previousSnapshot), next=normalizeReportVersionSnapshot(nextSnapshot);
+  return diffListById(prev.sections,next.sections,'id',section=>section?.title||'',(id,before,after,changeType,label)=>{
+    const beforeBlocks=before?.blocks||[], afterBlocks=after?.blocks||[];
+    const beforeById=new Map(beforeBlocks.map(block=>[block.id,block]));
+    const afterById=new Map(afterBlocks.map(block=>[block.id,block]));
+    const blockIds=new Set([...beforeById.keys(),...afterById.keys()].filter(Boolean));
+    let blocksAdded=0, blocksRemoved=0, blocksChanged=0;
+    for(const blockId of blockIds){
+      const b=beforeById.get(blockId), a=afterById.get(blockId);
+      if(!b) blocksAdded++;
+      else if(!a) blocksRemoved++;
+      else if(blockSignature(b)!==blockSignature(a)) blocksChanged++;
+    }
+    return {sectionId:id,sectionTitle:label,changeType,beforeStatus:before?.status||'',afterStatus:after?.status||'',blocksAdded,blocksRemoved,blocksChanged,sourceRefsChanged:JSON.stringify((beforeBlocks||[]).flatMap(block=>block.sourceIds||[]).sort())!==JSON.stringify((afterBlocks||[]).flatMap(block=>block.sourceIds||[]).sort()),evidenceRefsChanged:JSON.stringify((beforeBlocks||[]).flatMap(block=>block.evidenceCardIds||[]).sort())!==JSON.stringify((afterBlocks||[]).flatMap(block=>block.evidenceCardIds||[]).sort())};
+  });
+}
+function diffEvidenceCards(previousSnapshot,nextSnapshot){
+  const prev=normalizeReportVersionSnapshot(previousSnapshot), next=normalizeReportVersionSnapshot(nextSnapshot);
+  return diffListById(prev.evidenceCards,next.evidenceCards,'id',card=>card?.claim||card?.summary||'',(id,before,after,changeType,label)=>{
+    const riskNotes=[];
+    const beforeSources=before?.sourceIds||[], afterSources=after?.sourceIds||[];
+    if(before?.reviewStatus==='approved' && after && after.reviewStatus==='rejected') riskNotes.push('Approved evidence became rejected.');
+    if(before?.reviewStatus==='approved' && beforeSources.length && !afterSources.length) riskNotes.push('Approved evidence lost all linked sources.');
+    if(before?.reviewStatus==='approved' && after && String(before.claim||'')!==String(after.claim||'')) riskNotes.push('Approved evidence claim changed.');
+    return {evidenceCardId:id,claim:label,changeType,beforeReviewStatus:before?.reviewStatus||'',afterReviewStatus:after?.reviewStatus||'',beforeConfidenceStatus:before?.confidenceStatus||'',afterConfidenceStatus:after?.confidenceStatus||'',sourceIdsBefore:beforeSources,sourceIdsAfter:afterSources,sectionIdBefore:before?.sectionId||'',sectionIdAfter:after?.sectionId||'',riskNotes};
+  });
+}
+function diffSourceRegistry(previousSnapshot,nextSnapshot){
+  const prev=normalizeReportVersionSnapshot(previousSnapshot), next=normalizeReportVersionSnapshot(nextSnapshot);
+  return diffListById(prev.sourceRegistry,next.sourceRegistry,'id',source=>source?.title||source?.fileName||'',(id,before,after,changeType,label)=>({sourceId:id,title:label,changeType,beforeCredibilityStatus:before?.credibilityStatus||'',afterCredibilityStatus:after?.credibilityStatus||'',beforeEvidenceStatus:before?.evidenceStatus||'',afterEvidenceStatus:after?.evidenceStatus||'',linkedSectionIdsBefore:before?.linkedSectionIds||[],linkedSectionIdsAfter:after?.linkedSectionIds||[]}));
+}
+function diffMaterialsInventory(previousSnapshot,nextSnapshot){
+  const prev=normalizeReportVersionSnapshot(previousSnapshot), next=normalizeReportVersionSnapshot(nextSnapshot);
+  return diffListById(prev.materialsInventory,next.materialsInventory,'id',item=>item?.name||'',(id,before,after,changeType,label)=>({materialId:id,name:label,changeType,beforeStatus:before?.status||'',afterStatus:after?.status||'',beforeType:before?.type||'',afterType:after?.type||''}));
+}
+function diffReviewStatuses(previousSnapshot,nextSnapshot){
+  const prev=normalizeReportVersionSnapshot(previousSnapshot), next=normalizeReportVersionSnapshot(nextSnapshot);
+  const changes=[];
+  const collect=(objectType,items,idKey,labelKey,statusKey)=>{
+    const prevMap=new Map((prev[items]||[]).map(item=>[item[idKey],item]));
+    for(const item of (next[items]||[])){
+      const before=prevMap.get(item[idKey]);
+      if(before && String(before[statusKey]||'')!==String(item[statusKey]||'')){
+        changes.push({objectType,objectId:item[idKey],label:String(item[labelKey]||item.claim||item.title||item.id),statusBefore:String(before[statusKey]||''),statusAfter:String(item[statusKey]||''),riskNotes:before[statusKey]==='approved'&&item[statusKey]!=='approved'?['Approved item moved out of approved status.']:[]});
+      }
+    }
+  };
+  collect('section','sections','id','title','status');
+  collect('evidence_card','evidenceCards','id','claim','reviewStatus');
+  collect('ai_suggestion','aiReviewQueue','id','title','reviewStatus');
+  return changes;
+}
+function diffAiReviewQueue(previousSnapshot,nextSnapshot){
+  const prev=normalizeReportVersionSnapshot(previousSnapshot), next=normalizeReportVersionSnapshot(nextSnapshot);
+  return diffListById(prev.aiReviewQueue,next.aiReviewQueue,'id',item=>item?.title||'',(id,before,after,changeType,label)=>({suggestionId:id,title:label,suggestionType:after?.suggestionType||before?.suggestionType||'unknown',changeType,beforeStatus:before?.reviewStatus||'',afterStatus:after?.reviewStatus||'',converted:Boolean(after?.convertedId),warnings:after?.warnings||[]}));
+}
+function diffAiAuditSummary(previousSnapshot,nextSnapshot){
+  const prev=normalizeReportVersionSnapshot(previousSnapshot), next=normalizeReportVersionSnapshot(nextSnapshot);
+  return {eventCountBefore:Number(prev.aiAuditSummary.eventCount||0),eventCountAfter:Number(next.aiAuditSummary.eventCount||0),provenanceCountBefore:Number(prev.aiAuditSummary.provenanceCount||0),provenanceCountAfter:Number(next.aiAuditSummary.provenanceCount||0),lastEventAtBefore:prev.aiAuditSummary.lastEventAt||'',lastEventAtAfter:next.aiAuditSummary.lastEventAt||''};
+}
+function checklistMessages(items){return new Set((items||[]).map(item=>`${item.category}|${item.severity}|${item.message}`));}
+function diffQualityChecklist(previousSnapshot,nextSnapshot){
+  const prev=normalizeReportVersionSnapshot(previousSnapshot), next=normalizeReportVersionSnapshot(nextSnapshot);
+  const beforeBlockers=checklistMessages(prev.qualityChecklist.blockers), afterBlockers=checklistMessages(next.qualityChecklist.blockers);
+  const beforeWarnings=checklistMessages(prev.qualityChecklist.warnings), afterWarnings=checklistMessages(next.qualityChecklist.warnings);
+  return {readinessBefore:prev.qualityChecklist.status||'unknown',readinessAfter:next.qualityChecklist.status||'unknown',blockersAdded:[...afterBlockers].filter(item=>!beforeBlockers.has(item)),blockersResolved:[...beforeBlockers].filter(item=>!afterBlockers.has(item)),warningsAdded:[...afterWarnings].filter(item=>!beforeWarnings.has(item)),warningsResolved:[...beforeWarnings].filter(item=>!afterWarnings.has(item)),clientSafetyChanged:prev.clientSafetyStatus!==next.clientSafetyStatus};
+}
+function diffClientExportReadiness(previousSnapshot,nextSnapshot){
+  const prev=normalizeReportVersionSnapshot(previousSnapshot), next=normalizeReportVersionSnapshot(nextSnapshot);
+  const rejectedRisk=snapshot=>snapshot.evidenceCards.some(card=>card.reviewStatus==='rejected'&&snapshot.sections.some(section=>(section.blocks||[]).some(block=>(block.evidenceCardIds||[]).includes(card.id))));
+  const missingSourcesRisk=snapshot=>snapshot.evidenceCards.some(card=>card.reviewStatus==='approved'&&!(card.sourceIds||[]).length);
+  return {canExportBefore:prev.canExportClient,canExportAfter:next.canExportClient,clientLockedSafetyBefore:prev.clientSafetyStatus,clientLockedSafetyAfter:next.clientSafetyStatus,rejectedEvidenceExportRiskBefore:rejectedRisk(prev),rejectedEvidenceExportRiskAfter:rejectedRisk(next),missingSourcesRiskBefore:missingSourcesRisk(prev),missingSourcesRiskAfter:missingSourcesRisk(next),unsafeClientKeysBefore:prev.unsafeClientKeys,unsafeClientKeysAfter:next.unsafeClientKeys};
+}
+function summarizeVersionDiff(diff){
+  const c=diff.changedCounts||{};
+  const parts=[];
+  if(c.sectionsAdded||c.sectionsRemoved||c.sectionsChanged) parts.push(`${c.sectionsAdded+c.sectionsRemoved+c.sectionsChanged} section change(s)`);
+  if(c.evidenceAdded||c.evidenceRemoved||c.evidenceChanged) parts.push(`${c.evidenceAdded+c.evidenceRemoved+c.evidenceChanged} evidence change(s)`);
+  if(c.sourcesAdded||c.sourcesRemoved||c.sourcesChanged) parts.push(`${c.sourcesAdded+c.sourcesRemoved+c.sourcesChanged} source change(s)`);
+  if(c.reviewStatusesChanged) parts.push(`${c.reviewStatusesChanged} review status change(s)`);
+  if(c.blockersAdded||c.blockersResolved) parts.push(`${c.blockersAdded} blocker(s) added, ${c.blockersResolved} resolved`);
+  return parts.length?parts.join('; '):'No material report changes detected.';
+}
+function getVersionDiffRiskLevel(diff){
+  const c=diff.changedCounts||{};
+  const exportChange=diff.exportReadinessChanges||{};
+  if(diff.warnings?.some(w=>/secret|private|unsafe/i.test(w))) return 'high';
+  if(exportChange.canExportBefore && !exportChange.canExportAfter) return 'high';
+  if((diff.qualityChecklistChanges?.blockersAdded||[]).length) return 'high';
+  if((diff.evidenceChanges||[]).some(change=>change.riskNotes?.length)) return 'high';
+  if(exportChange.missingSourcesRiskAfter&&!exportChange.missingSourcesRiskBefore) return 'high';
+  if((diff.sourceChanges||[]).some(change=>change.beforeCredibilityStatus==='trusted'&&['weak','unreviewed','needs_review'].includes(change.afterCredibilityStatus))) return 'medium';
+  if(c.warningsAdded||c.sectionsRemoved||c.evidenceChanged||c.sourcesRemoved) return 'medium';
+  return 'low';
+}
+function getChangedSectionLabels(diff){return (diff.sectionChanges||[]).map(item=>item.sectionTitle||item.sectionId).filter(Boolean);}
+function getChangedEvidenceLabels(diff){return (diff.evidenceChanges||[]).map(item=>item.claim||item.evidenceCardId).filter(Boolean);}
+function getChangedSourceLabels(diff){return (diff.sourceChanges||[]).map(item=>item.title||item.sourceId).filter(Boolean);}
+function diffReportVersions(previousSnapshot,nextSnapshot){
+  const previous=normalizeReportVersionSnapshot(previousSnapshot);
+  const next=normalizeReportVersionSnapshot(nextSnapshot);
+  const sectionChanges=diffReportSections(previous,next);
+  const evidenceChanges=diffEvidenceCards(previous,next);
+  const sourceChanges=diffSourceRegistry(previous,next);
+  const materialChanges=diffMaterialsInventory(previous,next);
+  const reviewStatusChanges=diffReviewStatuses(previous,next);
+  const aiSuggestionChanges=diffAiReviewQueue(previous,next);
+  const aiAuditSummaryChanges=diffAiAuditSummary(previous,next);
+  const qualityChecklistChanges=diffQualityChecklist(previous,next);
+  const exportReadinessChanges=diffClientExportReadiness(previous,next);
+  const changedCounts={sectionsAdded:sectionChanges.filter(c=>c.changeType==='added').length,sectionsRemoved:sectionChanges.filter(c=>c.changeType==='removed').length,sectionsChanged:sectionChanges.filter(c=>c.changeType==='changed').length,evidenceAdded:evidenceChanges.filter(c=>c.changeType==='added').length,evidenceRemoved:evidenceChanges.filter(c=>c.changeType==='removed').length,evidenceChanged:evidenceChanges.filter(c=>c.changeType==='changed').length,sourcesAdded:sourceChanges.filter(c=>c.changeType==='added').length,sourcesRemoved:sourceChanges.filter(c=>c.changeType==='removed').length,sourcesChanged:sourceChanges.filter(c=>c.changeType==='changed').length,reviewStatusesChanged:reviewStatusChanges.length,aiSuggestionsAdded:aiSuggestionChanges.filter(c=>c.changeType==='added').length,aiSuggestionsRejected:aiSuggestionChanges.filter(c=>c.afterStatus==='rejected'&&c.beforeStatus!=='rejected').length,aiSuggestionsConverted:aiSuggestionChanges.filter(c=>c.afterStatus==='converted'&&c.beforeStatus!=='converted').length,blockersAdded:qualityChecklistChanges.blockersAdded.length,blockersResolved:qualityChecklistChanges.blockersResolved.length,warningsAdded:qualityChecklistChanges.warningsAdded.length,warningsResolved:qualityChecklistChanges.warningsResolved.length};
+  const warnings=[];
+  if(exportReadinessChanges.unsafeClientKeysAfter?.length) warnings.push(`Unsafe/private keys detected in export snapshot: ${exportReadinessChanges.unsafeClientKeysAfter.slice(0,5).join(', ')}`);
+  const diff={id:uid('diff'),previousVersionId:previous.versionId,nextVersionId:next.versionId,comparedAt:new Date().toISOString(),changedCounts,riskLevel:'unknown',summary:'',sectionChanges,evidenceChanges,sourceChanges,materialChanges,reviewStatusChanges,aiSuggestionChanges,aiAuditSummaryChanges,qualityChecklistChanges,exportReadinessChanges,warnings};
+  diff.riskLevel=getVersionDiffRiskLevel(diff);
+  diff.summary=summarizeVersionDiff(diff);
+  return diff;
+}
+function currentVersionLabel(){
+  return String(cloudSync.version||REPORT.meta?.savedAt||REPORT.meta?.updatedAt||'current');
+}
+function ensureVersionDiffBaselineReport(){
+  if(!VERSION_DIFF_BASELINE_REPORT) VERSION_DIFF_BASELINE_REPORT=normalizeReport(clone(REPORT));
+  if(!VERSION_DIFF_BASELINE) VERSION_DIFF_BASELINE=createReportVersionSnapshot(VERSION_DIFF_BASELINE_REPORT);
+  return VERSION_DIFF_BASELINE_REPORT;
+}
+function restoreComparisonSignature(reportData){
+  const snapshot=createReportVersionSnapshot(reportData);
+  delete snapshot.id;
+  delete snapshot.createdAt;
+  return JSON.stringify(sanitizeInternalAuditExport(snapshot));
+}
+function canRestoreReportVersion(context={}){
+  if(isClientLocked() || context.clientLocked) return {ok:false, reason:'Restore is unavailable in clientLocked mode.'};
+  const governance=getEffectiveGovernancePolicy(REPORT);
+  if(!governance.restorePolicy.allowRestore) return {ok:false, reason:'Restore is disabled by governance policy.'};
+  if(!isAdmin()) return {ok:false, reason:'Only owner/editor can restore report versions.'};
+  if(currentAiUser().role==='viewer'&&!governance.permissionsPolicy.viewerCanRestoreVersions) return {ok:false, reason:'Viewer restore is disabled by governance policy.'};
+  if(context.cloudMode && (!cloudSync.ready || !cloudCanWrite())) return {ok:false, reason:'Cloud restore requires owner/editor write access.'};
+  if(!context.targetReport && !context.targetVersionSnapshot) return {ok:false, reason:'No previous version snapshot is available to restore.'};
+  return {ok:true, reason:''};
+}
+function prepareRestorePreview(reportData,targetVersionSnapshot){
+  const targetReport=targetVersionSnapshot?.reportData?normalizeReport(clone(targetVersionSnapshot.reportData)):normalizeReport(clone(targetVersionSnapshot||{}));
+  const currentSnapshot=createReportVersionSnapshot(reportData);
+  const targetSnapshot=createReportVersionSnapshot(targetReport);
+  const diff=diffReportVersions(currentSnapshot,targetSnapshot);
+  const riskLevel=getRestoreRiskLevel(diff);
+  return {
+    id:uid('restore-preview'),
+    currentVersionId:currentSnapshot.versionId||currentVersionLabel(),
+    targetVersionId:targetSnapshot.versionId||targetReport.meta?.restoredFromVersionId||'loaded baseline',
+    previewedAt:new Date().toISOString(),
+    expectedCurrentVersion:restoreComparisonSignature(reportData),
+    targetReport,
+    targetSnapshot,
+    diff,
+    riskLevel,
+    impactSummary:summarizeRestoreImpact(diff),
+    canRestore:canRestoreReportVersion({targetReport}).ok
+  };
+}
+function validateRestorePreconditions(currentReport,targetVersionSnapshot,expectedCurrentVersion){
+  const permission=canRestoreReportVersion({targetVersionSnapshot});
+  if(!permission.ok) return {ok:false, error:permission.reason};
+  if(expectedCurrentVersion && restoreComparisonSignature(currentReport)!==String(expectedCurrentVersion)){
+    return {ok:false, error:'The current report changed since restore preview. Review the diff again before restoring.'};
+  }
+  const target=targetVersionSnapshot?.reportData||targetVersionSnapshot;
+  if(!target || typeof target!=='object') return {ok:false, error:'Restore target snapshot is missing or invalid.'};
+  return {ok:true, error:''};
+}
+function createRestoreAuditEvent(input={}){
+  return createAiAuditEvent(input.reportData||REPORT,{
+    eventType:'report_version_restored',
+    taskRunId:String(input.restoreRunId||uid('restore')),
+    taskType:'',
+    provider:'local',
+    providerMode:'disabled',
+    generatedBy:'manual',
+    statusBefore:String(input.restoredFromVersionId||''),
+    statusAfter:String(input.restoredToVersionId||''),
+    notes:String(input.notes||''),
+    warnings:Array.isArray(input.warnings)?input.warnings:[],
+    outputRefs:[normalizeAiOutputRef({type:'unknown',id:String(input.restoredToVersionId||''),label:'Restored report version',status:String(input.riskLevel||'unknown')})]
+  });
+}
+function restoreVersionAsNewSnapshot(currentReport,targetVersionSnapshot,options={}){
+  const restored=normalizeReport(clone(targetVersionSnapshot?.reportData||targetVersionSnapshot||{}));
+  restored.meta=restored.meta||{};
+  const now=new Date().toISOString();
+  const restoredFrom=String(options.restoredFromVersionId||targetVersionSnapshot?.versionId||restored.meta.versionId||'loaded-baseline');
+  const newVersionId=uid('restored');
+  restored.meta.restoredFromVersionId=restoredFrom;
+  restored.meta.restoredAt=now;
+  restored.meta.restoredByRole=currentAiUser().role;
+  restored.meta.restoreReason=String(options.restoreReason||'');
+  restored.meta.restoreRiskLevel=String(options.restoreRiskLevel||'unknown');
+  restored.meta.restoreDiffSummary=String(options.restoreDiffSummary||'');
+  restored.meta.versionId=newVersionId;
+  restored.meta.updatedAt=now;
+  appendAiAuditEvent(restored,createRestoreAuditEvent({reportData:restored,restoreRunId:uid('restore'),restoredFromVersionId:restoredFrom,restoredToVersionId:newVersionId,riskLevel:restored.meta.restoreRiskLevel,notes:restored.meta.restoreReason,warnings:options.warnings||[]}));
+  return restored;
+}
+function summarizeRestoreImpact(diff){
+  return [
+    `Risk: ${versionDiffRiskLabel(getRestoreRiskLevel(diff))}`,
+    diff.summary,
+    `Readiness after restore: ${diff.qualityChecklistChanges.readinessAfter}`,
+    `Blockers +${diff.changedCounts.blockersAdded}/-${diff.changedCounts.blockersResolved}, warnings +${diff.changedCounts.warningsAdded}/-${diff.changedCounts.warningsResolved}`
+  ].join(' ');
+}
+function getRestoreRiskLevel(diff){
+  if(!diff) return 'unknown';
+  const base=getVersionDiffRiskLevel(diff);
+  const removesApproved=(diff.evidenceChanges||[]).some(change=>change.changeType==='removed'&&change.beforeReviewStatus==='approved');
+  const losesTrustedSource=(diff.sourceChanges||[]).some(change=>change.changeType==='removed'&&change.beforeCredibilityStatus==='trusted');
+  const removesKeySection=(diff.sectionChanges||[]).some(change=>change.changeType==='removed'&&['executiveSummary','recommendations'].includes(change.sectionId));
+  const readinessDrops=diff.exportReadinessChanges.canExportBefore&&!diff.exportReadinessChanges.canExportAfter;
+  if(removesApproved||losesTrustedSource||removesKeySection||readinessDrops) return 'high';
+  return base||'unknown';
+}
+function createDefaultVersionRetentionPolicy(){
+  const now=new Date().toISOString();
+  return {
+    enabled:false,
+    mode:'preview_only',
+    keepAllVersionsByDefault:true,
+    minVersionsToKeep:20,
+    minDaysToKeep:90,
+    keepMonthlySnapshots:true,
+    keepVersionsWithClientExports:true,
+    keepVersionsWithRestoreEvents:true,
+    keepVersionsWithAiConversions:true,
+    keepVersionsWithApprovedEvidenceChanges:true,
+    keepVersionsWithQualityReadyStatus:true,
+    alwaysKeepCurrentVersion:true,
+    alwaysKeepRestoredVersions:true,
+    alwaysKeepClientExportedVersions:true,
+    alwaysKeepAuditReferencedVersions:true,
+    alwaysKeepPinnedVersions:true,
+    allowArchive:true,
+    allowHardDelete:false,
+    requireConfirmation:true,
+    createdAt:now,
+    updatedAt:now
+  };
+}
+function createDefaultGovernanceSettings(){
+  const now=new Date().toISOString();
+  return {
+    retentionPolicy:{enabled:false,mode:'preview_only',minVersionsToKeep:20,minDaysToKeep:90,allowArchive:true,allowHardDelete:false,requireConfirmation:true,protectClientExportVersions:true,protectRestorePoints:true,protectAuditReferencedVersions:true},
+    exportPolicy:{requireQualityChecklistBeforeClientExport:true,blockExportOnQualityBlockers:true,allowExportWithWarnings:true,excludeRejectedEvidence:true,excludeInternalAuditLog:true,excludeAiPrompts:true,excludeSecrets:true,includeSourceIndex:true,includeEvidenceSummary:true,includePrintCss:true},
+    aiPolicy:{aiEnabled:false,aiProviderMode:'disabled',dryRunAllowed:true,realProviderAllowed:false,requireHumanReview:true,allowViewerAiPreview:false,allowClientLockedAiPreview:false,allowAutoApproveAiOutput:false,allowAiOutputInClientExportBeforeReview:false},
+    reviewPolicy:{requireApprovedEvidenceForDraftBuilder:true,requireReviewForAiSuggestions:true,requireSourceLinksForApprovedEvidence:true,allowNeedsReviewContentInClientExport:true,allowRejectedContentInClientExport:false},
+    restorePolicy:{allowRestore:true,requireDiffBeforeRestore:true,requireConfirmation:true,requireStrongConfirmationForHighRisk:true,requireExpectedCurrentVersion:true,createAuditEventOnRestore:true},
+    auditPolicy:{enableAiAuditLog:true,enableSuggestionProvenance:true,includeAuditInInternalPackage:true,includeAuditInClientPackage:false,allowViewerAuditVisibility:false,redactActorLabels:false,redactInternalNotesFromClientExport:true},
+    permissionsPolicy:{ownerCanManageGovernance:true,editorCanManageGovernance:false,viewerCanManageGovernance:false,viewerCanExportClientPackage:false,viewerCanExportInternalAuditPackage:false,viewerCanRestoreVersions:false,viewerCanRunAiPreview:false},
+    createdAt:now,
+    updatedAt:now
+  };
+}
+function normalizeGovernanceSettings(reportDataOrWorkspace){
+  const target=reportDataOrWorkspace&&typeof reportDataOrWorkspace==='object'?reportDataOrWorkspace:{};
+  const defaults=createDefaultGovernanceSettings();
+  const source=target.governanceSettings&&typeof target.governanceSettings==='object'?target.governanceSettings:{};
+  const settings={...defaults};
+  for(const key of ['retentionPolicy','exportPolicy','aiPolicy','reviewPolicy','restorePolicy','auditPolicy','permissionsPolicy']){
+    settings[key]={...defaults[key],...(source[key]&&typeof source[key]==='object'?source[key]:{})};
+  }
+  settings.createdAt=String(source.createdAt||defaults.createdAt);
+  settings.updatedAt=String(source.updatedAt||settings.createdAt);
+  settings.retentionPolicy.mode=VERSION_RETENTION_MODES.includes(String(settings.retentionPolicy.mode))?String(settings.retentionPolicy.mode):'preview_only';
+  settings.aiPolicy.aiProviderMode=['disabled','dry_run','real_provider','unknown'].includes(String(settings.aiPolicy.aiProviderMode))?String(settings.aiPolicy.aiProviderMode):'disabled';
+  settings.retentionPolicy.allowHardDelete=false;
+  settings.aiPolicy.aiEnabled=false;
+  settings.aiPolicy.realProviderAllowed=false;
+  settings.aiPolicy.allowClientLockedAiPreview=false;
+  settings.aiPolicy.allowAutoApproveAiOutput=false;
+  settings.aiPolicy.allowAiOutputInClientExportBeforeReview=false;
+  settings.exportPolicy.excludeSecrets=true;
+  settings.exportPolicy.excludeAiPrompts=true;
+  settings.exportPolicy.excludeRejectedEvidence=true;
+  settings.exportPolicy.excludeInternalAuditLog=true;
+  settings.reviewPolicy.allowRejectedContentInClientExport=false;
+  settings.permissionsPolicy.viewerCanManageGovernance=false;
+  settings.permissionsPolicy.viewerCanRestoreVersions=false;
+  settings.permissionsPolicy.viewerCanRunAiPreview=false;
+  settings.permissionsPolicy.viewerCanExportInternalAuditPackage=false;
+  target.governanceSettings=settings;
+  return settings;
+}
+function getGovernanceSettings(context=REPORT){
+  return normalizeGovernanceSettings(context?.reportData||context||REPORT);
+}
+function validateGovernanceSettings(settings){
+  const s=normalizeGovernanceSettings({governanceSettings:settings});
+  const blockers=[], warnings=[], passed=[];
+  const block=(ok,msg)=>ok?passed.push(msg):blockers.push(msg);
+  block(!s.aiPolicy.allowClientLockedAiPreview,'clientLocked AI preview must stay disabled.');
+  block(!s.aiPolicy.allowAutoApproveAiOutput,'AI auto-approval must stay disabled.');
+  block(!s.reviewPolicy.allowRejectedContentInClientExport,'Rejected content cannot be allowed in client export.');
+  block(s.exportPolicy.excludeSecrets,'Secrets must be excluded from exports.');
+  block(s.exportPolicy.excludeAiPrompts,'Hidden AI prompts must be excluded from exports.');
+  block(!s.auditPolicy.includeAuditInClientPackage,'Internal audit logs cannot be included in client package.');
+  block(!s.retentionPolicy.allowHardDelete,'Hard delete must stay disabled.');
+  if(!s.exportPolicy.requireQualityChecklistBeforeClientExport) warnings.push('Client export quality checklist requirement is disabled.');
+  if(!s.exportPolicy.blockExportOnQualityBlockers) warnings.push('Client export blockers would not block export.');
+  if(s.permissionsPolicy.editorCanManageGovernance) warnings.push('Editors can manage governance settings.');
+  return {ok:!blockers.length, blockers, warnings, passed, settings:s};
+}
+function getEffectiveGovernancePolicy(context=REPORT){
+  const settings=getGovernanceSettings(context);
+  return {settings,retentionPolicy:{...createDefaultVersionRetentionPolicy(),...settings.retentionPolicy},exportPolicy:settings.exportPolicy,aiPolicy:settings.aiPolicy,reviewPolicy:settings.reviewPolicy,restorePolicy:settings.restorePolicy,auditPolicy:settings.auditPolicy,permissionsPolicy:settings.permissionsPolicy};
+}
+function getGovernancePolicyWarnings(settings){
+  const validation=validateGovernanceSettings(settings);
+  return [...validation.blockers,...validation.warnings];
+}
+function getGovernancePolicySummary(settings){
+  const s=normalizeGovernanceSettings({governanceSettings:settings});
+  return {
+    exportSafety:s.exportPolicy.blockExportOnQualityBlockers?'Blocks on quality blockers':'Does not block on quality blockers',
+    aiPolicy:s.aiPolicy.aiEnabled?'AI enabled':'AI disabled',
+    retention:s.retentionPolicy.mode,
+    restore:s.restorePolicy.allowRestore?'Restore allowed with confirmation':'Restore disabled',
+    audit:s.auditPolicy.includeAuditInClientPackage?'Audit exposed to client package':'Audit internal only',
+    permissions:s.permissionsPolicy.editorCanManageGovernance?'Owner/editor manage governance':'Owner manages governance'
+  };
+}
+function canCurrentUserManageGovernance(context=REPORT){
+  if(isClientLocked()) return false;
+  const s=getGovernanceSettings(context);
+  if(cloudSync.ready) return cloudSync.role==='owner' || (cloudSync.role==='editor'&&s.permissionsPolicy.editorCanManageGovernance);
+  if(state.access==='viewer') return false;
+  return s.permissionsPolicy.ownerCanManageGovernance;
+}
+function updateGovernanceSettings(context,patch){
+  const target=context&&typeof context==='object'?context:REPORT;
+  if(!canCurrentUserManageGovernance(target)) return {ok:false,errors:['Only owner can manage governance settings by default.']};
+  const current=getGovernanceSettings(target);
+  const next=clone(current);
+  for(const [group,value] of Object.entries(patch||{})){
+    if(next[group]&&typeof next[group]==='object'&&value&&typeof value==='object') next[group]={...next[group],...value};
+  }
+  next.updatedAt=new Date().toISOString();
+  const validation=validateGovernanceSettings(next);
+  if(!validation.ok){
+    appendAiAuditEvent(target,createAiAuditEvent(target,{eventType:'governance_policy_validation_failed',provider:'local',providerMode:'disabled',generatedBy:'manual',warnings:validation.blockers,notes:'Governance settings rejected.'}));
+    return {ok:false,errors:validation.blockers,warnings:validation.warnings};
+  }
+  target.governanceSettings=validation.settings;
+  appendAiAuditEvent(target,createAiAuditEvent(target,{eventType:'governance_settings_updated',provider:'local',providerMode:'disabled',generatedBy:'manual',warnings:validation.warnings,notes:`Updated groups: ${Object.keys(patch||{}).join(', ')}`}));
+  return {ok:true,settings:target.governanceSettings,warnings:validation.warnings};
+}
+function createDefaultOnboardingState(){
+  const now=new Date().toISOString();
+  return {enabled:true,completed:false,completedAt:null,dismissed:false,dismissedAt:null,currentStepId:'welcome',completedStepIds:[],skippedStepIds:[],firstRunDetected:true,createdAt:now,updatedAt:now,version:ONBOARDING_VERSION};
+}
+function normalizeOnboardingState(reportDataOrWorkspace){
+  const target=reportDataOrWorkspace&&typeof reportDataOrWorkspace==='object'?reportDataOrWorkspace:{};
+  const defaults=createDefaultOnboardingState();
+  const source=target.onboardingState&&typeof target.onboardingState==='object'?target.onboardingState:{};
+  const validStep=id=>ONBOARDING_STEPS.includes(String(id||''));
+  const stateObj={...defaults,...source};
+  stateObj.enabled=source.enabled!==false;
+  stateObj.completed=Boolean(source.completed);
+  stateObj.completedAt=stateObj.completed?String(source.completedAt||source.updatedAt||defaults.updatedAt):null;
+  stateObj.dismissed=Boolean(source.dismissed);
+  stateObj.dismissedAt=stateObj.dismissed?String(source.dismissedAt||source.updatedAt||defaults.updatedAt):null;
+  stateObj.currentStepId=validStep(source.currentStepId)?String(source.currentStepId):'welcome';
+  stateObj.completedStepIds=[...new Set((Array.isArray(source.completedStepIds)?source.completedStepIds:[]).map(String).filter(validStep))];
+  stateObj.skippedStepIds=[...new Set((Array.isArray(source.skippedStepIds)?source.skippedStepIds:[]).map(String).filter(validStep))];
+  stateObj.firstRunDetected=source.firstRunDetected!==false;
+  stateObj.createdAt=String(source.createdAt||defaults.createdAt);
+  stateObj.updatedAt=String(source.updatedAt||stateObj.createdAt);
+  stateObj.version=Number(source.version)||ONBOARDING_VERSION;
+  target.onboardingState=stateObj;
+  return stateObj;
+}
+function getOnboardingProgress(context=REPORT){
+  const stateObj=normalizeOnboardingState(context?.reportData||context||REPORT);
+  return {currentStepId:stateObj.currentStepId,totalSteps:ONBOARDING_STEPS.length,completedSteps:stateObj.completedStepIds.length,completed:stateObj.completed,dismissed:stateObj.dismissed,percent:Math.round((stateObj.completedStepIds.length/ONBOARDING_STEPS.length)*100)};
+}
+function canCurrentUserRunOnboarding(context=REPORT){
+  if(isClientLocked() || context?.meta?.clientLocked===true) return false;
+  const settings=getGovernanceSettings(context);
+  if(cloudSync.ready) return cloudSync.role==='owner' || (cloudSync.role==='editor'&&settings.permissionsPolicy.editorCanManageGovernance);
+  if(HOSTED_MODE&&!BROWSER_ONLY_MODE&&!cloudSync.ready) return false;
+  if(state.access==='viewer') return false;
+  return settings.permissionsPolicy.ownerCanManageGovernance;
+}
+function markOnboardingStepComplete(context,stepId){
+  const target=context&&typeof context==='object'?context:REPORT;
+  const stateObj=normalizeOnboardingState(target);
+  const id=ONBOARDING_STEPS.includes(String(stepId||''))?String(stepId):stateObj.currentStepId;
+  if(!stateObj.completedStepIds.includes(id)) stateObj.completedStepIds.push(id);
+  stateObj.currentStepId=ONBOARDING_STEPS[Math.min(ONBOARDING_STEPS.indexOf(id)+1,ONBOARDING_STEPS.length-1)]||id;
+  stateObj.updatedAt=new Date().toISOString();
+  appendAiAuditEvent(target,createAiAuditEvent(target,{eventType:'workspace_onboarding_step_completed',provider:'local',providerMode:'disabled',generatedBy:'manual',notes:`Completed onboarding step: ${id}`}));
+  return stateObj;
+}
+function resetOnboarding(context=REPORT){
+  const target=context&&typeof context==='object'?context:REPORT;
+  if(!canCurrentUserRunOnboarding(target)) return {ok:false,errors:['Only owner can reset workspace onboarding by default.']};
+  target.onboardingState=createDefaultOnboardingState();
+  appendAiAuditEvent(target,createAiAuditEvent(target,{eventType:'workspace_onboarding_reset',provider:'local',providerMode:'disabled',generatedBy:'manual',notes:'Workspace onboarding reset.'}));
+  return {ok:true,onboardingState:target.onboardingState};
+}
+function validateOnboardingSelections(selections={}){
+  const blockers=[], warnings=[];
+  const raw=JSON.stringify(selections||{}).toLowerCase();
+  if(/api[_-]?key|secret|token|password|openai_api_key|process\.env/.test(raw)) blockers.push('Onboarding selections cannot contain secrets, API keys, tokens, or environment values.');
+  if(selections?.aiPolicy?.allowAutoApproveAiOutput) blockers.push('AI output cannot be auto-approved.');
+  if(selections?.aiPolicy?.allowClientLockedAiPreview) blockers.push('AI preview cannot run in clientLocked mode.');
+  if(selections?.reviewPolicy?.allowRejectedContentInClientExport) blockers.push('Rejected content cannot be allowed in client export.');
+  if(selections?.exportPolicy?.excludeSecrets===false) blockers.push('Secrets must stay excluded from exports.');
+  if(selections?.exportPolicy?.excludeAiPrompts===false) blockers.push('AI prompts must stay excluded from exports.');
+  if(selections?.exportPolicy?.excludeInternalAuditLog===false) blockers.push('Internal audit logs must stay out of client packages.');
+  if(selections?.retentionPolicy?.allowHardDelete) blockers.push('Hard delete cannot be enabled from onboarding.');
+  if(selections?.exportPolicy?.requireQualityChecklistBeforeClientExport===false) warnings.push('Quality checklist requirement should stay enabled before client export.');
+  return {ok:!blockers.length, blockers, warnings};
+}
+function safeOnboardingGovernancePatch(){
+  const safe=createDefaultGovernanceSettings();
+  return {
+    exportPolicy:safe.exportPolicy,
+    aiPolicy:safe.aiPolicy,
+    reviewPolicy:{...safe.reviewPolicy,allowNeedsReviewContentInClientExport:false},
+    retentionPolicy:safe.retentionPolicy,
+    restorePolicy:safe.restorePolicy
+  };
+}
+function applyOnboardingSelections(context=REPORT,selections={}){
+  const target=context&&typeof context==='object'?context:REPORT;
+  if(!canCurrentUserRunOnboarding(target)) return {ok:false,errors:['Only owner can apply workspace onboarding settings by default.']};
+  const validation=validateOnboardingSelections(selections);
+  if(!validation.ok) return {ok:false,errors:validation.blockers,warnings:validation.warnings};
+  target.meta=target.meta||{};
+  if(selections.workspaceName) target.meta.workspaceName=String(selections.workspaceName).slice(0,120);
+  if(selections.reportTitle) target.meta.title=String(selections.reportTitle).slice(0,160);
+  if(selections.clientName!==undefined) target.meta.companyName=String(selections.clientName||'').slice(0,160);
+  if(selections.researchLanguage) target.meta.lang=String(selections.researchLanguage).slice(0,12);
+  const patch=safeOnboardingGovernancePatch();
+  const result=updateGovernanceSettings(target,patch);
+  if(!result.ok) return result;
+  target.versionRetentionPolicy={...normalizeVersionRetentionPolicy(target),...patch.retentionPolicy,updatedAt:new Date().toISOString()};
+  const stateObj=normalizeOnboardingState(target);
+  stateObj.completed=true;
+  stateObj.dismissed=false;
+  stateObj.completedStepIds=[...ONBOARDING_STEPS];
+  stateObj.currentStepId='finalChecklist';
+  stateObj.completedAt=new Date().toISOString();
+  stateObj.updatedAt=stateObj.completedAt;
+  appendAiAuditEvent(target,createAiAuditEvent(target,{eventType:'workspace_onboarding_applied_settings',provider:'local',providerMode:'disabled',generatedBy:'manual',warnings:validation.warnings,notes:'Workspace onboarding applied safe defaults for export, AI, review, retention, and restore policies.'}));
+  appendAiAuditEvent(target,createAiAuditEvent(target,{eventType:'workspace_onboarding_completed',provider:'local',providerMode:'disabled',generatedBy:'manual',warnings:getOnboardingWarnings(target,selections),notes:'Workspace onboarding completed.'}));
+  return {ok:true,onboardingState:stateObj,warnings:validation.warnings};
+}
+function getOnboardingWarnings(context=REPORT,selections={}){
+  const target=context&&typeof context==='object'?context:REPORT;
+  const warnings=[];
+  const settings=getGovernanceSettings(target);
+  const checklist=runReportQualityChecklist(target);
+  if(!state.aiStatus?.aiEnabled) warnings.push('Real AI provider is not configured; dry-run/local preview remains the safe default.');
+  if(cloudSync.ready && !cloudSync.user) warnings.push('Cloud identity is unavailable; write actions fail closed.');
+  if(!cloudSync.ready || BROWSER_ONLY_MODE) warnings.push('Local mode only: setup applies to this report file/browser session.');
+  if(!(target.meta||{}).isDemoReport && !selections.loadDemo) warnings.push('Demo report has not been loaded.');
+  if(checklist.blockers?.length) warnings.push(`Quality checklist has ${checklist.blockers.length} blocker(s).`);
+  if(!settings.exportPolicy.blockExportOnQualityBlockers) warnings.push('Export policy is relaxed and should be reviewed.');
+  return warnings;
+}
+function createDefaultFirstReportFlowState(){
+  const now=new Date().toISOString();
+  return {enabled:true,completed:false,completedAt:null,dismissed:false,dismissedAt:null,currentStepId:'createReport',completedStepIds:[],skippedStepIds:[],createdAt:now,updatedAt:now,version:FIRST_REPORT_FLOW_VERSION};
+}
+function normalizeFirstReportFlowState(reportData){
+  const target=reportData&&typeof reportData==='object'?reportData:{};
+  const defaults=createDefaultFirstReportFlowState();
+  const source=target.firstReportFlow&&typeof target.firstReportFlow==='object'?target.firstReportFlow:{};
+  const validStep=id=>FIRST_REPORT_STEPS.includes(String(id||''));
+  const flow={...defaults,...source};
+  flow.enabled=source.enabled!==false;
+  flow.completed=Boolean(source.completed);
+  flow.completedAt=flow.completed?String(source.completedAt||source.updatedAt||defaults.updatedAt):null;
+  flow.dismissed=Boolean(source.dismissed);
+  flow.dismissedAt=flow.dismissed?String(source.dismissedAt||source.updatedAt||defaults.updatedAt):null;
+  flow.currentStepId=validStep(source.currentStepId)?String(source.currentStepId):'createReport';
+  flow.completedStepIds=[...new Set((Array.isArray(source.completedStepIds)?source.completedStepIds:[]).map(String).filter(validStep))];
+  flow.skippedStepIds=[...new Set((Array.isArray(source.skippedStepIds)?source.skippedStepIds:[]).map(String).filter(validStep))];
+  flow.createdAt=String(source.createdAt||defaults.createdAt);
+  flow.updatedAt=String(source.updatedAt||flow.createdAt);
+  flow.version=Number(source.version)||FIRST_REPORT_FLOW_VERSION;
+  target.firstReportFlow=flow;
+  return flow;
+}
+function firstReportStepLabel(stepId){
+  return ({
+    createReport:t('firstReportCreateReport'),
+    addClientBasics:t('firstReportAddClientBasics'),
+    addCompetitors:t('firstReportAddCompetitors'),
+    uploadMaterials:t('firstReportUploadMaterials'),
+    reviewMaterialsInventory:t('firstReportReviewMaterials'),
+    buildSourceRegistry:t('firstReportBuildSources'),
+    addEvidence:t('firstReportAddEvidence'),
+    reviewEvidence:t('firstReportReviewEvidence'),
+    buildDraft:t('firstReportBuildDraft'),
+    runQualityChecklist:t('firstReportRunQualityChecklist'),
+    exportClientReport:t('firstReportExportClientReport')
+  })[stepId]||t('firstReportFallback');
+}
+function firstReportMeaningfulScore(reportData=REPORT){
+  const r=reportData||{};
+  const title=String(r.meta?.title||'').trim();
+  const defaultTitle=/^(marketing report studio|ринкова конкурентна розвідка)$/i;
+  const draftBlocks=(r.reportSections||[]).flatMap(section=>section.blocks||[]);
+  return [
+    title && !defaultTitle.test(title),
+    String(r.meta?.companyName||'').trim(),
+    (r.companies||[]).length,
+    (r.datasets||[]).length,
+    (r.files||[]).length,
+    (r.materialsInventory?.items||[]).length,
+    (r.competitorProfiles?.items||[]).filter(profile=>profile.status==='active').length,
+    (r.pricingFeatureMatrix?.featureRows||[]).length,
+    (r.sourceRegistry?.items||[]).length,
+    (r.evidenceCards?.items||[]).length,
+    draftBlocks.length,
+    r.meta?.clientExportedAt
+  ].filter(Boolean).length;
+}
+function isReportEmptyOrNearlyEmpty(reportData=REPORT){
+  return firstReportMeaningfulScore(reportData)<=1;
+}
+function hasDraftBlocks(reportData=REPORT){
+  return (reportData.reportSections||[]).some(section=>(section.blocks||[]).length>0);
+}
+function firstReportStepDetected(reportData,stepId){
+  const r=reportData||{};
+  const cards=r.evidenceCards?.items||[];
+  const client=(r.companies||[]).find(c=>c.type==='client');
+  const competitors=(r.companies||[]).filter(c=>c.type!=='client');
+  const activeProfiles=(r.competitorProfiles?.items||[]).filter(profile=>profile.status==='active');
+  const title=String(r.meta?.title||'').trim();
+  const checklist=runReportQualityChecklist(r);
+  if(stepId==='createReport') return Boolean(title && !/^marketing report studio$/i.test(title));
+  if(stepId==='addClientBasics') return Boolean(String(r.meta?.companyName||'').trim() || client);
+  if(stepId==='addCompetitors') return activeProfiles.length>0 || competitors.length>0;
+  if(stepId==='uploadMaterials') return (r.materialsInventory?.items||[]).length>0 || (r.files||[]).length>0 || (r.datasets||[]).length>0;
+  if(stepId==='reviewMaterialsInventory') return (r.materialsInventory?.items||[]).length>0;
+  if(stepId==='buildSourceRegistry') return (r.sourceRegistry?.items||[]).length>0;
+  if(stepId==='addEvidence') return cards.length>0;
+  if(stepId==='reviewEvidence') return cards.some(card=>card.reviewStatus==='approved');
+  if(stepId==='buildDraft') return hasDraftBlocks(r);
+  if(stepId==='runQualityChecklist') return Boolean(checklist && Array.isArray(checklist.items));
+  if(stepId==='exportClientReport') return Boolean(r.meta?.clientExportedAt || r.meta?.clientPackageExportedAt);
+  return false;
+}
+function getFirstReportProgress(reportData=REPORT){
+  const flow=normalizeFirstReportFlowState(reportData);
+  const steps=FIRST_REPORT_STEPS.map(stepId=>{
+    const detected=firstReportStepDetected(reportData,stepId);
+    const skipped=flow.skippedStepIds.includes(stepId);
+    const manual=flow.completedStepIds.includes(stepId);
+    const warnings=getFirstReportStepWarnings(reportData,stepId);
+    const status=(detected||manual)?'completed':(skipped?'skipped':(warnings.some(w=>/^Blocked:/i.test(w))?'blocked':(flow.currentStepId===stepId?'in_progress':'not_started')));
+    return {stepId,label:firstReportStepLabel(stepId),status,warnings};
+  });
+  const completed=steps.filter(step=>step.status==='completed').length;
+  return {steps,completed,total:FIRST_REPORT_STEPS.length,percent:Math.round((completed/FIRST_REPORT_STEPS.length)*100),nextStepId:getNextRecommendedFirstReportStep(reportData),isDemo:Boolean(reportData?.meta?.isDemoReport),isEmpty:isReportEmptyOrNearlyEmpty(reportData)};
+}
+function markFirstReportStepComplete(reportData,stepId){
+  const flow=normalizeFirstReportFlowState(reportData);
+  const id=FIRST_REPORT_STEPS.includes(String(stepId||''))?String(stepId):flow.currentStepId;
+  if(!flow.completedStepIds.includes(id)) flow.completedStepIds.push(id);
+  flow.currentStepId=FIRST_REPORT_STEPS[Math.min(FIRST_REPORT_STEPS.indexOf(id)+1,FIRST_REPORT_STEPS.length-1)]||id;
+  flow.updatedAt=new Date().toISOString();
+  if(flow.completedStepIds.length>=FIRST_REPORT_STEPS.length){flow.completed=true; flow.completedAt=flow.updatedAt;}
+  return flow;
+}
+function getNextRecommendedFirstReportStep(reportData=REPORT){
+  const flow=normalizeFirstReportFlowState(reportData);
+  for(const stepId of FIRST_REPORT_STEPS){
+    if(flow.skippedStepIds.includes(stepId)) continue;
+    if(!firstReportStepDetected(reportData,stepId) && !flow.completedStepIds.includes(stepId)) return stepId;
+  }
+  return 'exportClientReport';
+}
+function getFirstReportStepWarnings(reportData=REPORT,stepId){
+  const r=reportData||{};
+  const warnings=[];
+  if(isClientLocked() || r.meta?.clientLocked) warnings.push('Blocked: clientLocked reports cannot show guided editing controls.');
+  if(stepId==='buildSourceRegistry' && !(r.materialsInventory?.items||[]).length) warnings.push('Upload or import materials before building sources.');
+  if(stepId==='addEvidence' && !(r.sourceRegistry?.items||[]).length) warnings.push('Create sources before adding evidence.');
+  if(stepId==='reviewEvidence' && !(r.evidenceCards?.items||[]).length) warnings.push('Add evidence before review.');
+  if(stepId==='buildDraft' && !(r.evidenceCards?.items||[]).some(card=>card.reviewStatus==='approved')) warnings.push('Approve evidence before building draft blocks.');
+  if(stepId==='exportClientReport'){
+    const checklist=runReportQualityChecklist(r);
+    if(checklist.blockers?.length) warnings.push(`${checklist.blockers.length} quality blocker(s) must be resolved before client export.`);
+  }
+  if(r.meta?.isDemoReport) warnings.push('You are viewing sample data.');
+  return warnings;
+}
+function resetFirstReportFlow(reportData=REPORT){
+  if(!canShowFirstReportFlow(reportData)) return {ok:false,errors:['First report guide is unavailable in this mode.']};
+  reportData.firstReportFlow=createDefaultFirstReportFlowState();
+  return {ok:true,firstReportFlow:reportData.firstReportFlow};
+}
+function canShowFirstReportFlow(context=REPORT){
+  const report=context?.reportData||context||REPORT;
+  if(isClientLocked() || report?.meta?.clientLocked===true) return false;
+  if(cloudSync.ready && !['owner','editor','admin'].includes(String(cloudSync.role||''))) return false;
+  return true;
+}
+function normalizeVersionRetentionPolicy(reportDataOrWorkspace){
+  const target=reportDataOrWorkspace&&typeof reportDataOrWorkspace==='object'?reportDataOrWorkspace:{};
+  const governance=target.governanceSettings?normalizeGovernanceSettings(target):createDefaultGovernanceSettings();
+  const base={...createDefaultVersionRetentionPolicy(),...governance.retentionPolicy};
+  const policy=target.versionRetentionPolicy&&typeof target.versionRetentionPolicy==='object'?{...base,...target.versionRetentionPolicy}:base;
+  policy.enabled=Boolean(policy.enabled);
+  policy.mode=VERSION_RETENTION_MODES.includes(String(policy.mode))?String(policy.mode):'preview_only';
+  policy.minVersionsToKeep=Math.max(1,Number(policy.minVersionsToKeep)||20);
+  policy.minDaysToKeep=Math.max(0,Number(policy.minDaysToKeep)||90);
+  policy.keepMonthlySnapshots=policy.keepMonthlySnapshots!==false;
+  policy.keepVersionsWithClientExports=policy.keepVersionsWithClientExports!==false;
+  policy.keepVersionsWithRestoreEvents=policy.keepVersionsWithRestoreEvents!==false;
+  policy.keepVersionsWithAiConversions=policy.keepVersionsWithAiConversions!==false;
+  policy.keepVersionsWithApprovedEvidenceChanges=policy.keepVersionsWithApprovedEvidenceChanges!==false;
+  policy.keepVersionsWithQualityReadyStatus=policy.keepVersionsWithQualityReadyStatus!==false;
+  policy.alwaysKeepCurrentVersion=policy.alwaysKeepCurrentVersion!==false;
+  policy.alwaysKeepRestoredVersions=policy.alwaysKeepRestoredVersions!==false;
+  policy.alwaysKeepClientExportedVersions=policy.alwaysKeepClientExportedVersions!==false;
+  policy.alwaysKeepAuditReferencedVersions=policy.alwaysKeepAuditReferencedVersions!==false;
+  policy.alwaysKeepPinnedVersions=policy.alwaysKeepPinnedVersions!==false;
+  policy.allowArchive=policy.allowArchive!==false;
+  policy.allowHardDelete=false;
+  policy.requireConfirmation=policy.requireConfirmation!==false;
+  policy.createdAt=String(policy.createdAt||new Date().toISOString());
+  policy.updatedAt=String(policy.updatedAt||policy.createdAt);
+  target.versionRetentionPolicy=policy;
+  target.versionRetentionState=target.versionRetentionState&&typeof target.versionRetentionState==='object'?target.versionRetentionState:{};
+  target.versionRetentionState.pinnedVersionIds=Array.isArray(target.versionRetentionState.pinnedVersionIds)?target.versionRetentionState.pinnedVersionIds.map(String):[];
+  target.versionRetentionState.archivedVersionIds=Array.isArray(target.versionRetentionState.archivedVersionIds)?target.versionRetentionState.archivedVersionIds.map(String):[];
+  target.versionRetentionState.cleanupCandidateVersionIds=Array.isArray(target.versionRetentionState.cleanupCandidateVersionIds)?target.versionRetentionState.cleanupCandidateVersionIds.map(String):[];
+  target.versionRetentionState.updatedAt=target.versionRetentionState.updatedAt||null;
+  return policy;
+}
+function localReportVersionsForRetention(reportData=REPORT){
+  ensureVersionDiffBaselineReport();
+  const current=createReportVersionSnapshot(reportData);
+  current.versionId=currentVersionLabel();
+  current.label='Current report';
+  const baseline=createReportVersionSnapshot(VERSION_DIFF_BASELINE_REPORT);
+  baseline.versionId=baseline.versionId==='current'?'loaded-baseline':baseline.versionId;
+  baseline.label='Loaded/start baseline';
+  return [baseline,current].filter((item,index,arr)=>arr.findIndex(other=>other.versionId===item.versionId)===index);
+}
+function getProtectedVersionIds(report, versions, auditLog){
+  const policy=normalizeVersionRetentionPolicy(report);
+  const protectedIds=new Set();
+  const currentId=currentVersionLabel();
+  if(policy.alwaysKeepCurrentVersion) protectedIds.add(currentId);
+  const state=report.versionRetentionState||{};
+  if(policy.alwaysKeepPinnedVersions) (state.pinnedVersionIds||[]).forEach(id=>protectedIds.add(id));
+  if(policy.alwaysKeepRestoredVersions && report.meta?.restoredFromVersionId) protectedIds.add(String(report.meta.restoredFromVersionId));
+  if(policy.alwaysKeepClientExportedVersions && report.meta?.clientExportedAt) protectedIds.add(currentId);
+  for(const event of (auditLog?.events||report.aiAuditLog?.events||[])){
+    if(policy.alwaysKeepAuditReferencedVersions){
+      [event.statusBefore,event.statusAfter,event.outputId].filter(Boolean).forEach(id=>protectedIds.add(String(id)));
+    }
+    if(event.eventType==='report_version_restored'){
+      if(event.statusBefore) protectedIds.add(String(event.statusBefore));
+      if(event.statusAfter) protectedIds.add(String(event.statusAfter));
+    }
+  }
+  for(const version of (versions||[])){
+    if(version.qualityChecklist?.status==='ready' && policy.keepVersionsWithQualityReadyStatus) protectedIds.add(version.versionId);
+    const ageDays=(Date.now()-new Date(version.createdAt||Date.now()).getTime())/86400000;
+    if(ageDays<=policy.minDaysToKeep) protectedIds.add(version.versionId);
+  }
+  if((versions||[]).length<=policy.minVersionsToKeep) (versions||[]).forEach(version=>protectedIds.add(version.versionId));
+  return protectedIds;
+}
+function classifyReportVersionsForRetention(report, versions, policy=normalizeVersionRetentionPolicy(report)){
+  const state=report.versionRetentionState||{};
+  const protectedIds=getProtectedVersionIds(report,versions,report.aiAuditLog);
+  const pinned=new Set(state.pinnedVersionIds||[]);
+  const archived=new Set(state.archivedVersionIds||[]);
+  const currentId=currentVersionLabel();
+  return (versions||[]).map(version=>{
+    const versionId=String(version.versionId||version.id||'unknown');
+    const reasons=[];
+    let classification='unknown';
+    if(versionId===currentId){classification='current'; reasons.push('current active version');}
+    else if(pinned.has(versionId)){classification='pinned'; reasons.push('pinned manually');}
+    else if(protectedIds.has(versionId)){classification='protected'; reasons.push('protected by retention policy');}
+    else if(archived.has(versionId)){classification='archive_candidate'; reasons.push('already archived locally');}
+    else if(!policy.keepAllVersionsByDefault && VERSION_CLEANUP_ENABLED){classification='cleanup_candidate'; reasons.push('eligible by policy preview');}
+    else {classification='archive_candidate'; reasons.push('preview-only candidate; cleanup disabled');}
+    return {...version,versionId,classification,retentionStatus:classification,protected:protectedIds.has(versionId)||classification==='current'||classification==='pinned',pinned:pinned.has(versionId),archived:archived.has(versionId),protectedReasons:reasons};
+  });
+}
+function getVersionRetentionCandidates(report, versions, policy=normalizeVersionRetentionPolicy(report)){
+  return classifyReportVersionsForRetention(report,versions,policy).filter(item=>['cleanup_candidate','archive_candidate'].includes(item.classification)&&!item.protected);
+}
+function buildVersionCleanupPreview(report, versions, policy=normalizeVersionRetentionPolicy(report)){
+  const classified=classifyReportVersionsForRetention(report,versions,policy);
+  const candidates=classified.filter(item=>item.classification==='cleanup_candidate');
+  const archiveCandidates=classified.filter(item=>item.classification==='archive_candidate'&&!item.protected);
+  return {policy,cleanupEnabled:VERSION_CLEANUP_ENABLED,totalVersions:classified.length,protectedVersions:classified.filter(item=>item.protected).length,pinnedVersions:classified.filter(item=>item.pinned).length,archiveCandidates:archiveCandidates.length,cleanupCandidates:candidates.length,versions:classified,warnings:['Cleanup is preview-only by default. No snapshots are deleted automatically.']};
+}
+function validateVersionCleanupSelection(report, versions, selectedVersionIds, policy=normalizeVersionRetentionPolicy(report)){
+  const selected=new Set((selectedVersionIds||[]).map(String));
+  const classified=classifyReportVersionsForRetention(report,versions,policy);
+  const blocked=classified.filter(item=>selected.has(item.versionId)&&item.protected);
+  if(blocked.length){
+    appendAiAuditEvent(report,createVersionCleanupAuditEvent({reportData:report,action:'version_cleanup_rejected_protected',versionIds:blocked.map(item=>item.versionId),reason:'Protected versions cannot be cleaned up.',protectedReason:blocked.flatMap(item=>item.protectedReasons||[]).join('; '),retentionPolicySnapshot:policy}));
+  }
+  return {ok:!blocked.length,blocked,selected:[...selected]};
+}
+function createVersionCleanupAuditEvent(input={}){
+  return createAiAuditEvent(input.reportData||REPORT,{eventType:AI_AUDIT_EVENT_TYPES.includes(input.action)?input.action:'version_cleanup_previewed',provider:'local',providerMode:'disabled',generatedBy:'manual',notes:String(input.reason||''),warnings:[input.protectedReason||''].filter(Boolean),outputRefs:(input.versionIds||[]).map(id=>normalizeAiOutputRef({type:'unknown',id,label:'Report version',status:'retention'}))});
+}
+function markVersionsAsArchived(report, versionIds, options={}){
+  const policy=normalizeVersionRetentionPolicy(report);
+  if(policy.mode!=='archive_only' || !VERSION_CLEANUP_ENABLED) return {archived:0,error:'Archive is disabled in preview-only retention mode.'};
+  const versions=localReportVersionsForRetention(report);
+  const validation=validateVersionCleanupSelection(report,versions,versionIds,policy);
+  if(!validation.ok) return {archived:0,error:'Protected versions cannot be archived.'};
+  const state=report.versionRetentionState;
+  const ids=new Set([...(state.archivedVersionIds||[]),...(versionIds||[]).map(String)]);
+  state.archivedVersionIds=[...ids];
+  state.updatedAt=new Date().toISOString();
+  appendAiAuditEvent(report,createVersionCleanupAuditEvent({reportData:report,action:'version_archived',versionIds:versionIds||[],reason:options.reason||'Versions archived locally.',retentionPolicySnapshot:policy}));
+  return {archived:(versionIds||[]).length,error:''};
+}
+function markVersionsAsCleanupCandidates(report, versionIds, options={}){
+  normalizeVersionRetentionPolicy(report);
+  const state=report.versionRetentionState;
+  const ids=new Set([...(state.cleanupCandidateVersionIds||[]),...(versionIds||[]).map(String)]);
+  state.cleanupCandidateVersionIds=[...ids];
+  state.updatedAt=new Date().toISOString();
+  return {marked:(versionIds||[]).length};
+}
+function pinVersionForRetention(report,versionId){
+  if(!guardAdmin()) return null;
+  normalizeVersionRetentionPolicy(report);
+  const id=String(versionId||'');
+  if(!id) return null;
+  const state=report.versionRetentionState;
+  state.pinnedVersionIds=[...new Set([...(state.pinnedVersionIds||[]),id])];
+  state.updatedAt=new Date().toISOString();
+  appendAiAuditEvent(report,createVersionCleanupAuditEvent({reportData:report,action:'version_pinned',versionIds:[id],reason:'Version pinned by analyst/editor.'}));
+  return id;
+}
+function unpinVersionForRetention(report,versionId){
+  if(!guardAdmin()) return null;
+  normalizeVersionRetentionPolicy(report);
+  const id=String(versionId||'');
+  const state=report.versionRetentionState;
+  state.pinnedVersionIds=(state.pinnedVersionIds||[]).filter(item=>item!==id);
+  state.updatedAt=new Date().toISOString();
+  appendAiAuditEvent(report,createVersionCleanupAuditEvent({reportData:report,action:'version_unpinned',versionIds:[id],reason:'Version unpinned by analyst/editor.'}));
+  return id;
+}
+function checklistItem(category,severity,message){
+  return {category,severity,message};
+}
+function sectionHasClientContent(section){
+  return (section?.blocks||[]).some(block=>String(block?.text||'').trim());
+}
+function getReportCompletenessScore(reportData){
+  const report=normalizeReportSchema(clone(reportData||{}));
+  const required=['cover','executiveSummary','researchScope','competitors','recommendations','sourcesEvidence'];
+  const passed=required.filter(id=>sectionHasClientContent(getReportSection(report,id)) || (id==='cover'&&getReportSection(report,id)) || (id==='sourcesEvidence'&&getReportSection(report,id))).length;
+  return Math.round((passed/required.length)*100);
+}
+function getEvidenceQualityScore(reportData){
+  const cards=normalizeEvidenceCards(clone(reportData||{})).items||[];
+  const approved=cards.filter(card=>card.reviewStatus==='approved');
+  if(!cards.length) return 0;
+  const sourced=approved.filter(card=>(card.sourceIds||[]).length).length;
+  return Math.round(((approved.length/cards.length)*60 + (approved.length?sourced/approved.length:0)*40));
+}
+function getSourceCoverageScore(reportData){
+  const report=clone(reportData||{});
+  const sources=normalizeSourceRegistry(report).items||[];
+  const approved=getApprovedEvidenceCards(report);
+  if(!sources.length) return 0;
+  if(!approved.length) return 50;
+  const linked=approved.filter(card=>(card.sourceIds||[]).length).length;
+  return Math.round((linked/approved.length)*100);
+}
+function findUnsafeClientKeys(value,path='',hits=[]){
+  if(!value || typeof value!=='object' || hits.length>20) return hits;
+  for(const [key,val] of Object.entries(value)){
+    const next=path?`${path}.${key}`:key;
+    if(/(token|secret|apikey|api_key|environment|env|cloudflareAccessToken|localPathLabel|handle|analystNotes|reviewNotes|rejectionReason|reviewedBy)/i.test(key)){
+      hits.push(next);
+    }
+    if(val && typeof val==='object') findUnsafeClientKeys(val,next,hits);
+  }
+  return hits;
+}
+function getClientSafetyIssues(reportData){
+  const report=sanitizeClientExportData(reportData);
+  const issues=[];
+  const exportedEvidence=buildEvidenceSummaryForExport(report);
+  const rejected=(report.evidenceCards?.items||[]).filter(card=>card.reviewStatus==='rejected');
+  if(rejected.length) issues.push('Rejected evidence is present in sanitized export data.');
+  if(exportedEvidence.some(card=>card.reviewStatus==='rejected')) issues.push('Rejected evidence appears in evidence summary.');
+  if(!report.meta?.clientLocked) issues.push('Client export is not locked.');
+  if(!report.clientExportV2) issues.push('Client Export V2 payload is missing.');
+  const unsafe=findUnsafeClientKeys(report);
+  if(unsafe.length) issues.push(`Potential internal fields found: ${unsafe.slice(0,5).join(', ')}`);
+  return issues;
+}
+function getExportReadinessStatus(reportData){
+  const result=runReportQualityChecklist(reportData);
+  if(result.blockers.length) return 'not_ready';
+  if(result.warnings.length) return 'needs_review';
+  return 'ready';
+}
+function runReportQualityChecklist(reportData){
+  const report=clone(reportData||{});
+  normalizeReportSchema(report);
+  normalizeEvidenceCards(report);
+  normalizeSourceRegistry(report);
+  const items=[];
+  const section=(id)=>getReportSection(report,id);
+  if(!(report.reportSections||[]).length) items.push(checklistItem('report_structure','blocker','No Report Schema V2 sections found.'));
+  section('cover')?items.push(checklistItem('report_structure','passed','Cover section exists.')):items.push(checklistItem('report_structure','blocker','Cover section is missing.'));
+  sectionHasClientContent(section('executiveSummary'))?items.push(checklistItem('report_structure','passed','Executive summary has content.')):items.push(checklistItem('report_structure','blocker','Executive summary has no draft content.'));
+  sectionHasClientContent(section('researchScope'))?items.push(checklistItem('report_structure','passed','Research scope has content.')):items.push(checklistItem('report_structure','warning','Research scope is empty.'));
+  sectionHasClientContent(section('competitors'))?items.push(checklistItem('report_structure','passed','Competitors section has content.')):items.push(checklistItem('report_structure','warning','Competitors section is empty.'));
+  sectionHasClientContent(section('recommendations'))?items.push(checklistItem('report_structure','passed','Recommendations section has content.')):items.push(checklistItem('report_structure','warning','No recommendation draft blocks yet.'));
+  section('sourcesEvidence')?items.push(checklistItem('report_structure','passed','Sources and Evidence section exists.')):items.push(checklistItem('report_structure','blocker','Sources and Evidence section is missing.'));
+
+  const cards=report.evidenceCards.items||[];
+  const approved=cards.filter(card=>card.reviewStatus==='approved');
+  const needsReview=cards.filter(card=>card.reviewStatus==='needs_review');
+  approved.length?items.push(checklistItem('approved_evidence','passed',`${approved.length} approved evidence card(s).`)):items.push(checklistItem('approved_evidence','blocker','No approved evidence cards.'));
+  if(needsReview.length) items.push(checklistItem('approved_evidence','warning',`${needsReview.length} evidence card(s) still need review.`));
+  const clientData=buildClientExportDataV2(report);
+  const exportedEvidenceIds=new Set(clientData.evidence.map(card=>card.id));
+  const rejectedInExport=cards.some(card=>card.reviewStatus==='rejected' && exportedEvidenceIds.has(card.id));
+  rejectedInExport?items.push(checklistItem('approved_evidence','blocker','Rejected evidence appears in client export data.')):items.push(checklistItem('approved_evidence','passed','Rejected evidence is excluded from client export data.'));
+  const exportedBlocks=clientData.sections.flatMap(sec=>sec.blocks||[]);
+  const unreferencedBlocks=exportedBlocks.filter(block=>!(block.sourceIds||[]).length && !(block.evidenceCardIds||[]).length);
+  if(unreferencedBlocks.length) items.push(checklistItem('approved_evidence','warning',`${unreferencedBlocks.length} exported draft block(s) have no evidence/source references.`));
+  const aiBlocks=(report.reportSections||[]).flatMap(section=>(section.blocks||[]).map(block=>({...block,sectionId:block.sectionId||section.id}))).filter(block=>['ai_preview','ai_dry_run'].includes(String(block.generatedBy||'')) || block.originalSuggestionId || block.provenanceId);
+  const needsReviewAi=aiBlocks.filter(block=>String(block.status||'draft')==='needs_review');
+  if(needsReviewAi.length) items.push(checklistItem('client_safety','warning',`${needsReviewAi.length} AI-derived draft block(s) still need review.`));
+  const unsourcedAi=aiBlocks.filter(block=>!(block.sourceIds||[]).length && !(block.evidenceCardIds||[]).length);
+  if(unsourcedAi.length) items.push(checklistItem('sources','warning',`${unsourcedAi.length} AI-derived draft block(s) have no evidence/source links.`));
+
+  const sources=report.sourceRegistry.items||[];
+  sources.length?items.push(checklistItem('sources','passed',`${sources.length} source(s) in Source Registry.`)):items.push(checklistItem('sources','blocker','Source Registry has no sources.'));
+  const unsourced=approved.filter(card=>!(card.sourceIds||[]).length);
+  unsourced.length?items.push(checklistItem('sources','blocker',`${unsourced.length} approved evidence card(s) lack linked sources.`)):items.push(checklistItem('sources','passed','Approved evidence cards have linked sources.'));
+  const weakSources=sources.filter(source=>['weak','unreviewed','needs_review'].includes(String(source.credibilityStatus||'')));
+  if(weakSources.length) items.push(checklistItem('sources','warning',`${weakSources.length} source(s) need credibility review.`));
+
+  const matrix=normalizePricingFeatureMatrix(report);
+  const matrixCoverage=getMatrixEvidenceCoverage(report);
+  if(matrix.competitorIds.length) items.push(checklistItem('pricing_features','passed',`Pricing/feature matrix includes ${matrix.competitorIds.length} competitor(s).`));
+  else items.push(checklistItem('pricing_features','warning','Pricing/feature matrix has no competitors yet.'));
+  const matrixNeedsReview=getMatrixCellsNeedingReview(report);
+  if(matrixNeedsReview.length) items.push(checklistItem('pricing_features','warning',`${matrixNeedsReview.length} matrix cell(s) need review, sources, or non-rejected evidence.`));
+  if(matrixCoverage.total && matrixCoverage.score<100) items.push(checklistItem('pricing_features','warning',`Matrix evidence/source coverage is ${matrixCoverage.score}%. Unknown cells must remain clearly marked.`));
+
+  const safety=getClientSafetyIssues(report);
+  if(safety.length) safety.forEach(issue=>items.push(checklistItem('client_safety','blocker',issue)));
+  else items.push(checklistItem('client_safety','passed','Client export data has no obvious internal/review-only fields.'));
+  try{
+    buildClientExportDataV2(report);
+    sanitizeClientExportData(report);
+    buildSourcesIndexForExport(report);
+    buildEvidenceSummaryForExport(report);
+    buildClientReadmeText(report,0);
+    buildPrintCss();
+    items.push(checklistItem('export_package','passed','Client package files can be generated.'));
+  }catch(e){
+    items.push(checklistItem('export_package','blocker',`Client package generation check failed: ${e?.message||e}`));
+  }
+  if(report.meta?.isDemoReport) items.push(checklistItem('demo_status','warning','Current report is demo/sample data. Do not send as real research.'));
+  else items.push(checklistItem('demo_status','passed','Report is not marked as demo data.'));
+
+  const blockers=items.filter(item=>item.severity==='blocker');
+  const warnings=items.filter(item=>item.severity==='warning');
+  const passed=items.filter(item=>item.severity==='passed');
+  const status=blockers.length?'not_ready':(warnings.length?'needs_review':'ready');
+  return {
+    status,
+    completenessScore:getReportCompletenessScore(report),
+    evidenceScore:getEvidenceQualityScore(report),
+    sourceCoverageScore:getSourceCoverageScore(report),
+    clientSafetyStatus:blockers.some(item=>item.category==='client_safety')?'not_ready':'ready',
+    items,
+    blockers,
+    warnings,
+    passed
+  };
+}
+function canExportClientReport(reportData){
+  const policy=getEffectiveGovernancePolicy(reportData).exportPolicy;
+  if(!policy.requireQualityChecklistBeforeClientExport) return true;
+  const checklist=runReportQualityChecklist(reportData);
+  return policy.blockExportOnQualityBlockers?!checklist.blockers.length:true;
+}
+function createDefaultAiAssistanceState(){
+  return {aiEnabled:false, aiMode:'disabled', taskDrafts:[], suggestions:[], updatedAt:null};
+}
+function normalizeAiSuggestion(item){
+  const out=item&&typeof item==='object'?{...item}:{};
+  out.id=String(out.id||uid('ai'));
+  out.taskType=AI_TASK_TYPES.includes(String(out.taskType))?String(out.taskType):'extract_evidence_candidates';
+  out.title=String(out.title||AI_TASK_DEFINITIONS[out.taskType]?.label||'AI suggestion');
+  out.summary=String(out.summary||'');
+  out.inputRefs=Array.isArray(out.inputRefs)?out.inputRefs.map(ref=>ref&&typeof ref==='object'?normalizeAiInputRef(ref):String(ref)):[];
+  out.outputPreview=out.outputPreview&&typeof out.outputPreview==='object'?out.outputPreview:{};
+  out.status=AI_SUGGESTION_STATUS.includes(String(out.status))?String(out.status):'draft';
+  out.taskRunId=String(out.taskRunId||out.outputPreview.taskRunId||'');
+  out.provider=String(out.provider||out.outputPreview.provider||'dry_run');
+  out.providerMode=AI_PROVIDER_MODES.includes(String(out.providerMode))?String(out.providerMode):(out.provider==='dry_run'?'dry_run':'unknown');
+  out.generatedBy=AI_REVIEW_GENERATORS.includes(String(out.generatedBy))?String(out.generatedBy):(out.providerMode==='dry_run'?'ai_dry_run':'ai_preview');
+  out.createdAt=String(out.createdAt||'');
+  out.updatedAt=String(out.updatedAt||out.createdAt||'');
+  return out;
+}
+function normalizeAiAssistanceState(reportData){
+  const report=reportData&&typeof reportData==='object'?reportData:{};
+  const state=report.aiAssistance&&typeof report.aiAssistance==='object'
+    ? report.aiAssistance
+    : createDefaultAiAssistanceState();
+  state.aiEnabled=false;
+  state.aiMode='disabled';
+  state.taskDrafts=Array.isArray(state.taskDrafts)?state.taskDrafts.map(normalizeAiSuggestion):[];
+  state.suggestions=Array.isArray(state.suggestions)?state.suggestions.map(normalizeAiSuggestion):[];
+  state.updatedAt=state.updatedAt||null;
+  report.aiAssistance=state;
+  return state;
+}
+function createDefaultAiAuditLog(){
+  return {events:[], provenance:[], updatedAt:null};
+}
+function normalizeAiInputRef(ref){
+  const out=ref&&typeof ref==='object'?{...ref}:{id:String(ref||'')};
+  out.type=AI_INPUT_REF_TYPES.includes(String(out.type))?String(out.type):'unknown';
+  out.id=String(out.id||out.sourceId||out.evidenceCardId||out.materialId||out.sectionId||'');
+  out.label=String(out.label||out.id||'');
+  out.sectionId=String(out.sectionId||'');
+  out.sourceId=String(out.sourceId||'');
+  out.evidenceCardId=String(out.evidenceCardId||'');
+  out.materialId=String(out.materialId||'');
+  return out;
+}
+function normalizeAiOutputRef(ref){
+  const out=ref&&typeof ref==='object'?{...ref}:{id:String(ref||'')};
+  out.type=AI_OUTPUT_REF_TYPES.includes(String(out.type))?String(out.type):'unknown';
+  out.id=String(out.id||'');
+  out.label=String(out.label||out.id||'');
+  out.sectionId=String(out.sectionId||'');
+  out.status=String(out.status||'');
+  return out;
+}
+function normalizeAiProvenanceRecord(record){
+  const out=record&&typeof record==='object'?{...record}:{};
+  out.id=String(out.id||uid('aip'));
+  out.taskRunId=String(out.taskRunId||'');
+  out.taskType=AI_TASK_TYPES.includes(String(out.taskType))?String(out.taskType):'extract_evidence_candidates';
+  out.suggestionId=String(out.suggestionId||'');
+  out.originalSuggestionId=String(out.originalSuggestionId||out.suggestionId||'');
+  out.provider=String(out.provider||'dry_run');
+  out.providerMode=AI_PROVIDER_MODES.includes(String(out.providerMode))?String(out.providerMode):'unknown';
+  out.generatedBy=AI_REVIEW_GENERATORS.includes(String(out.generatedBy))?String(out.generatedBy):'unknown';
+  out.inputRefs=Array.isArray(out.inputRefs)?out.inputRefs.map(normalizeAiInputRef):[];
+  out.outputRefs=Array.isArray(out.outputRefs)?out.outputRefs.map(normalizeAiOutputRef):[];
+  out.warnings=Array.isArray(out.warnings)?out.warnings.map(String):[];
+  out.createdAt=String(out.createdAt||new Date().toISOString());
+  out.updatedAt=String(out.updatedAt||out.createdAt);
+  return out;
+}
+function normalizeAiAuditEvent(event){
+  const out=event&&typeof event==='object'?{...event}:{};
+  out.id=String(out.id||uid('aie'));
+  out.eventType=AI_AUDIT_EVENT_TYPES.includes(String(out.eventType))?String(out.eventType):'unknown';
+  out.taskRunId=String(out.taskRunId||'');
+  out.taskType=AI_TASK_TYPES.includes(String(out.taskType))?String(out.taskType):'';
+  out.suggestionId=String(out.suggestionId||'');
+  out.outputType=String(out.outputType||'');
+  out.outputId=String(out.outputId||'');
+  out.actorRole=String(out.actorRole||'editor');
+  out.actorLabel=String(out.actorLabel||'local analyst');
+  out.provider=String(out.provider||'dry_run');
+  out.providerMode=AI_PROVIDER_MODES.includes(String(out.providerMode))?String(out.providerMode):'unknown';
+  out.generatedBy=AI_REVIEW_GENERATORS.includes(String(out.generatedBy))?String(out.generatedBy):'unknown';
+  out.inputRefs=Array.isArray(out.inputRefs)?out.inputRefs.map(normalizeAiInputRef):[];
+  out.outputRefs=Array.isArray(out.outputRefs)?out.outputRefs.map(normalizeAiOutputRef):[];
+  out.statusBefore=String(out.statusBefore||'');
+  out.statusAfter=String(out.statusAfter||'');
+  out.warnings=Array.isArray(out.warnings)?out.warnings.map(String):[];
+  out.errorCode=String(out.errorCode||'');
+  out.createdAt=String(out.createdAt||new Date().toISOString());
+  out.notes=String(out.notes||'');
+  return out;
+}
+function normalizeAiAuditLog(reportData){
+  const report=reportData&&typeof reportData==='object'?reportData:{};
+  const log=report.aiAuditLog&&typeof report.aiAuditLog==='object'?report.aiAuditLog:createDefaultAiAuditLog();
+  log.events=Array.isArray(log.events)?log.events.map(normalizeAiAuditEvent):[];
+  log.provenance=Array.isArray(log.provenance)?log.provenance.map(normalizeAiProvenanceRecord):[];
+  log.updatedAt=log.updatedAt||null;
+  report.aiAuditLog=log;
+  return log;
+}
+function aiProviderMode(provider, aiStatus){
+  const name=String(provider||aiStatus?.provider||'dry_run');
+  if(name==='dry_run') return 'dry_run';
+  if(String(aiStatus?.currentMode||'')==='disabled') return 'disabled';
+  if(name && name!=='unknown') return 'real_provider';
+  return 'unknown';
+}
+function aiActor(){
+  const user=currentAiUser();
+  return {actorRole:String(user.role||'viewer'), actorLabel:['owner','editor','admin'].includes(String(user.role||''))?reviewActorLabel():'viewer'};
+}
+function createAiAuditEvent(reportData,input={}){
+  return normalizeAiAuditEvent({...aiActor(),...input,createdAt:input.createdAt||new Date().toISOString()});
+}
+function appendAiAuditEvent(reportData,event){
+  const log=normalizeAiAuditLog(reportData);
+  const item=normalizeAiAuditEvent(event);
+  log.events.push(item);
+  log.updatedAt=item.createdAt;
+  return item;
+}
+function getAiAuditEvents(reportData,filters={}){
+  const events=normalizeAiAuditLog(reportData).events||[];
+  return events.filter(event=>(!filters.eventType||filters.eventType==='all'||event.eventType===filters.eventType)&&(!filters.taskRunId||event.taskRunId===filters.taskRunId)&&(!filters.suggestionId||event.suggestionId===filters.suggestionId));
+}
+function getAiAuditEventsBySuggestionId(reportData,suggestionId){
+  return getAiAuditEvents(reportData,{suggestionId:String(suggestionId||'')});
+}
+function getAiAuditEventsByOutputRef(reportData,outputRef){
+  const type=String(outputRef?.type||outputRef?.outputType||'');
+  const id=String(outputRef?.id||outputRef?.outputId||'');
+  return (normalizeAiAuditLog(reportData).events||[]).filter(event=>(event.outputType===type&&event.outputId===id)||(event.outputRefs||[]).some(ref=>ref.type===type&&ref.id===id));
+}
+function createSuggestionProvenanceRecord(input){
+  return normalizeAiProvenanceRecord(input);
+}
+function getAiSuggestionProvenance(reportData,suggestionId){
+  const id=String(suggestionId||'');
+  return (normalizeAiAuditLog(reportData).provenance||[]).find(item=>item.suggestionId===id||item.originalSuggestionId===id)||null;
+}
+function getOutputObjectProvenance(reportData,outputType,outputId){
+  const type=String(outputType||'');
+  const id=String(outputId||'');
+  return (normalizeAiAuditLog(reportData).provenance||[]).filter(item=>(item.outputRefs||[]).some(ref=>ref.type===type&&ref.id===id));
+}
+function upsertAiProvenance(reportData,record){
+  const log=normalizeAiAuditLog(reportData);
+  const item=normalizeAiProvenanceRecord(record);
+  const idx=log.provenance.findIndex(existing=>existing.id===item.id||(item.suggestionId&&existing.suggestionId===item.suggestionId));
+  if(idx>=0) log.provenance[idx]={...log.provenance[idx],...item,updatedAt:new Date().toISOString()};
+  else log.provenance.push(item);
+  log.updatedAt=new Date().toISOString();
+  return idx>=0?log.provenance[idx]:item;
+}
+function linkSuggestionToOutput(reportData,suggestionId,outputRef){
+  const ref=normalizeAiOutputRef(outputRef);
+  const provenance=getAiSuggestionProvenance(reportData,suggestionId);
+  if(!provenance) return null;
+  const refs=[...(provenance.outputRefs||[])];
+  if(!refs.some(item=>item.type===ref.type&&item.id===ref.id)) refs.push(ref);
+  return upsertAiProvenance(reportData,{...provenance,outputRefs:refs});
+}
+function linkAiTaskToSuggestions(reportData,taskRunId,suggestionIds){
+  const ids=(suggestionIds||[]).map(String).filter(Boolean);
+  for(const id of ids){
+    const provenance=getAiSuggestionProvenance(reportData,id);
+    if(provenance) upsertAiProvenance(reportData,{...provenance,taskRunId:String(taskRunId||provenance.taskRunId)});
+  }
+  return ids;
+}
+function markSuggestionConvertedInProvenance(reportData,suggestionId,outputRefs){
+  const refs=(outputRefs||[]).map(normalizeAiOutputRef);
+  for(const ref of refs) linkSuggestionToOutput(reportData,suggestionId,ref);
+  return getAiSuggestionProvenance(reportData,suggestionId);
+}
+function recordAiSuggestionOutput(reportData,suggestion,output,outputType){
+  if(!suggestion||!output) return output;
+  output.originalSuggestionId=String(suggestion.id||output.originalSuggestionId||'');
+  output.originalTaskRunId=String(suggestion.originalTaskRunId||suggestion.taskRunId||output.originalTaskRunId||'');
+  output.provenanceId=String(suggestion.provenanceId||output.provenanceId||'');
+  output.provider=String(suggestion.provider||output.provider||'dry_run');
+  output.generatedBy=String(suggestion.generatedBy||output.generatedBy||'ai_dry_run');
+  const ref=normalizeAiOutputRef({type:outputType,id:output.id||output.message||uid('out'),label:output.title||output.claim||output.message||suggestion.title||suggestion.claim||suggestion.heading||'',sectionId:output.sectionId||suggestion.sectionId||suggestion.suggestedSectionId||'',status:output.reviewStatus||output.status||'needs_review'});
+  markSuggestionConvertedInProvenance(reportData,suggestion.id,[ref]);
+  appendAiAuditEvent(reportData,createAiAuditEvent(reportData,{eventType:outputType==='evidence_card'?'evidence_card_created_from_suggestion':(outputType==='draft_block'?'draft_block_created_from_suggestion':'checklist_item_created_from_suggestion'),taskRunId:output.originalTaskRunId,taskType:suggestion.taskType||'',suggestionId:suggestion.id,outputType:ref.type,outputId:ref.id,provider:output.provider,providerMode:suggestion.providerMode||'dry_run',generatedBy:output.generatedBy,inputRefs:suggestion.inputRefs||[],outputRefs:[ref],statusAfter:ref.status}));
+  return output;
+}
+function sanitizeAiAuditForClientExport(){
+  return createDefaultAiAuditLog();
+}
+function buildAiInputRefs(reportData,taskType,options={}){
+  const report=reportData&&typeof reportData==='object'?reportData:{};
+  const selectedSections=new Set((options.selectedSectionIds||[]).map(String).filter(Boolean));
+  const selectedSources=new Set((options.selectedSourceIds||[]).map(String).filter(Boolean));
+  const selectedMaterials=new Set((options.selectedMaterialIds||[]).map(String).filter(Boolean));
+  const refs=[];
+  const push=(ref)=>{const item=normalizeAiInputRef(ref); if(item.id && !refs.some(existing=>existing.type===item.type&&existing.id===item.id)) refs.push(item);};
+  (report.reportSections||[]).forEach(section=>{if(!selectedSections.size||selectedSections.has(section.id)||section.id===options.selectedSectionId) push({type:'section',id:section.id,label:section.title,sectionId:section.id});});
+  (report.sourceRegistry?.items||[]).forEach(source=>{if(!selectedSources.size||selectedSources.has(source.id)) push({type:'source',id:source.id,label:source.title||source.fileName,sourceId:source.id,materialId:source.materialId||'',sectionId:(source.linkedSectionIds||[])[0]||''});});
+  (report.materialsInventory?.items||[]).forEach(material=>{if(!selectedMaterials.size||selectedMaterials.has(material.id)) push({type:'material',id:material.id,label:material.name,materialId:material.id,sectionId:material.linkedSectionId||''});});
+  if(['suggest_recommendations','improve_executive_summary','check_source_coverage','suggest_report_sections'].includes(String(taskType))){
+    (report.evidenceCards?.items||[]).filter(card=>card.reviewStatus==='approved'||taskType==='check_source_coverage').slice(0,16).forEach(card=>push({type:'evidence_card',id:card.id,label:card.claim||card.summary,evidenceCardId:card.id,sectionId:card.sectionId,sourceId:(card.sourceIds||[])[0]||''}));
+  }
+  return refs.slice(0,32);
+}
+function outputRefsForSuggestion(item,type='ai_suggestion'){
+  return [normalizeAiOutputRef({type,id:item?.id||'',label:item?.title||item?.claim||item?.heading||item?.description||'',sectionId:item?.sectionId||item?.suggestedSectionId||'',status:item?.reviewStatus||'needs_review'})].filter(ref=>ref.id);
+}
+function stampAiPreviewOutput(output,meta={}){
+  const taskRunId=String(meta.taskRunId||output.taskRunId||uid('aitask'));
+  const provider=String(meta.provider||output.provider||'dry_run');
+  const providerMode=AI_PROVIDER_MODES.includes(String(meta.providerMode))?String(meta.providerMode):aiProviderMode(provider,meta.aiStatus);
+  const generatedBy=providerMode==='dry_run'?'ai_dry_run':'ai_preview';
+  const inputRefs=(meta.inputRefs||output.inputRefs||[]).map(normalizeAiInputRef);
+  const stamp=(item)=>{
+    if(!item||typeof item!=='object') return item;
+    item.id=String(item.id||uid('ais'));
+    item.taskRunId=taskRunId;
+    item.originalTaskRunId=taskRunId;
+    item.provenanceId=String(item.provenanceId||uid('aip'));
+    item.provider=provider;
+    item.providerMode=providerMode;
+    item.generatedBy=item.generatedBy||generatedBy;
+    item.inputRefs=inputRefs;
+    return item;
+  };
+  ['candidates','recommendations','summaryBlocks','coverageGaps','draftBlocks'].forEach(key=>{
+    if(Array.isArray(output[key])) output[key]=output[key].map(stamp);
+  });
+  output.taskRunId=taskRunId;
+  output.provider=provider;
+  output.providerMode=providerMode;
+  output.generatedBy=generatedBy;
+  output.inputRefs=inputRefs;
+  output.outputSuggestionIds=['candidates','recommendations','summaryBlocks','coverageGaps','draftBlocks'].flatMap(key=>(output[key]||[]).map(item=>item.id)).filter(Boolean);
+  return output;
+}
+function beginAiPreviewAudit(reportData,taskType,aiStatus,options={}){
+  const taskRunId=uid('aitask');
+  const provider=String(aiStatus?.provider||'dry_run');
+  const providerMode=aiProviderMode(provider,aiStatus);
+  const inputRefs=buildAiInputRefs(reportData,taskType,options);
+  appendAiAuditEvent(reportData,createAiAuditEvent(reportData,{eventType:'ai_preview_requested',taskRunId,taskType,provider,providerMode,generatedBy:providerMode==='dry_run'?'ai_dry_run':'ai_preview',inputRefs}));
+  return {taskRunId,taskType,provider,providerMode,inputRefs,aiStatus};
+}
+function failAiPreviewAudit(reportData,meta,errorCode,warnings=[]){
+  appendAiAuditEvent(reportData,createAiAuditEvent(reportData,{eventType:'ai_preview_failed',taskRunId:meta?.taskRunId,taskType:meta?.taskType,provider:meta?.provider,providerMode:meta?.providerMode,generatedBy:meta?.providerMode==='dry_run'?'ai_dry_run':'ai_preview',inputRefs:meta?.inputRefs||[],warnings,errorCode:String(errorCode||'preview_failed')}));
+}
+function createDefaultAiReviewQueue(){
+  return {items:[], updatedAt:null};
+}
+function normalizeAiReviewQueueItem(item){
+  const out=item&&typeof item==='object'?{...item}:{};
+  out.id=String(out.id||uid('aiq'));
+  out.suggestionType=AI_REVIEW_SUGGESTION_TYPES.includes(String(out.suggestionType))?String(out.suggestionType):'unknown';
+  out.title=String(out.title||'AI suggestion');
+  out.summary=String(out.summary||'');
+  out.payload=out.payload&&typeof out.payload==='object'?out.payload:{};
+  out.sourceIds=Array.isArray(out.sourceIds)?out.sourceIds.map(String).filter(Boolean):[];
+  out.evidenceCardIds=Array.isArray(out.evidenceCardIds)?out.evidenceCardIds.map(String).filter(Boolean):[];
+  out.materialIds=Array.isArray(out.materialIds)?out.materialIds.map(String).filter(Boolean):[];
+  out.sectionId=String(out.sectionId||'');
+  out.confidenceStatus=['low','medium','high','unknown'].includes(String(out.confidenceStatus))?String(out.confidenceStatus):'unknown';
+  out.reviewStatus=AI_REVIEW_STATUSES.includes(String(out.reviewStatus))?String(out.reviewStatus):'ready_for_review';
+  out.generatedBy=AI_REVIEW_GENERATORS.includes(String(out.generatedBy))?String(out.generatedBy):'unknown';
+  out.provider=String(out.provider||'dry_run');
+  out.warnings=Array.isArray(out.warnings)?out.warnings.map(String):[];
+  out.analystNotes=String(out.analystNotes||'');
+  out.rejectionReason=String(out.rejectionReason||'');
+  out.createdAt=String(out.createdAt||new Date().toISOString());
+  out.updatedAt=String(out.updatedAt||out.createdAt);
+  out.reviewedAt=String(out.reviewedAt||'');
+  out.reviewedBy=String(out.reviewedBy||'');
+  out.convertedId=String(out.convertedId||'');
+  out.originalTaskRunId=String(out.originalTaskRunId||out.taskRunId||out.payload.taskRunId||'');
+  out.originalSuggestionId=String(out.originalSuggestionId||out.payload.id||out.id);
+  out.provenanceId=String(out.provenanceId||out.payload.provenanceId||'');
+  out.providerMode=AI_PROVIDER_MODES.includes(String(out.providerMode))?String(out.providerMode):(out.provider==='dry_run'?'dry_run':'unknown');
+  out.inputRefs=Array.isArray(out.inputRefs)?out.inputRefs.map(normalizeAiInputRef):(Array.isArray(out.payload.inputRefs)?out.payload.inputRefs.map(normalizeAiInputRef):[]);
+  out.outputRefs=Array.isArray(out.outputRefs)?out.outputRefs.map(normalizeAiOutputRef):[];
+  return out;
+}
+function normalizeAiReviewQueue(reportData){
+  const report=reportData&&typeof reportData==='object'?reportData:{};
+  const queue=report.aiReviewQueue&&typeof report.aiReviewQueue==='object'?report.aiReviewQueue:createDefaultAiReviewQueue();
+  queue.items=Array.isArray(queue.items)?queue.items.map(normalizeAiReviewQueueItem):[];
+  queue.updatedAt=queue.updatedAt||null;
+  report.aiReviewQueue=queue;
+  return queue;
+}
+function queueItemFromSuggestion(suggestion){
+  const raw=suggestion?.candidate||suggestion?.recommendation||suggestion?.summaryBlock||suggestion?.gap||suggestion?.block||suggestion?.payload||suggestion||{};
+  const type=suggestion?.suggestionType||suggestion?.type||(
+    suggestion?.candidate?'evidence_candidate':
+    suggestion?.recommendation?'recommendation':
+    suggestion?.summaryBlock?'executive_summary':
+    suggestion?.gap?'source_coverage_gap':
+    suggestion?.block?'section_draft':'unknown'
+  );
+  const payload=raw&&typeof raw==='object'?raw:{};
+  return normalizeAiReviewQueueItem({
+    id:uid('aiq'),
+    suggestionType:type,
+    title:payload.title||payload.heading||payload.claim||payload.id||String(type).replace(/_/g,' '),
+    summary:payload.summary||payload.recommendation||payload.text||payload.description||payload.rationale||'',
+    payload,
+    sourceIds:payload.sourceIds||[],
+    evidenceCardIds:payload.evidenceCardIds||[],
+    materialIds:payload.materialIds||[],
+    sectionId:payload.sectionId||payload.suggestedSectionId||'',
+    confidenceStatus:payload.confidenceStatus||'unknown',
+    reviewStatus:'ready_for_review',
+    generatedBy:payload.generatedBy||'ai_dry_run',
+    provider:suggestion?.provider||'dry_run',
+    providerMode:payload.providerMode||suggestion?.providerMode||(String(suggestion?.provider||payload.provider||'dry_run')==='dry_run'?'dry_run':'unknown'),
+    warnings:payload.warnings||[],
+    originalTaskRunId:payload.originalTaskRunId||payload.taskRunId||suggestion?.taskRunId||'',
+    originalSuggestionId:payload.id||suggestion?.id||'',
+    provenanceId:payload.provenanceId||suggestion?.provenanceId||'',
+    inputRefs:payload.inputRefs||suggestion?.inputRefs||[],
+    createdAt:new Date().toISOString(),
+    updatedAt:new Date().toISOString()
+  });
+}
+function validateQueueItemLinks(reportData,item){
+  const sections=new Set((reportData.reportSections||[]).map(section=>section.id));
+  const sources=new Set((reportData.sourceRegistry?.items||[]).map(source=>source.id));
+  const evidence=new Set((reportData.evidenceCards?.items||[]).map(card=>card.id));
+  if(item.sectionId && !sections.has(item.sectionId)) item.warnings=[...item.warnings,`Missing section: ${item.sectionId}`];
+  item.sourceIds=item.sourceIds.filter(id=>sources.has(id));
+  item.evidenceCardIds=item.evidenceCardIds.filter(id=>evidence.has(id));
+  return item;
+}
+function addAiSuggestionToReviewQueue(reportData,suggestion){
+  const queue=normalizeAiReviewQueue(reportData);
+  const item=validateQueueItemLinks(reportData,queueItemFromSuggestion(suggestion));
+  queue.items.push(item);
+  queue.updatedAt=new Date().toISOString();
+  upsertAiProvenance(reportData,createSuggestionProvenanceRecord({
+    id:item.provenanceId||uid('aip'),
+    taskRunId:item.originalTaskRunId,
+    taskType:taskTypeForQueueItem(item),
+    suggestionId:item.originalSuggestionId||item.id,
+    originalSuggestionId:item.originalSuggestionId||item.id,
+    provider:item.provider,
+    providerMode:item.providerMode,
+    generatedBy:item.generatedBy,
+    inputRefs:item.inputRefs,
+    outputRefs:outputRefsForSuggestion(item,'ai_suggestion'),
+    warnings:item.warnings,
+    createdAt:item.createdAt,
+    updatedAt:item.updatedAt
+  }));
+  appendAiAuditEvent(reportData,createAiAuditEvent(reportData,{
+    eventType:'suggestion_sent_to_queue',
+    taskRunId:item.originalTaskRunId,
+    taskType:taskTypeForQueueItem(item),
+    suggestionId:item.originalSuggestionId||item.id,
+    provider:item.provider,
+    providerMode:item.providerMode,
+    generatedBy:item.generatedBy,
+    inputRefs:item.inputRefs,
+    outputRefs:outputRefsForSuggestion(item,'ai_suggestion'),
+    statusAfter:item.reviewStatus
+  }));
+  return item;
+}
+function addAiSuggestionsToReviewQueue(reportData,suggestions){
+  return (suggestions||[]).map(suggestion=>addAiSuggestionToReviewQueue(reportData,suggestion));
+}
+function taskTypeForQueueItem(item){
+  const map={evidence_candidate:'extract_evidence_candidates',recommendation:'suggest_recommendations',executive_summary:'improve_executive_summary',source_coverage_gap:'check_source_coverage',section_draft:'suggest_report_sections'};
+  return map[String(item?.suggestionType||'')]||String(item?.payload?.taskType||'extract_evidence_candidates');
+}
+function getAiReviewQueueItems(reportData,filters={}){
+  const items=normalizeAiReviewQueue(reportData).items||[];
+  return items.filter(item=>(!filters.type||filters.type==='all'||item.suggestionType===filters.type)&&(!filters.status||filters.status==='all'||item.reviewStatus===filters.status));
+}
+function getAiReviewQueueItemById(reportData,suggestionId){
+  return (normalizeAiReviewQueue(reportData).items||[]).find(item=>item.id===suggestionId)||null;
+}
+function updateAiReviewQueueItem(reportData,suggestionId,patch){
+  const item=getAiReviewQueueItemById(reportData,suggestionId);
+  if(!item) return null;
+  Object.assign(item,patch&&typeof patch==='object'?patch:{});
+  Object.assign(item,normalizeAiReviewQueueItem(item));
+  item.updatedAt=new Date().toISOString();
+  reportData.aiReviewQueue.updatedAt=item.updatedAt;
+  return item;
+}
+function editAiReviewQueueItem(reportData,suggestionId,patch){
+  const before=getAiReviewQueueItemById(reportData,suggestionId);
+  const safe={};
+  for(const key of ['title','summary','analystNotes']) if(Object.prototype.hasOwnProperty.call(patch||{},key)) safe[key]=String(patch[key]||'');
+  if(patch?.payload&&typeof patch.payload==='object') safe.payload={...getAiReviewQueueItemById(reportData,suggestionId)?.payload,...patch.payload};
+  const item=updateAiReviewQueueItem(reportData,suggestionId,safe);
+  if(item) appendAiAuditEvent(reportData,createAiAuditEvent(reportData,{eventType:'suggestion_edited',taskRunId:item.originalTaskRunId,taskType:taskTypeForQueueItem(item),suggestionId:item.originalSuggestionId||item.id,provider:item.provider,providerMode:item.providerMode,generatedBy:item.generatedBy,inputRefs:item.inputRefs,outputRefs:item.outputRefs,statusBefore:before?.reviewStatus||'',statusAfter:item.reviewStatus}));
+  return item;
+}
+function acceptAiReviewQueueItem(reportData,suggestionId){
+  const before=getAiReviewQueueItemById(reportData,suggestionId);
+  const item=updateAiReviewQueueItem(reportData,suggestionId,{reviewStatus:'accepted',reviewedAt:new Date().toISOString(),reviewedBy:reviewActorLabel()});
+  if(item) appendAiAuditEvent(reportData,createAiAuditEvent(reportData,{eventType:'suggestion_accepted',taskRunId:item.originalTaskRunId,taskType:taskTypeForQueueItem(item),suggestionId:item.originalSuggestionId||item.id,provider:item.provider,providerMode:item.providerMode,generatedBy:item.generatedBy,inputRefs:item.inputRefs,outputRefs:item.outputRefs,statusBefore:before?.reviewStatus||'',statusAfter:item.reviewStatus}));
+  return item;
+}
+function rejectAiReviewQueueItem(reportData,suggestionId,reason=''){
+  const before=getAiReviewQueueItemById(reportData,suggestionId);
+  const item=updateAiReviewQueueItem(reportData,suggestionId,{reviewStatus:'rejected',rejectionReason:String(reason||''),reviewedAt:new Date().toISOString(),reviewedBy:reviewActorLabel()});
+  if(item) appendAiAuditEvent(reportData,createAiAuditEvent(reportData,{eventType:'suggestion_rejected',taskRunId:item.originalTaskRunId,taskType:taskTypeForQueueItem(item),suggestionId:item.originalSuggestionId||item.id,provider:item.provider,providerMode:item.providerMode,generatedBy:item.generatedBy,inputRefs:item.inputRefs,outputRefs:item.outputRefs,statusBefore:before?.reviewStatus||'',statusAfter:item.reviewStatus,notes:String(reason||'')}));
+  return item;
+}
+function convertEvidenceCandidateSuggestionToEvidenceCard(suggestion){
+  const payload=suggestion.payload||{};
+  const card=convertCandidateToEvidenceCard({...payload,generatedBy:suggestion.generatedBy},REPORT);
+  card.originalSuggestionId=suggestion.originalSuggestionId||payload.id||suggestion.id;
+  card.originalTaskRunId=suggestion.originalTaskRunId||payload.taskRunId||'';
+  card.provenanceId=suggestion.provenanceId||payload.provenanceId||'';
+  card.provider=suggestion.provider||payload.provider||'dry_run';
+  card.sourceIds=Array.isArray(card.sourceIds)?card.sourceIds:[];
+  card.materialIds=Array.isArray(card.materialIds)?card.materialIds:[];
+  card.analystNotes=[card.analystNotes,suggestion.analystNotes].filter(Boolean).join('\n');
+  return card;
+}
+function convertRecommendationSuggestionToDraftBlock(suggestion){
+  const block=convertRecommendationSuggestionToDraftBlockBase({...suggestion.payload,generatedBy:suggestion.generatedBy},REPORT);
+  if(block) block.originalSuggestionId=suggestion.originalSuggestionId||suggestion.payload?.id||suggestion.id;
+  if(block){block.originalTaskRunId=suggestion.originalTaskRunId; block.provenanceId=suggestion.provenanceId; block.provider=suggestion.provider||'dry_run';}
+  return block;
+}
+function convertRecommendationSuggestionToDraftBlockBase(payload,reportData=REPORT){
+  return convertRecommendationSuggestionToDraftBlock(payload,reportData);
+}
+function convertExecutiveSummarySuggestionToDraftBlock(suggestion){
+  const block=convertExecutiveSummarySuggestionToDraftBlockBase({...suggestion.payload,generatedBy:suggestion.generatedBy},REPORT);
+  if(block) block.originalSuggestionId=suggestion.originalSuggestionId||suggestion.payload?.id||suggestion.id;
+  if(block){block.originalTaskRunId=suggestion.originalTaskRunId; block.provenanceId=suggestion.provenanceId; block.provider=suggestion.provider||'dry_run';}
+  return block;
+}
+function convertExecutiveSummarySuggestionToDraftBlockBase(payload,reportData=REPORT){
+  return convertExecutiveSummarySuggestionToDraftBlock(payload,reportData);
+}
+function convertSectionDraftSuggestionToDraftBlocks(suggestion){
+  const block=convertSectionDraftSuggestionToDraftBlock({...suggestion.payload,generatedBy:suggestion.generatedBy},REPORT);
+  if(block) block.originalSuggestionId=suggestion.originalSuggestionId||suggestion.payload?.id||suggestion.id;
+  if(block){block.originalTaskRunId=suggestion.originalTaskRunId; block.provenanceId=suggestion.provenanceId; block.provider=suggestion.provider||'dry_run';}
+  return block?[block]:[];
+}
+function convertSourceCoverageGapToChecklistItem(suggestion){
+  const gap=suggestion.payload||{};
+  return checklistItem('source_coverage',gap.severity==='blocker'?'blocker':'warning',`${gap.title||suggestion.title}: ${gap.description||suggestion.summary}`);
+}
+function convertAcceptedSuggestion(reportData,suggestionId){
+  const item=getAiReviewQueueItemById(reportData,suggestionId);
+  if(!item) return {converted:false,error:'Suggestion not found.'};
+  if(!['accepted','ready_for_review'].includes(item.reviewStatus)) return {converted:false,error:'Accept the suggestion before conversion.'};
+  let converted=null;
+  if(item.suggestionType==='evidence_candidate'){
+    const cards=normalizeEvidenceCards(reportData);
+    converted=convertEvidenceCandidateSuggestionToEvidenceCard(item);
+    cards.items.push(converted);
+    cards.updatedAt=new Date().toISOString();
+  }else if(item.suggestionType==='recommendation'){
+    converted=convertRecommendationSuggestionToDraftBlockBase({...item.payload,generatedBy:item.generatedBy},reportData);
+    if(converted){converted.originalSuggestionId=item.originalSuggestionId||item.id; converted.originalTaskRunId=item.originalTaskRunId; converted.provenanceId=item.provenanceId; converted.provider=item.provider||'dry_run';}
+    if(converted){const section=getReportSection(reportData,converted.sectionId); if(section){section.blocks=[...(section.blocks||[]),converted]; section.status=section.status==='approved'?'approved':'needs_review';}}
+  }else if(item.suggestionType==='executive_summary'){
+    converted=convertExecutiveSummarySuggestionToDraftBlockBase({...item.payload,generatedBy:item.generatedBy},reportData);
+    if(converted){converted.originalSuggestionId=item.originalSuggestionId||item.id; converted.originalTaskRunId=item.originalTaskRunId; converted.provenanceId=item.provenanceId; converted.provider=item.provider||'dry_run';}
+    if(converted){const section=getReportSection(reportData,converted.sectionId); if(section){section.blocks=[...(section.blocks||[]),converted]; section.status=section.status==='approved'?'approved':'needs_review';}}
+  }else if(item.suggestionType==='section_draft'){
+    const blocks=convertSectionDraftSuggestionToDraftBlocks(item);
+    for(const block of blocks){const section=getReportSection(reportData,block.sectionId); if(section){section.blocks=[...(section.blocks||[]),block]; section.status=section.status==='approved'?'approved':'needs_review'; converted=block;}}
+  }else if(item.suggestionType==='source_coverage_gap'){
+    converted=convertSourceCoverageGapToChecklistItem(item);
+  }
+  if(!converted) return {converted:false,error:'Could not convert this suggestion.'};
+  const type=item.suggestionType==='evidence_candidate'?'evidence_card':(item.suggestionType==='source_coverage_gap'?'checklist_item':'draft_block');
+  const outputRef=normalizeAiOutputRef({type,id:converted.id||converted.message||uid('out'),label:converted.title||converted.claim||converted.message||item.title,sectionId:converted.sectionId||item.sectionId,status:converted.reviewStatus||converted.status||'needs_review'});
+  markSuggestionConvertedInProvenance(reportData,item.originalSuggestionId||item.id,[outputRef]);
+  appendAiAuditEvent(reportData,createAiAuditEvent(reportData,{eventType:'suggestion_converted',taskRunId:item.originalTaskRunId,taskType:taskTypeForQueueItem(item),suggestionId:item.originalSuggestionId||item.id,outputType:outputRef.type,outputId:outputRef.id,provider:item.provider,providerMode:item.providerMode,generatedBy:item.generatedBy,inputRefs:item.inputRefs,outputRefs:[outputRef],statusBefore:item.reviewStatus,statusAfter:'converted'}));
+  appendAiAuditEvent(reportData,createAiAuditEvent(reportData,{eventType:type==='evidence_card'?'evidence_card_created_from_suggestion':(type==='draft_block'?'draft_block_created_from_suggestion':'checklist_item_created_from_suggestion'),taskRunId:item.originalTaskRunId,taskType:taskTypeForQueueItem(item),suggestionId:item.originalSuggestionId||item.id,outputType:outputRef.type,outputId:outputRef.id,provider:item.provider,providerMode:item.providerMode,generatedBy:item.generatedBy,inputRefs:item.inputRefs,outputRefs:[outputRef],statusAfter:outputRef.status}));
+  updateAiReviewQueueItem(reportData,suggestionId,{reviewStatus:'converted',convertedId:outputRef.id,outputRefs:[outputRef],reviewedAt:new Date().toISOString(),reviewedBy:reviewActorLabel()});
+  return {converted:true,item:converted};
+}
+function getAvailableAiTasks(reportData){
+  normalizeAiAssistanceState(reportData);
+  return AI_TASK_TYPES.map(type=>({
+    type,
+    label:AI_TASK_DEFINITIONS[type].label,
+    enabled:false,
+    mode:'disabled',
+    comingSoon:true,
+    inputRefs:AI_TASK_DEFINITIONS[type].inputRefs,
+    outputContract:AI_TASK_DEFINITIONS[type].output
+  }));
+}
+function createDefaultAiStatus(){
+  return {
+    ok:true,
+    aiEnabled:false,
+    provider:'dry_run',
+    providerConfigured:false,
+    dryRunAvailable:AI_DRY_RUN_AVAILABLE,
+    availableTasks:['extract_evidence_candidates','suggest_recommendations','improve_executive_summary','check_source_coverage','suggest_report_sections'],
+    currentMode:'dry_run',
+    source:BROWSER_ONLY_MODE?'local':'unknown'
+  };
+}
+function currentAiUser(){
+  const role=isAdmin()?'editor':'viewer';
+  return {role};
+}
+async function fetchAiStatus(){
+  const fallback=createDefaultAiStatus();
+  if(BROWSER_ONLY_MODE || !HOSTED_MODE || isClientLocked()){
+    state.aiStatus={...fallback, currentMode:isClientLocked()?'disabled':'dry_run'};
+    state.aiStatusLoaded=true;
+    return state.aiStatus;
+  }
+  try{
+    const nativeFetch=globalThis['fetch'];
+    if(typeof nativeFetch!=='function') throw new Error('Fetch unavailable.');
+    const res=await nativeFetch('/api/ai/status',{method:'GET',headers:{'Accept':'application/json'}});
+    if(!res.ok) throw new Error('AI status unavailable.');
+    const data=await res.json();
+    state.aiStatus={
+      ok:data?.ok===true,
+      aiEnabled:Boolean(data?.aiEnabled),
+      provider:String(data?.provider||'dry_run'),
+      providerConfigured:Boolean(data?.providerConfigured),
+      dryRunAvailable:data?.dryRunAvailable!==false,
+      availableTasks:Array.isArray(data?.availableTasks)?data.availableTasks.map(String):[],
+      currentMode:String(data?.currentMode||data?.provider||'disabled'),
+      source:'backend'
+    };
+  }catch(e){
+    state.aiStatus={...fallback, ok:false, currentMode:'disabled', source:'unavailable'};
+  }
+  state.aiStatusLoaded=true;
+  return state.aiStatus;
+}
+function aiStatusLabel(status){
+  const s=status||createDefaultAiStatus();
+  if(isClientLocked()) return 'clientLocked';
+  if(s.aiEnabled) return 'enabled';
+  if(s.dryRunAvailable) return 'dry-run';
+  return 'disabled';
+}
+function canRunAiEvidencePreview(reportData, aiStatus, currentUser=currentAiUser()){
+  const status=aiStatus||createDefaultAiStatus();
+  const policy=getEffectiveGovernancePolicy(reportData).aiPolicy;
+  const reasons=[];
+  if(!policy.dryRunAllowed && !policy.aiEnabled) reasons.push('AI preview is disabled by governance policy');
+  if(policy.allowAutoApproveAiOutput) reasons.push('AI auto-approval is blocked by safety policy');
+  if(!['owner','editor','admin'].includes(String(currentUser?.role||'viewer'))) reasons.push('viewer role cannot run AI preview');
+  if((reportData?.meta?.clientLocked===true || isClientLocked()) && !policy.allowClientLockedAiPreview) reasons.push('clientLocked mode cannot run AI preview');
+  if(!hasAiEvidenceDryRunInputs(reportData)) reasons.push('add sources first');
+  if(!(status.availableTasks||[]).includes('extract_evidence_candidates')) reasons.push('AI evidence preview is not available');
+  if(!status.dryRunAvailable && (!status.aiEnabled || !status.providerConfigured)) reasons.push(status.aiEnabled?'provider is not configured':'AI is disabled');
+  return {ok:!reasons.length, reasons, status};
+}
+function canRunAiRecommendationPreview(reportData, aiStatus, currentUser=currentAiUser()){
+  const status=aiStatus||createDefaultAiStatus();
+  const policy=getEffectiveGovernancePolicy(reportData).aiPolicy;
+  const reasons=[];
+  if(!policy.dryRunAllowed && !policy.aiEnabled) reasons.push('AI preview is disabled by governance policy');
+  if(!['owner','editor','admin'].includes(String(currentUser?.role||'viewer'))) reasons.push('viewer role cannot run AI preview');
+  if((reportData?.meta?.clientLocked===true || isClientLocked()) && !policy.allowClientLockedAiPreview) reasons.push('clientLocked mode cannot run AI preview');
+  if(!getApprovedEvidenceCards(reportData).length) reasons.push('approve evidence first');
+  if(!(status.availableTasks||[]).includes('suggest_recommendations')) reasons.push('AI recommendation preview is not available');
+  if(!status.dryRunAvailable && (!status.aiEnabled || !status.providerConfigured)) reasons.push(status.aiEnabled?'provider is not configured':'AI is disabled');
+  return {ok:!reasons.length, reasons, status};
+}
+function reviewedExecutiveSummaryInputs(reportData){
+  const sections=Array.isArray(reportData?.reportSections)?reportData.reportSections:[];
+  return sections.flatMap(section=>(section.blocks||[]).map(block=>({...block, sectionId:block.sectionId||section.id})))
+    .filter(block=>['needs_review','approved'].includes(String(block.status||'')))
+    .filter(block=>['recommendation_note','risk_note','opportunity_note','comparison_note','paragraph'].includes(String(block.type||'')));
+}
+function canRunAiExecutiveSummaryPreview(reportData, aiStatus, currentUser=currentAiUser()){
+  const status=aiStatus||createDefaultAiStatus();
+  const policy=getEffectiveGovernancePolicy(reportData).aiPolicy;
+  const reasons=[];
+  if(!policy.dryRunAllowed && !policy.aiEnabled) reasons.push('AI preview is disabled by governance policy');
+  if(!['owner','editor','admin'].includes(String(currentUser?.role||'viewer'))) reasons.push('viewer role cannot run AI preview');
+  if((reportData?.meta?.clientLocked===true || isClientLocked()) && !policy.allowClientLockedAiPreview) reasons.push('clientLocked mode cannot run AI preview');
+  if(!getApprovedEvidenceCards(reportData).length && !reviewedExecutiveSummaryInputs(reportData).length) reasons.push('approve evidence first');
+  if(!(status.availableTasks||[]).includes('improve_executive_summary')) reasons.push('AI executive summary preview is not available');
+  if(!status.dryRunAvailable && (!status.aiEnabled || !status.providerConfigured)) reasons.push(status.aiEnabled?'provider is not configured':'AI is disabled');
+  return {ok:!reasons.length, reasons, status};
+}
+function canRunAiSourceCoveragePreview(reportData, aiStatus, currentUser=currentAiUser()){
+  const status=aiStatus||createDefaultAiStatus();
+  const policy=getEffectiveGovernancePolicy(reportData).aiPolicy;
+  const reasons=[];
+  if(!policy.dryRunAllowed && !policy.aiEnabled) reasons.push('AI preview is disabled by governance policy');
+  if(!['owner','editor','admin'].includes(String(currentUser?.role||'viewer'))) reasons.push('viewer role cannot run AI preview');
+  if((reportData?.meta?.clientLocked===true || isClientLocked()) && !policy.allowClientLockedAiPreview) reasons.push('clientLocked mode cannot run AI preview');
+  if(!(reportData?.reportSections||[]).length) reasons.push('Report Schema V2 sections are required');
+  if(!(reportData?.sourceRegistry?.items||[]).length && !(reportData?.evidenceCards?.items||[]).length) reasons.push('add sources first');
+  if(!(status.availableTasks||[]).includes('check_source_coverage')) reasons.push('AI source coverage preview is not available');
+  if(!status.dryRunAvailable && (!status.aiEnabled || !status.providerConfigured)) reasons.push(status.aiEnabled?'provider is not configured':'AI is disabled');
+  return {ok:!reasons.length, reasons, status};
+}
+function canRunAiSectionDraftPreview(reportData, aiStatus, currentUser=currentAiUser()){
+  const status=aiStatus||createDefaultAiStatus();
+  const policy=getEffectiveGovernancePolicy(reportData).aiPolicy;
+  const sectionId=state.aiSectionId||'';
+  const section=sectionId?getReportSection(reportData,sectionId):null;
+  const reasons=[];
+  if(!policy.dryRunAllowed && !policy.aiEnabled) reasons.push('AI preview is disabled by governance policy');
+  if(!['owner','editor','admin'].includes(String(currentUser?.role||'viewer'))) reasons.push('viewer role cannot run AI preview');
+  if((reportData?.meta?.clientLocked===true || isClientLocked()) && !policy.allowClientLockedAiPreview) reasons.push('clientLocked mode cannot run AI preview');
+  if(!section) reasons.push('select a section first');
+  if(section && !approvedEvidenceForSection(reportData,section.id).length) reasons.push('approve evidence first');
+  if(!(status.availableTasks||[]).includes('suggest_report_sections')) reasons.push('AI section draft preview is not available');
+  if(!status.dryRunAvailable && (!status.aiEnabled || !status.providerConfigured)) reasons.push(status.aiEnabled?'provider is not configured':'AI is disabled');
+  return {ok:!reasons.length, reasons, status};
+}
+function aiPreviewDisabledReason(reportData, aiStatus, currentUser=currentAiUser()){
+  const result=canRunAiEvidencePreview(reportData,aiStatus,currentUser);
+  return result.ok?'':result.reasons[0];
+}
+function aiRecommendationDisabledReason(reportData, aiStatus, currentUser=currentAiUser()){
+  const result=canRunAiRecommendationPreview(reportData,aiStatus,currentUser);
+  return result.ok?'':result.reasons[0];
+}
+function aiExecutiveSummaryDisabledReason(reportData, aiStatus, currentUser=currentAiUser()){
+  const result=canRunAiExecutiveSummaryPreview(reportData,aiStatus,currentUser);
+  return result.ok?'':result.reasons[0];
+}
+function aiSourceCoverageDisabledReason(reportData, aiStatus, currentUser=currentAiUser()){
+  const result=canRunAiSourceCoveragePreview(reportData,aiStatus,currentUser);
+  return result.ok?'':result.reasons[0];
+}
+function aiSectionDraftDisabledReason(reportData, aiStatus, currentUser=currentAiUser()){
+  const result=canRunAiSectionDraftPreview(reportData,aiStatus,currentUser);
+  return result.ok?'':result.reasons[0];
+}
+function normalizeEvidenceCandidatePreviewResponse(payload, provider='dry_run'){
+  if(payload?.output?.taskType==='extract_evidence_candidates') return payload.output;
+  const suggestions=Array.isArray(payload?.suggestions)?payload.suggestions:[];
+  const candidates=suggestions
+    .map(item=>item?.candidate)
+    .filter(candidate=>candidate&&typeof candidate==='object')
+    .map(candidate=>({...candidate, generatedBy:provider==='dry_run'?'ai_dry_run':'ai_preview'}));
+  return {
+    taskType:String(payload?.taskType||'extract_evidence_candidates'),
+    candidates,
+    warnings:Array.isArray(payload?.warnings)?payload.warnings.map(String):[],
+    createdAt:new Date().toISOString()
+  };
+}
+function normalizeRecommendationPreviewResponse(payload, provider='dry_run'){
+  if(payload?.output?.taskType==='suggest_recommendations') return payload.output;
+  const suggestions=Array.isArray(payload?.suggestions)?payload.suggestions:[];
+  const recommendations=suggestions
+    .map(item=>item?.recommendation)
+    .filter(item=>item&&typeof item==='object')
+    .map(item=>({...item, generatedBy:provider==='dry_run'?'ai_dry_run':'ai_preview'}));
+  return {
+    taskType:String(payload?.taskType||'suggest_recommendations'),
+    recommendations,
+    warnings:Array.isArray(payload?.warnings)?payload.warnings.map(String):[],
+    createdAt:new Date().toISOString()
+  };
+}
+function normalizeExecutiveSummaryPreviewResponse(payload, provider='dry_run'){
+  if(payload?.output?.taskType==='improve_executive_summary') return payload.output;
+  const suggestions=Array.isArray(payload?.suggestions)?payload.suggestions:[];
+  const summaryBlocks=suggestions
+    .map(item=>item?.summaryBlock)
+    .filter(item=>item&&typeof item==='object')
+    .map(item=>({...item, generatedBy:provider==='dry_run'?'ai_dry_run':'ai_preview'}));
+  return {
+    taskType:String(payload?.taskType||'improve_executive_summary'),
+    summaryTitle:String(payload?.summaryTitle||'Executive Summary Preview'),
+    summaryBlocks,
+    keyTakeaways:Array.isArray(payload?.keyTakeaways)?payload.keyTakeaways.map(String):[],
+    warnings:Array.isArray(payload?.warnings)?payload.warnings.map(String):[],
+    createdAt:new Date().toISOString()
+  };
+}
+function normalizeSourceCoveragePreviewResponse(payload){
+  if(payload?.output?.taskType==='check_source_coverage') return payload.output;
+  const suggestions=Array.isArray(payload?.suggestions)?payload.suggestions:[];
+  return {
+    taskType:String(payload?.taskType||'check_source_coverage'),
+    overallCoverageStatus:String(payload?.overallCoverageStatus||'weak'),
+    coverageScore:Number(payload?.coverageScore||0),
+    sectionCoverage:Array.isArray(payload?.sectionCoverage)?payload.sectionCoverage:[],
+    coverageGaps:suggestions.map(item=>item?.gap).filter(Boolean),
+    weakSources:Array.isArray(payload?.weakSources)?payload.weakSources:[],
+    suggestedNextSources:Array.isArray(payload?.suggestedNextSources)?payload.suggestedNextSources:[],
+    warnings:Array.isArray(payload?.warnings)?payload.warnings.map(String):[],
+    createdAt:new Date().toISOString()
+  };
+}
+function normalizeSectionDraftPreviewResponse(payload, provider='dry_run'){
+  if(payload?.output?.taskType==='suggest_report_sections') return payload.output;
+  const suggestions=Array.isArray(payload?.suggestions)?payload.suggestions:[];
+  return {
+    taskType:String(payload?.taskType||'suggest_report_sections'),
+    sectionId:String(payload?.sectionId||state.aiSectionId||''),
+    sectionTitle:String(payload?.sectionTitle||''),
+    draftBlocks:suggestions.map(item=>item?.block).filter(Boolean).map(block=>({...block,generatedBy:provider==='dry_run'?'ai_dry_run':'ai_preview'})),
+    coverageWarnings:Array.isArray(payload?.coverageWarnings)?payload.coverageWarnings.map(String):[],
+    missingInputs:Array.isArray(payload?.missingInputs)?payload.missingInputs.map(String):[],
+    warnings:Array.isArray(payload?.warnings)?payload.warnings.map(String):[],
+    createdAt:new Date().toISOString()
+  };
+}
+function createAiTaskDraft(taskType, reportData, options={}){
+  const type=AI_TASK_TYPES.includes(String(taskType))?String(taskType):'extract_evidence_candidates';
+  const now=new Date().toISOString();
+  return normalizeAiSuggestion({
+    id:uid('ai-task'),
+    taskType:type,
+    title:AI_TASK_DEFINITIONS[type]?.label||type,
+    summary:'Prepared preview contract only. AI execution is disabled.',
+    inputRefs:AI_TASK_DEFINITIONS[type]?.inputRefs||[],
+    outputPreview:{options:options&&typeof options==='object'?options:{}, contract:AI_TASK_DEFINITIONS[type]?.output||''},
+    status:'draft',
+    createdAt:now,
+    updatedAt:now
+  });
+}
+function validateAiTaskInput(taskDraft){
+  const draft=normalizeAiSuggestion(taskDraft);
+  const errors=[];
+  if(!AI_TASK_TYPES.includes(draft.taskType)) errors.push('Unsupported AI task type.');
+  if(ENABLE_AI_ASSISTANCE || draft.status!=='draft') errors.push('AI tasks must remain draft while AI assistance is disabled.');
+  return {ok:!errors.length, errors, draft};
+}
+function validateAiTaskOutput(taskType, output){
+  const type=AI_TASK_TYPES.includes(String(taskType))?String(taskType):'';
+  const contractName=AI_TASK_DEFINITIONS[type]?.output;
+  const contract=AI_OUTPUT_CONTRACTS[contractName];
+  const errors=[];
+  if(!contract) errors.push('Missing AI output contract.');
+  if(!output || typeof output!=='object') errors.push('AI output must be an object.');
+  for(const field of (contract?.required||[])){
+    if(!(field in (output||{}))) errors.push(`Missing required output field: ${field}`);
+  }
+  return {ok:!errors.length, errors, contractName};
+}
+function applyAiTaskOutputPreview(reportData, taskType, output, meta={}){
+  const validation=validateAiTaskOutput(taskType, output);
+  const ai=normalizeAiAssistanceState(reportData);
+  const now=new Date().toISOString();
+  const stamped=stampAiPreviewOutput(output&&typeof output==='object'?output:{},meta);
+  const suggestion=normalizeAiSuggestion({
+    id:uid('ai-preview'),
+    taskType,
+    title:AI_TASK_DEFINITIONS[taskType]?.label||String(taskType||'AI preview'),
+    summary:validation.ok?'AI output preview prepared for future human review.':'Invalid AI output preview.',
+    inputRefs:stamped.inputRefs||AI_TASK_DEFINITIONS[taskType]?.inputRefs||[],
+    outputPreview:stamped,
+    status:validation.ok?'ready_for_review':'draft',
+    taskRunId:stamped.taskRunId,
+    provider:stamped.provider,
+    providerMode:stamped.providerMode,
+    generatedBy:stamped.generatedBy,
+    createdAt:now,
+    updatedAt:now
+  });
+  ai.suggestions.push(suggestion);
+  ai.updatedAt=now;
+  appendAiAuditEvent(reportData,createAiAuditEvent(reportData,{eventType:'ai_preview_completed',taskRunId:stamped.taskRunId,taskType,provider:stamped.provider,providerMode:stamped.providerMode,generatedBy:stamped.generatedBy,inputRefs:stamped.inputRefs,outputRefs:(stamped.outputSuggestionIds||[]).map(id=>normalizeAiOutputRef({type:'ai_suggestion',id,status:'ready_for_review'})),warnings:stamped.warnings||[]}));
+  for(const key of ['candidates','recommendations','summaryBlocks','coverageGaps','draftBlocks']){
+    for(const item of (stamped[key]||[])){
+      upsertAiProvenance(reportData,createSuggestionProvenanceRecord({id:item.provenanceId,taskRunId:stamped.taskRunId,taskType,suggestionId:item.id,originalSuggestionId:item.id,provider:stamped.provider,providerMode:stamped.providerMode,generatedBy:item.generatedBy||stamped.generatedBy,inputRefs:stamped.inputRefs,outputRefs:outputRefsForSuggestion(item,'ai_suggestion'),warnings:item.warnings||[],createdAt:now,updatedAt:now}));
+      appendAiAuditEvent(reportData,createAiAuditEvent(reportData,{eventType:'suggestion_created',taskRunId:stamped.taskRunId,taskType,suggestionId:item.id,provider:stamped.provider,providerMode:stamped.providerMode,generatedBy:item.generatedBy||stamped.generatedBy,inputRefs:stamped.inputRefs,outputRefs:outputRefsForSuggestion(item,'ai_suggestion'),warnings:item.warnings||[]}));
+    }
+  }
+  linkAiTaskToSuggestions(reportData,stamped.taskRunId,stamped.outputSuggestionIds||[]);
+  return {suggestion, validation};
+}
+function hasAiEvidenceDryRunInputs(reportData){
+  const report=reportData&&typeof reportData==='object'?reportData:{};
+  return Boolean((report.sourceRegistry?.items||[]).length || (report.materialsInventory?.items||[]).length);
+}
+function suggestedSectionForSource(source, sections){
+  const valid=new Map((sections||[]).map(section=>[section.id,section]));
+  const linked=(source.linkedSectionIds||[]).find(id=>valid.has(id));
+  if(linked) return linked;
+  const text=`${source.title||''} ${source.fileName||''} ${source.extension||''}`.toLowerCase();
+  const pairs=[
+    ['pricing',/price|pricing|tier|plan|cost|csv|xlsx|spreadsheet/],
+    ['features',/feature|capability|comparison/],
+    ['messaging',/message|position|copy|website|landing/],
+    ['channels',/seo|channel|content|social|campaign/],
+    ['competitors',/competitor|market|landscape/]
+  ];
+  for(const [id,re] of pairs) if(valid.has(id) && re.test(text)) return id;
+  return valid.has('sourcesEvidence')?'sourcesEvidence':((sections||[])[0]?.id||'');
+}
+function sourceCandidateWarning(source, material){
+  const warnings=[];
+  if(!source.id) warnings.push('Source is missing an ID.');
+  if(!material) warnings.push('No matching material metadata was found.');
+  if(['pending','failed'].includes(String(source.extractedTextStatus||''))) warnings.push('No extracted text is available; this preview uses metadata only.');
+  if(String(source.credibilityStatus||'unreviewed')==='unreviewed') warnings.push('Source credibility is unreviewed.');
+  if(String(source.evidenceStatus||'unused')==='ignored') warnings.push('Source is marked ignored.');
+  return warnings;
+}
+function runAiEvidenceCandidateDryRun(reportData, options={}){
+  const report=clone(reportData||{});
+  normalizeReportSchema(report);
+  normalizeMaterialsInventory(report);
+  normalizeSourceRegistry(report);
+  const now=new Date().toISOString();
+  const warnings=[];
+  const materials=new Map((report.materialsInventory.items||[]).map(item=>[item.id,item]));
+  const sections=report.reportSections||[];
+  const sources=(report.sourceRegistry.items||[])
+    .filter(source=>String(source.evidenceStatus||'')!=='ignored')
+    .sort((a,b)=>String(a.title||'').localeCompare(String(b.title||'')));
+  if(!sources.length){
+    warnings.push('No usable sources or materials are available for dry-run evidence preview.');
+    return {taskType:'extract_evidence_candidates',candidates:[],warnings,createdAt:now};
+  }
+  const max=Math.max(1,Math.min(Number(options.maxCandidates)||8,12));
+  const candidates=sources.slice(0,max).map((source,index)=>{
+    const material=materials.get(source.materialId);
+    const sectionId=suggestedSectionForSource(source, sections);
+    const sectionTitle=(sections.find(section=>section.id===sectionId)?.title)||'Sources and Evidence';
+    const sourceTitle=source.title||source.fileName||`Source ${index+1}`;
+    const sourceWarnings=sourceCandidateWarning(source, material);
+    const hasText=String(source.extractedTextStatus||'')==='available' || String(source.notes||'').trim();
+    const confidenceStatus=hasText?'medium':'low';
+    const materialId=material?.id||source.materialId||'';
+    return {
+      id:`candidate:${source.id}`,
+      claim:`Review "${sourceTitle}" as candidate evidence for ${sectionTitle}.`,
+      summary:`Dry-run preview based only on existing ${hasText?'source notes or extracted text status':'source/material metadata'}. Verify the source before approval.`,
+      sourceIds:source.id?[source.id]:[],
+      materialIds:materialId?[materialId]:[],
+      suggestedSectionId:sectionId,
+      evidenceType:source.sourceType==='spreadsheet'||source.sourceType==='dataset'?'metric':'observation',
+      confidenceStatus,
+      credibilityStatus:source.credibilityStatus||'unreviewed',
+      reviewStatus:'needs_review',
+      warnings:sourceWarnings
+    };
+  });
+  if(candidates.some(candidate=>candidate.confidenceStatus==='low')) warnings.push('Some candidates are low confidence because source text was not available.');
+  return {taskType:'extract_evidence_candidates',candidates,warnings,createdAt:now};
+}
+function validateEvidenceCandidateOutput(output, reportData){
+  const report=reportData&&typeof reportData==='object'?reportData:{};
+  const sourceIds=new Set((report.sourceRegistry?.items||[]).map(source=>source.id));
+  const sectionIds=new Set((report.reportSections||[]).map(section=>section.id));
+  const errors=[];
+  if(!output || typeof output!=='object') errors.push('Candidate output must be an object.');
+  if(output?.taskType!=='extract_evidence_candidates') errors.push('Candidate output taskType must be extract_evidence_candidates.');
+  if(!Array.isArray(output?.candidates)) errors.push('Candidate output must include candidates array.');
+  (output?.candidates||[]).forEach((candidate,index)=>{
+    const label=`Candidate ${index+1}`;
+    if(!String(candidate.claim||candidate.summary||'').trim()) errors.push(`${label} needs a claim or summary.`);
+    if(!['draft','needs_review'].includes(String(candidate.reviewStatus||''))) errors.push(`${label} cannot be auto-approved.`);
+    if(!EVIDENCE_TYPES.includes(String(candidate.evidenceType||''))) errors.push(`${label} has an unsupported evidence type.`);
+    for(const sourceId of (candidate.sourceIds||[])) if(!sourceIds.has(sourceId)) errors.push(`${label} references unknown source ${sourceId}.`);
+    const sectionId=String(candidate.suggestedSectionId||candidate.sectionId||'');
+    if(sectionId && !sectionIds.has(sectionId)) errors.push(`${label} references unknown section ${sectionId}.`);
+  });
+  return {ok:!errors.length, errors};
+}
+function runAiRecommendationDryRun(reportData, options={}){
+  const report=clone(reportData||{});
+  normalizeReportSchema(report);
+  normalizeEvidenceCards(report);
+  normalizeSourceRegistry(report);
+  const now=new Date().toISOString();
+  const warnings=[];
+  const sections=report.reportSections||[];
+  const sectionIds=new Set(sections.map(section=>section.id));
+  const approved=getApprovedEvidenceCards(report)
+    .filter(card=>['risk','opportunity','comparison','recommendation_input'].includes(String(card.evidenceType||'')) || ['recommendations','risksOpportunities','executiveSummary','competitiveLandscape'].includes(String(card.sectionId||'')))
+    .sort((a,b)=>String(a.id||'').localeCompare(String(b.id||'')));
+  if(!approved.length){
+    warnings.push('Approve evidence cards before requesting recommendations.');
+    return {taskType:'suggest_recommendations',recommendations:[],warnings,createdAt:now};
+  }
+  const targetSection=sectionIds.has('recommendations')?'recommendations':(sections[0]?.id||'');
+  const max=Math.max(1,Math.min(Number(options.maxRecommendations||options.maxCandidates)||6,10));
+  const recommendations=approved.slice(0,max).map((card,index)=>{
+    const kind=String(card.evidenceType||'observation');
+    const evidenceText=String(card.claim||card.summary||`Approved evidence ${index+1}`).trim();
+    const title=kind==='risk'?'Reduce identified market risk':kind==='opportunity'?'Prioritize validated market opportunity':kind==='comparison'?'Act on competitive comparison':'Turn evidence into a client recommendation';
+    return {
+      id:`recommendation:${card.id}`,
+      title,
+      recommendation:`Review and convert this approved evidence into an action plan: ${evidenceText}`,
+      rationale:`Dry-run suggestion derived from approved evidence card "${card.id}".`,
+      priority:kind==='risk'||kind==='opportunity'?'high':'medium',
+      suggestedSectionId:targetSection,
+      evidenceCardIds:card.id?[card.id]:[],
+      sourceIds:Array.isArray(card.sourceIds)?card.sourceIds.map(String).filter(Boolean):[],
+      confidenceStatus:card.confidenceStatus==='high'?'high':'medium',
+      reviewStatus:'needs_review',
+      risks:kind==='risk'?[evidenceText]:[],
+      expectedImpact:kind==='opportunity'?'Potential growth or positioning upside after analyst validation.':'Improved client decision quality after analyst validation.',
+      effortLevel:kind==='comparison'?'medium':'low',
+      generatedBy:'ai_dry_run',
+      warnings:[]
+    };
+  });
+  return {taskType:'suggest_recommendations',recommendations,warnings,createdAt:now};
+}
+function validateRecommendationSuggestionOutput(output, reportData){
+  const report=reportData&&typeof reportData==='object'?reportData:{};
+  const approvedIds=new Set((report.evidenceCards?.items||[]).filter(card=>card.reviewStatus==='approved').map(card=>card.id));
+  const sourceIds=new Set((report.sourceRegistry?.items||[]).map(source=>source.id));
+  const sectionIds=new Set((report.reportSections||[]).map(section=>section.id));
+  const errors=[];
+  if(!output || typeof output!=='object') errors.push('Recommendation output must be an object.');
+  if(output?.taskType!=='suggest_recommendations') errors.push('Recommendation output taskType must be suggest_recommendations.');
+  if(!Array.isArray(output?.recommendations)) errors.push('Recommendation output must include recommendations array.');
+  (output?.recommendations||[]).forEach((item,index)=>{
+    const label=`Recommendation ${index+1}`;
+    if(!String(item.title||item.recommendation||'').trim()) errors.push(`${label} needs a title or recommendation.`);
+    if(!['draft','needs_review'].includes(String(item.reviewStatus||''))) errors.push(`${label} cannot be auto-approved.`);
+    if(!['low','medium','high'].includes(String(item.priority||''))) errors.push(`${label} has an unsupported priority.`);
+    if(!['low','medium','high'].includes(String(item.effortLevel||''))) errors.push(`${label} has an unsupported effort level.`);
+    if(!['low','medium','high'].includes(String(item.confidenceStatus||''))) errors.push(`${label} has an unsupported confidence status.`);
+    for(const evidenceId of (item.evidenceCardIds||[])) if(!approvedIds.has(evidenceId)) errors.push(`${label} references non-approved or unknown evidence ${evidenceId}.`);
+    for(const sourceId of (item.sourceIds||[])) if(!sourceIds.has(sourceId)) errors.push(`${label} references unknown source ${sourceId}.`);
+    const sectionId=String(item.suggestedSectionId||'');
+    if(sectionId && !sectionIds.has(sectionId)) errors.push(`${label} references unknown section ${sectionId}.`);
+  });
+  return {ok:!errors.length, errors};
+}
+function runAiExecutiveSummaryDryRun(reportData, options={}){
+  const report=clone(reportData||{});
+  normalizeReportSchema(report);
+  normalizeEvidenceCards(report);
+  normalizeSourceRegistry(report);
+  const now=new Date().toISOString();
+  const warnings=[];
+  const sections=report.reportSections||[];
+  const sectionIds=new Set(sections.map(section=>section.id));
+  const approved=getApprovedEvidenceCards(report).sort((a,b)=>String(a.id||'').localeCompare(String(b.id||'')));
+  const reviewed=reviewedExecutiveSummaryInputs(report)
+    .filter(block=>['recommendations','risksOpportunities','executiveSummary','competitiveLandscape','competitors','pricing','features'].includes(String(block.sectionId||'')))
+    .sort((a,b)=>String(a.id||'').localeCompare(String(b.id||'')));
+  if(!approved.length){
+    warnings.push('Approve evidence cards before requesting executive summary.');
+    return {taskType:'improve_executive_summary',summaryTitle:'Executive Summary Preview',summaryBlocks:[],keyTakeaways:[],warnings,createdAt:now};
+  }
+  const targetSection=sectionIds.has('executiveSummary')?'executiveSummary':(sections[0]?.id||'');
+  const max=Math.max(1,Math.min(Number(options.maxSummaryBlocks||options.maxCandidates)||5,8));
+  const evidenceBlocks=approved.slice(0,max).map((card,index)=>{
+    const text=String(card.claim||card.summary||`Approved evidence ${index+1}`).trim();
+    return {
+      id:`summary:${card.id}`,
+      heading:index===0?'Key finding':'Supporting finding',
+      text,
+      importance:card.confidenceStatus==='high'?'high':'medium',
+      suggestedSectionId:targetSection,
+      evidenceCardIds:card.id?[card.id]:[],
+      sourceIds:Array.isArray(card.sourceIds)?card.sourceIds.map(String).filter(Boolean):[],
+      recommendationIds:[],
+      confidenceStatus:card.confidenceStatus==='high'?'high':'medium',
+      reviewStatus:'needs_review',
+      generatedBy:'ai_dry_run',
+      warnings:[]
+    };
+  });
+  const draftBlocks=reviewed.slice(0,Math.max(0,max-evidenceBlocks.length)).map(block=>({
+    id:`summary:${block.id}`,
+    heading:block.title||'Reviewed recommendation',
+    text:String(block.text||'').trim(),
+    importance:'medium',
+    suggestedSectionId:targetSection,
+    evidenceCardIds:Array.isArray(block.evidenceCardIds)?block.evidenceCardIds.map(String).filter(Boolean):[],
+    sourceIds:Array.isArray(block.sourceIds)?block.sourceIds.map(String).filter(Boolean):[],
+    recommendationIds:block.id?[block.id]:[],
+    confidenceStatus:'medium',
+    reviewStatus:'needs_review',
+    generatedBy:'ai_dry_run',
+    warnings:['Reviewed draft block is non-final until approved by an analyst.']
+  }));
+  const summaryBlocks=[...evidenceBlocks,...draftBlocks].filter(block=>block.text);
+  const keyTakeaways=summaryBlocks.slice(0,3).map(block=>block.text);
+  return {taskType:'improve_executive_summary',summaryTitle:'Executive Summary Preview',summaryBlocks,keyTakeaways,warnings,createdAt:now};
+}
+function validateExecutiveSummaryOutput(output, reportData){
+  const report=reportData&&typeof reportData==='object'?reportData:{};
+  const approvedIds=new Set((report.evidenceCards?.items||[]).filter(card=>card.reviewStatus==='approved').map(card=>card.id));
+  const sourceIds=new Set((report.sourceRegistry?.items||[]).map(source=>source.id));
+  const sectionIds=new Set((report.reportSections||[]).map(section=>section.id));
+  const draftIds=new Set(reviewedExecutiveSummaryInputs(report).map(block=>block.id));
+  const errors=[];
+  if(!output || typeof output!=='object') errors.push('Executive summary output must be an object.');
+  if(output?.taskType!=='improve_executive_summary') errors.push('Executive summary output taskType must be improve_executive_summary.');
+  if(!Array.isArray(output?.summaryBlocks)) errors.push('Executive summary output must include summaryBlocks array.');
+  (output?.summaryBlocks||[]).forEach((block,index)=>{
+    const label=`Summary block ${index+1}`;
+    if(!String(block.heading||block.text||'').trim()) errors.push(`${label} needs a heading or text.`);
+    if(!['draft','needs_review'].includes(String(block.reviewStatus||''))) errors.push(`${label} cannot be auto-approved.`);
+    if(!['low','medium','high'].includes(String(block.importance||''))) errors.push(`${label} has an unsupported importance.`);
+    if(!['low','medium','high'].includes(String(block.confidenceStatus||''))) errors.push(`${label} has an unsupported confidence status.`);
+    for(const evidenceId of (block.evidenceCardIds||[])) if(!approvedIds.has(evidenceId)) errors.push(`${label} references non-approved or unknown evidence ${evidenceId}.`);
+    for(const sourceId of (block.sourceIds||[])) if(!sourceIds.has(sourceId)) errors.push(`${label} references unknown source ${sourceId}.`);
+    for(const recommendationId of (block.recommendationIds||[])) if(!draftIds.has(recommendationId)) errors.push(`${label} references unknown recommendation draft ${recommendationId}.`);
+    const sectionId=String(block.suggestedSectionId||'');
+    if(sectionId && !sectionIds.has(sectionId)) errors.push(`${label} references unknown section ${sectionId}.`);
+  });
+  return {ok:!errors.length, errors};
+}
+function runAiSourceCoverageDryRun(reportData){
+  const report=clone(reportData||{});
+  normalizeReportSchema(report);
+  normalizeSourceRegistry(report);
+  normalizeEvidenceCards(report);
+  const now=new Date().toISOString();
+  const sections=report.reportSections||[];
+  const sources=report.sourceRegistry.items||[];
+  const evidence=report.evidenceCards.items||[];
+  const warnings=[];
+  const gaps=[];
+  const sourceIds=new Set(sources.map(source=>source.id));
+  const weakSources=sources.filter(source=>['weak','unreviewed','needs_review'].includes(String(source.credibilityStatus||'unreviewed'))).map(source=>({
+    sourceId:source.id,
+    title:source.title||source.fileName||'Untitled source',
+    credibilityStatus:source.credibilityStatus||'unreviewed',
+    evidenceStatus:source.evidenceStatus||'unused',
+    linkedSectionIds:Array.isArray(source.linkedSectionIds)?source.linkedSectionIds:[],
+    issue:'Source credibility needs analyst review.',
+    suggestedFix:'Review this source before relying on it in client-facing findings.'
+  }));
+  if(!sources.length) warnings.push('No sources are available for coverage analysis.');
+  if(!evidence.length) warnings.push('No evidence cards are available for coverage analysis.');
+  const rejected=evidence.filter(card=>card.reviewStatus==='rejected');
+  const sectionCoverage=sections.map(section=>{
+    const blocks=Array.isArray(section.blocks)?section.blocks:[];
+    const sectionEvidence=evidence.filter(card=>card.sectionId===section.id || blocks.some(block=>(block.evidenceCardIds||[]).includes(card.id)));
+    const approved=sectionEvidence.filter(card=>card.reviewStatus==='approved');
+    const sectionSourceIds=new Set([...approved.flatMap(card=>card.sourceIds||[]),...blocks.flatMap(block=>block.sourceIds||[]),...sources.filter(source=>(source.linkedSectionIds||[]).includes(section.id)).map(source=>source.id)].filter(Boolean));
+    const weakCount=[...sectionSourceIds].filter(id=>weakSources.some(source=>source.sourceId===id)).length;
+    const missing=approved.filter(card=>!(card.sourceIds||[]).length);
+    const rejectedInBlocks=rejected.filter(card=>blocks.some(block=>(block.evidenceCardIds||[]).includes(card.id)));
+    let blockerCount=missing.length+rejectedInBlocks.length;
+    let warningCount=weakCount;
+    let status='no_content';
+    if(sectionEvidence.length||blocks.length){
+      if(!sectionSourceIds.size) status='no_sources';
+      else if(blockerCount) status='weak';
+      else if(weakCount||!approved.length) status='partial';
+      else status='strong';
+    }
+    if((sectionEvidence.length||blocks.length)&&!sectionSourceIds.size){
+      const severity=approved.length?'blocker':'warning';
+      severity==='blocker'?blockerCount++:warningCount++;
+      gaps.push({id:`coverage:${section.id}:no_sources`,severity,sectionId:section.id,title:'Section has content without linked sources',description:`${section.title||section.id} has content or evidence but no linked source coverage.`,evidenceCardIds:sectionEvidence.map(card=>card.id).filter(Boolean),sourceIds:[],suggestedFix:'Link approved evidence to trusted sources before export.',reviewStatus:'needs_review',generatedBy:'ai_dry_run'});
+    }
+    for(const card of missing){
+      gaps.push({id:`coverage:${card.id}:missing_source`,severity:'blocker',sectionId:section.id,title:'Approved evidence lacks sources',description:`Approved evidence "${card.claim||card.summary||card.id}" has no linked sources.`,evidenceCardIds:[card.id],sourceIds:[],suggestedFix:'Attach at least one reviewed source to this evidence card.',reviewStatus:'needs_review',generatedBy:'ai_dry_run'});
+    }
+    for(const card of rejectedInBlocks){
+      gaps.push({id:`coverage:${card.id}:rejected_in_block`,severity:'blocker',sectionId:section.id,title:'Rejected evidence is referenced by draft content',description:`Rejected evidence "${card.claim||card.summary||card.id}" is referenced by a draft block.`,evidenceCardIds:[card.id],sourceIds:card.sourceIds||[],suggestedFix:'Remove the rejected evidence reference or replace it with approved evidence.',reviewStatus:'needs_review',generatedBy:'ai_dry_run'});
+    }
+    return {sectionId:section.id,sectionTitle:section.title||section.id,status,evidenceCount:sectionEvidence.length,approvedEvidenceCount:approved.length,sourceCount:[...sectionSourceIds].filter(id=>sourceIds.has(id)).length,weakSourceCount:weakCount,missingSourceCount:missing.length,blockerCount,warningCount,notes:status==='strong'?'Approved evidence and source coverage are present.':'Review source coverage before export.'};
+  });
+  const suggestedNextSources=sectionCoverage.filter(item=>['no_sources','weak','partial'].includes(item.status)).slice(0,8).map(item=>({id:`next-source:${item.sectionId}`,sectionId:item.sectionId,sourceType:'document',reason:`Improve source coverage for ${item.sectionTitle}.`,suggestedSearchQuery:`${item.sectionTitle} supporting evidence`,priority:item.blockerCount?'high':'medium'}));
+  const strongCount=sectionCoverage.filter(item=>item.status==='strong').length;
+  const coverageScore=sources.length?Math.round((strongCount/Math.max(1,sectionCoverage.length))*100):0;
+  const overallCoverageStatus=coverageScore>=75?'strong':coverageScore>=35?'partial':'weak';
+  if(weakSources.length) warnings.push(`${weakSources.length} source(s) need credibility review.`);
+  return {taskType:'check_source_coverage',overallCoverageStatus,coverageScore,sectionCoverage,coverageGaps:gaps,weakSources,suggestedNextSources,warnings,createdAt:now};
+}
+function validateSourceCoverageOutput(output, reportData){
+  const report=reportData&&typeof reportData==='object'?reportData:{};
+  const sectionIds=new Set((report.reportSections||[]).map(section=>section.id));
+  const sourceIds=new Set((report.sourceRegistry?.items||[]).map(source=>source.id));
+  const evidenceIds=new Set((report.evidenceCards?.items||[]).map(card=>card.id));
+  const errors=[];
+  if(!output || typeof output!=='object') errors.push('Source coverage output must be an object.');
+  if(output?.taskType!=='check_source_coverage') errors.push('Source coverage output taskType must be check_source_coverage.');
+  if(!['weak','partial','strong'].includes(String(output?.overallCoverageStatus||''))) errors.push('Unsupported overall coverage status.');
+  const score=Number(output?.coverageScore);
+  if(!Number.isFinite(score)||score<0||score>100) errors.push('Coverage score must be 0-100.');
+  for(const item of (output?.sectionCoverage||[])){
+    if(item.sectionId && !sectionIds.has(item.sectionId)) errors.push(`Unknown section coverage section ${item.sectionId}.`);
+    if(!['no_content','no_sources','weak','partial','strong'].includes(String(item.status||''))) errors.push(`Unsupported section coverage status for ${item.sectionId}.`);
+  }
+  for(const gap of (output?.coverageGaps||[])){
+    if(!['blocker','warning','info'].includes(String(gap.severity||''))) errors.push(`Unsupported gap severity for ${gap.id}.`);
+    if(!['draft','needs_review'].includes(String(gap.reviewStatus||''))) errors.push(`Unsupported gap review status for ${gap.id}.`);
+    if(gap.sectionId && !sectionIds.has(gap.sectionId)) errors.push(`Unknown gap section ${gap.sectionId}.`);
+    for(const evidenceId of (gap.evidenceCardIds||[])) if(!evidenceIds.has(evidenceId)) errors.push(`Gap ${gap.id} references unknown evidence ${evidenceId}.`);
+    for(const sourceId of (gap.sourceIds||[])) if(!sourceIds.has(sourceId)) errors.push(`Gap ${gap.id} references unknown source ${sourceId}.`);
+  }
+  for(const source of (output?.weakSources||[])) if(source.sourceId && !sourceIds.has(source.sourceId)) errors.push(`Unknown weak source ${source.sourceId}.`);
+  for(const item of (output?.suggestedNextSources||[])){
+    if(item.sectionId && !sectionIds.has(item.sectionId)) errors.push(`Unknown next-source section ${item.sectionId}.`);
+    if(!['low','medium','high'].includes(String(item.priority||''))) errors.push(`Unsupported next-source priority for ${item.id}.`);
+  }
+  return {ok:!errors.length, errors};
+}
+function approvedEvidenceForSection(reportData, sectionId){
+  const cards=normalizeEvidenceCards(reportData).items||[];
+  return cards.filter(card=>card.reviewStatus==='approved').filter(card=>card.sectionId===sectionId || (['recommendations','risksOpportunities'].includes(sectionId)&&['risk','opportunity','recommendation_input'].includes(card.evidenceType)));
+}
+function blockTypeForSectionDraft(sectionId){
+  if(sectionId==='pricing') return 'metric';
+  if(['competitiveLandscape','competitors','features'].includes(sectionId)) return 'comparison_note';
+  if(sectionId==='risksOpportunities') return 'risk_note';
+  if(sectionId==='recommendations') return 'recommendation_note';
+  return 'paragraph';
+}
+function runAiSectionDraftDryRun(reportData, options={}){
+  const report=clone(reportData||{});
+  normalizeReportSchema(report);
+  normalizeSourceRegistry(report);
+  normalizeEvidenceCards(report);
+  const now=new Date().toISOString();
+  const sectionId=String(options.selectedSectionId||state.aiSectionId||'');
+  const section=getReportSection(report,sectionId);
+  const warnings=[], coverageWarnings=[], missingInputs=[];
+  if(!section){
+    warnings.push('Select a valid report section before requesting a section draft.');
+    return {taskType:'suggest_report_sections',sectionId,sectionTitle:'',draftBlocks:[],coverageWarnings,missingInputs,warnings,createdAt:now};
+  }
+  const sources=report.sourceRegistry.items||[];
+  const sourceMap=new Map(sources.map(source=>[source.id,source]));
+  const weakSources=new Set(sources.filter(source=>['weak','unreviewed','needs_review'].includes(String(source.credibilityStatus||'unreviewed'))).map(source=>source.id));
+  const approved=approvedEvidenceForSection(report,sectionId).sort((a,b)=>String(a.id||'').localeCompare(String(b.id||'')));
+  if(!approved.length){
+    missingInputs.push('Approve evidence linked to this section before requesting a section draft.');
+    return {taskType:'suggest_report_sections',sectionId,sectionTitle:section.title||sectionId,draftBlocks:[],coverageWarnings,missingInputs,warnings,createdAt:now};
+  }
+  const type=blockTypeForSectionDraft(sectionId);
+  const max=Math.max(1,Math.min(Number(options.maxDraftBlocks||options.maxCandidates)||5,8));
+  const draftBlocks=approved.slice(0,max).map((card,index)=>{
+    const sourceIds=Array.isArray(card.sourceIds)?card.sourceIds.filter(id=>sourceMap.has(id)):[];
+    if(!sourceIds.length) coverageWarnings.push(`Evidence ${card.id} has no linked source for ${section.title||sectionId}.`);
+    if(sourceIds.some(id=>weakSources.has(id))) coverageWarnings.push(`Evidence ${card.id} uses weak or unreviewed sources.`);
+    return {
+      id:`section-draft:${sectionId}:${card.id}`,
+      type,
+      title:index===0?`${section.title||sectionId} draft point`:'Supporting draft point',
+      text:String(card.claim||card.summary||'').trim(),
+      sectionId,
+      evidenceCardIds:card.id?[card.id]:[],
+      sourceIds,
+      confidenceStatus:sourceIds.length?(sourceIds.some(id=>weakSources.has(id))?'medium':'high'):'low',
+      reviewStatus:'needs_review',
+      generatedBy:'ai_dry_run',
+      analystNotes:'Dry-run section draft based on approved evidence. Review before export.',
+      warnings:sourceIds.length?[]:['Missing linked source for this draft block.']
+    };
+  }).filter(block=>block.text);
+  return {taskType:'suggest_report_sections',sectionId,sectionTitle:section.title||sectionId,draftBlocks,coverageWarnings:[...new Set(coverageWarnings)],missingInputs,warnings,createdAt:now};
+}
+function validateSectionDraftOutput(output, reportData){
+  const report=reportData&&typeof reportData==='object'?reportData:{};
+  const sectionIds=new Set((report.reportSections||[]).map(section=>section.id));
+  const sourceIds=new Set((report.sourceRegistry?.items||[]).map(source=>source.id));
+  const approvedIds=new Set((report.evidenceCards?.items||[]).filter(card=>card.reviewStatus==='approved').map(card=>card.id));
+  const errors=[];
+  if(!output || typeof output!=='object') errors.push('Section draft output must be an object.');
+  if(output?.taskType!=='suggest_report_sections') errors.push('Section draft output taskType must be suggest_report_sections.');
+  if(!output?.sectionId || !sectionIds.has(output.sectionId)) errors.push('Section draft output must include a valid sectionId.');
+  if(!Array.isArray(output?.draftBlocks)) errors.push('Section draft output must include draftBlocks array.');
+  for(const block of (output?.draftBlocks||[])){
+    if(!DRAFT_BLOCK_TYPES.includes(String(block.type||''))) errors.push(`Unsupported draft block type for ${block.id}.`);
+    if(!String(block.text||'').trim()) errors.push(`Draft block ${block.id} needs text.`);
+    if(block.sectionId!==output.sectionId) errors.push(`Draft block ${block.id} must target the selected section.`);
+    if(!['draft','needs_review'].includes(String(block.reviewStatus||''))) errors.push(`Draft block ${block.id} cannot be auto-approved.`);
+    if(!['low','medium','high'].includes(String(block.confidenceStatus||''))) errors.push(`Draft block ${block.id} has invalid confidence.`);
+    for(const evidenceId of (block.evidenceCardIds||[])) if(!approvedIds.has(evidenceId)) errors.push(`Draft block ${block.id} references non-approved evidence ${evidenceId}.`);
+    for(const sourceId of (block.sourceIds||[])) if(!sourceIds.has(sourceId)) errors.push(`Draft block ${block.id} references unknown source ${sourceId}.`);
+  }
+  return {ok:!errors.length, errors};
+}
+function mergeCoveragePreviewWithQualityChecklist(reportData, coveragePreview){
+  const base=runReportQualityChecklist(reportData);
+  const output=coveragePreview?.outputPreview||coveragePreview;
+  if(!output || output.taskType!=='check_source_coverage') return base;
+  const extra=(output.coverageGaps||[]).map(gap=>checklistItem('source_coverage',gap.severity==='blocker'?'blocker':'warning',`${gap.title}: ${gap.description}`));
+  const items=[...base.items,...extra];
+  return {...base,items,blockers:items.filter(item=>item.severity==='blocker'),warnings:items.filter(item=>item.severity==='warning'),passed:items.filter(item=>item.severity==='passed')};
+}
+async function requestEvidenceCandidatePreview(options={}){
+  const aiStatus=state.aiStatusLoaded?state.aiStatus:await fetchAiStatus();
+  const gate=canRunAiEvidencePreview(REPORT,aiStatus,currentAiUser());
+  if(!gate.ok) return {ok:false, errors:gate.reasons, warnings:[], output:null};
+  collectMaterialsFromCurrentState(REPORT,state.fsRoots);
+  buildSourcesFromMaterials(REPORT);
+  const safeOptions={
+    selectedSourceIds:Array.isArray(options.selectedSourceIds)?options.selectedSourceIds.map(String).filter(Boolean):[],
+    selectedMaterialIds:Array.isArray(options.selectedMaterialIds)?options.selectedMaterialIds.map(String).filter(Boolean):[],
+    selectedSectionIds:Array.isArray(options.selectedSectionIds)?options.selectedSectionIds.map(String).filter(Boolean):[],
+    maxCandidates:Math.max(1,Math.min(Number(options.maxCandidates)||8,12)),
+    mode:String(options.mode||aiStatus.currentMode||'dry_run')
+  };
+  const audit=beginAiPreviewAudit(REPORT,'extract_evidence_candidates',aiStatus,safeOptions);
+  let payload=null;
+  if(aiStatus.source==='backend' && !BROWSER_ONLY_MODE && HOSTED_MODE){
+    try{
+      const nativeFetch=globalThis['fetch'];
+      if(typeof nativeFetch!=='function') throw new Error('AI preview API unavailable.');
+      const res=await nativeFetch('/api/ai/preview',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','Accept':'application/json'},
+        body:JSON.stringify({
+          taskType:'extract_evidence_candidates',
+          user:currentAiUser(),
+          reportData:exportReportSnapshot(),
+          options:safeOptions
+        })
+      });
+      payload=await res.json();
+      if(!res.ok || payload?.ok===false){failAiPreviewAudit(REPORT,audit,payload?.errorCode||'preview_failed',payload?.warnings||[]); return {ok:false, errors:payload?.errors?.length?payload.errors:['AI preview failed.'], warnings:payload?.warnings||[], output:null};}
+    }catch(e){
+      failAiPreviewAudit(REPORT,audit,'preview_unavailable');
+      return {ok:false, errors:['AI preview service is unavailable.'], warnings:[], output:null};
+    }
+  }else{
+    const output=runAiEvidenceCandidateDryRun(REPORT,safeOptions);
+    payload={ok:true,provider:'dry_run',taskType:'extract_evidence_candidates',suggestions:(output.candidates||[]).map(candidate=>({candidate:{...candidate,generatedBy:'ai_dry_run'}})),warnings:output.warnings||[]};
+  }
+  const output=normalizeEvidenceCandidatePreviewResponse(payload,payload?.provider||aiStatus.provider||'dry_run');
+  const validation=validateEvidenceCandidateOutput(output,REPORT);
+  if(!validation.ok){failAiPreviewAudit(REPORT,audit,'validation_failed',output.warnings||[]); return {ok:false, errors:validation.errors, warnings:output.warnings||[], output:null};}
+  applyAiTaskOutputPreview(REPORT,'extract_evidence_candidates',output,{...audit,provider:payload?.provider||audit.provider});
+  return {ok:true, errors:[], warnings:output.warnings||[], output};
+}
+function renderEvidenceCandidatePreview(preview){
+  const output=preview?.outputPreview||preview;
+  if(!output || output.taskType!=='extract_evidence_candidates') return '';
+  const validation=validateEvidenceCandidateOutput(output,REPORT);
+  const warnings=[...(output.warnings||[]),...(validation.errors||[])];
+  const rows=(output.candidates||[]).slice(0,8).map(candidate=>{
+    const section=getReportSection(REPORT,candidate.suggestedSectionId);
+    return `<label class="materialRow">
+      <input type="checkbox" class="adminOnly" data-ai-candidate-check="${esc(candidate.id)}">
+      <div class="itemName">${esc(candidate.claim||candidate.summary||'Untitled candidate')}
+        <div class="itemMeta">${esc(section?.title||'Unlinked section')} - ${(candidate.sourceIds||[]).length} source${(candidate.sourceIds||[]).length===1?'':'s'} - confidence: ${esc(candidate.confidenceStatus)} - credibility: ${esc(candidate.credibilityStatus)} - status: ${esc(candidate.reviewStatus)}</div>
+        ${candidate.summary?`<div class="itemMeta">${esc(candidate.summary)}</div>`:''}
+        ${(candidate.warnings||[]).length?`<div class="itemMeta">Warnings: ${esc(candidate.warnings.join(' | '))}</div>`:''}
+      </div>
+    </label>`;
+  }).join('');
+  return `<div class="materialsHead"><b>Candidate preview</b><span class="pill">${(output.candidates||[]).length} candidate${(output.candidates||[]).length===1?'':'s'}</span></div>
+    <div class="itemMeta">AI suggestions require review before export. AI output is not added to the client report automatically.</div>
+    ${warnings.length?`<div class="itemMeta">Warnings: ${esc(warnings.join(' | '))}</div>`:''}
+    ${rows||'<div class="empty">No candidate evidence was found in this preview.</div>'}
+    ${(output.candidates||[]).length?'<button class="btn small primary adminOnly" data-ai-add-candidates="1">Add selected candidates to Evidence Cards</button><button class="btn small adminOnly" data-ai-queue-candidates="1">Send selected suggestions to review queue</button>':''}`;
+}
+function clearEvidenceCandidatePreview(){
+  const ai=normalizeAiAssistanceState(REPORT);
+  ai.suggestions=(ai.suggestions||[]).filter(item=>!(item.taskType==='extract_evidence_candidates' && item.outputPreview?.taskType==='extract_evidence_candidates'));
+  ai.updatedAt=new Date().toISOString();
+}
+async function requestRecommendationPreview(options={}){
+  const aiStatus=state.aiStatusLoaded?state.aiStatus:await fetchAiStatus();
+  const gate=canRunAiRecommendationPreview(REPORT,aiStatus,currentAiUser());
+  if(!gate.ok) return {ok:false, errors:gate.reasons, warnings:[], output:null};
+  const safeOptions={
+    selectedSourceIds:Array.isArray(options.selectedSourceIds)?options.selectedSourceIds.map(String).filter(Boolean):[],
+    selectedMaterialIds:Array.isArray(options.selectedMaterialIds)?options.selectedMaterialIds.map(String).filter(Boolean):[],
+    selectedSectionIds:Array.isArray(options.selectedSectionIds)?options.selectedSectionIds.map(String).filter(Boolean):[],
+    maxRecommendations:Math.max(1,Math.min(Number(options.maxRecommendations||options.maxCandidates)||6,10)),
+    mode:String(options.mode||aiStatus.currentMode||'dry_run')
+  };
+  const audit=beginAiPreviewAudit(REPORT,'suggest_recommendations',aiStatus,safeOptions);
+  let payload=null;
+  if(aiStatus.source==='backend' && !BROWSER_ONLY_MODE && HOSTED_MODE){
+    try{
+      const nativeFetch=globalThis['fetch'];
+      if(typeof nativeFetch!=='function') throw new Error('AI preview API unavailable.');
+      const res=await nativeFetch('/api/ai/preview',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','Accept':'application/json'},
+        body:JSON.stringify({
+          taskType:'suggest_recommendations',
+          user:currentAiUser(),
+          reportData:exportReportSnapshot(),
+          options:safeOptions
+        })
+      });
+      payload=await res.json();
+      if(!res.ok || payload?.ok===false){failAiPreviewAudit(REPORT,audit,payload?.errorCode||'preview_failed',payload?.warnings||[]); return {ok:false, errors:payload?.errors?.length?payload.errors:['AI recommendation preview failed.'], warnings:payload?.warnings||[], output:null};}
+    }catch(e){
+      failAiPreviewAudit(REPORT,audit,'preview_unavailable');
+      return {ok:false, errors:['AI recommendation service is unavailable.'], warnings:[], output:null};
+    }
+  }else{
+    const output=runAiRecommendationDryRun(REPORT,safeOptions);
+    payload={ok:true,provider:'dry_run',taskType:'suggest_recommendations',suggestions:(output.recommendations||[]).map(recommendation=>({recommendation:{...recommendation,generatedBy:'ai_dry_run'}})),warnings:output.warnings||[]};
+  }
+  const output=normalizeRecommendationPreviewResponse(payload,payload?.provider||aiStatus.provider||'dry_run');
+  const validation=validateRecommendationSuggestionOutput(output,REPORT);
+  if(!validation.ok){failAiPreviewAudit(REPORT,audit,'validation_failed',output.warnings||[]); return {ok:false, errors:validation.errors, warnings:output.warnings||[], output:null};}
+  applyAiTaskOutputPreview(REPORT,'suggest_recommendations',output,{...audit,provider:payload?.provider||audit.provider});
+  return {ok:true, errors:[], warnings:output.warnings||[], output};
+}
+function latestAiRecommendationPreview(reportData){
+  const ai=normalizeAiAssistanceState(reportData);
+  return [...(ai.suggestions||[])].reverse().find(item=>item.taskType==='suggest_recommendations' && item.outputPreview?.taskType==='suggest_recommendations')||null;
+}
+function renderRecommendationPreview(preview){
+  const output=preview?.outputPreview||preview;
+  if(!output || output.taskType!=='suggest_recommendations') return '';
+  const validation=validateRecommendationSuggestionOutput(output,REPORT);
+  const warnings=[...(output.warnings||[]),...(validation.errors||[])];
+  const rows=(output.recommendations||[]).slice(0,8).map(item=>{
+    const section=getReportSection(REPORT,item.suggestedSectionId);
+    return `<label class="materialRow">
+      <input type="checkbox" class="adminOnly" data-ai-recommendation-check="${esc(item.id)}">
+      <div class="itemName">${esc(item.title||'Recommendation suggestion')}
+        <div class="itemMeta">${esc(section?.title||'Recommendations')} - priority: ${esc(item.priority)} - effort: ${esc(item.effortLevel)} - confidence: ${esc(item.confidenceStatus)} - status: ${esc(item.reviewStatus)}</div>
+        <div class="itemMeta">${esc(item.recommendation||'')}</div>
+        ${item.rationale?`<div class="itemMeta">Rationale: ${esc(item.rationale)}</div>`:''}
+        <div class="itemMeta">Evidence ${(item.evidenceCardIds||[]).length} - Sources ${(item.sourceIds||[]).length} - Impact: ${esc(item.expectedImpact||'')}</div>
+        ${(item.warnings||[]).length?`<div class="itemMeta">Warnings: ${esc(item.warnings.join(' | '))}</div>`:''}
+      </div>
+    </label>`;
+  }).join('');
+  return `<div class="materialsHead"><b>Recommendation preview</b><span class="pill">${(output.recommendations||[]).length} recommendation${(output.recommendations||[]).length===1?'':'s'}</span></div>
+    <div class="itemMeta">AI recommendations require review before export.</div>
+    ${warnings.length?`<div class="itemMeta">Warnings: ${esc(warnings.join(' | '))}</div>`:''}
+    ${rows||'<div class="empty">No recommendations were suggested. Approve evidence cards first.</div>'}
+    ${(output.recommendations||[]).length?'<button class="btn small primary adminOnly" data-ai-add-recommendations="1">Add selected recommendations to draft</button><button class="btn small adminOnly" data-ai-queue-recommendations="1">Send selected suggestions to review queue</button>':''}`;
+}
+function convertRecommendationSuggestionToDraftBlock(suggestion, reportData=REPORT){
+  const now=new Date().toISOString();
+  const sectionIds=new Set((reportData.reportSections||[]).map(section=>section.id));
+  const fallback=sectionIds.has('recommendations')?'recommendations':'';
+  const sectionId=sectionIds.has(suggestion.suggestedSectionId)?suggestion.suggestedSectionId:fallback;
+  if(!sectionId) return null;
+  const text=[suggestion.recommendation,suggestion.rationale?`Rationale: ${suggestion.rationale}`:'',suggestion.expectedImpact?`Expected impact: ${suggestion.expectedImpact}`:''].filter(Boolean).join('\n');
+  return normalizeDraftBlock({
+    id:uid('draft'),
+    type:'recommendation_note',
+    title:String(suggestion.title||'AI recommendation'),
+    text,
+    sectionId,
+    evidenceCardIds:Array.isArray(suggestion.evidenceCardIds)?suggestion.evidenceCardIds.map(String).filter(Boolean):[],
+    sourceIds:Array.isArray(suggestion.sourceIds)?suggestion.sourceIds.map(String).filter(Boolean):[],
+    generatedBy:String(suggestion.generatedBy||'ai_preview')==='ai_dry_run'?'ai_dry_run':'ai_preview',
+    createdAt:now,
+    updatedAt:now,
+    status:'needs_review',
+    confidenceStatus:suggestion.confidenceStatus,
+    priority:suggestion.priority,
+    effortLevel:suggestion.effortLevel
+  });
+}
+function addSelectedRecommendationsToDraft(reportData, recommendationIds){
+  const report=normalizeReportSchema(reportData&&typeof reportData==='object'?reportData:{});
+  const preview=latestAiRecommendationPreview(report);
+  const selected=new Set((recommendationIds||[]).map(String));
+  const validation=validateRecommendationSuggestionOutput(preview?.outputPreview,report);
+  if(!preview || !validation.ok || !selected.size) return {added:0, errors:validation.errors||['No selected recommendations.']};
+  let added=0;
+  for(const item of (preview.outputPreview.recommendations||[])){
+    if(!selected.has(String(item.id))) continue;
+    const block=convertRecommendationSuggestionToDraftBlock(item,report);
+    if(!block) continue;
+    recordAiSuggestionOutput(report,item,block,'draft_block');
+    const section=getReportSection(report,block.sectionId);
+    if(!section) continue;
+    section.blocks=[...(section.blocks||[]),block];
+    section.status=section.status==='approved'?'approved':'needs_review';
+    section.updatedAt=new Date().toISOString();
+    added++;
+  }
+  return {added, errors:added?[]:['No valid recommendation section is available.']};
+}
+async function requestExecutiveSummaryPreview(options={}){
+  const aiStatus=state.aiStatusLoaded?state.aiStatus:await fetchAiStatus();
+  const gate=canRunAiExecutiveSummaryPreview(REPORT,aiStatus,currentAiUser());
+  if(!gate.ok) return {ok:false, errors:gate.reasons, warnings:[], output:null};
+  const safeOptions={
+    selectedSourceIds:Array.isArray(options.selectedSourceIds)?options.selectedSourceIds.map(String).filter(Boolean):[],
+    selectedMaterialIds:Array.isArray(options.selectedMaterialIds)?options.selectedMaterialIds.map(String).filter(Boolean):[],
+    selectedSectionIds:Array.isArray(options.selectedSectionIds)?options.selectedSectionIds.map(String).filter(Boolean):[],
+    maxSummaryBlocks:Math.max(1,Math.min(Number(options.maxSummaryBlocks||options.maxCandidates)||5,8)),
+    mode:String(options.mode||aiStatus.currentMode||'dry_run')
+  };
+  const audit=beginAiPreviewAudit(REPORT,'improve_executive_summary',aiStatus,safeOptions);
+  let payload=null;
+  if(aiStatus.source==='backend' && !BROWSER_ONLY_MODE && HOSTED_MODE){
+    try{
+      const nativeFetch=globalThis['fetch'];
+      if(typeof nativeFetch!=='function') throw new Error('AI preview API unavailable.');
+      const res=await nativeFetch('/api/ai/preview',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','Accept':'application/json'},
+        body:JSON.stringify({
+          taskType:'improve_executive_summary',
+          user:currentAiUser(),
+          reportData:exportReportSnapshot(),
+          options:safeOptions
+        })
+      });
+      payload=await res.json();
+      if(!res.ok || payload?.ok===false){failAiPreviewAudit(REPORT,audit,payload?.errorCode||'preview_failed',payload?.warnings||[]); return {ok:false, errors:payload?.errors?.length?payload.errors:['AI executive summary preview failed.'], warnings:payload?.warnings||[], output:null};}
+    }catch(e){
+      failAiPreviewAudit(REPORT,audit,'preview_unavailable');
+      return {ok:false, errors:['AI executive summary service is unavailable.'], warnings:[], output:null};
+    }
+  }else{
+    const output=runAiExecutiveSummaryDryRun(REPORT,safeOptions);
+    payload={ok:true,provider:'dry_run',taskType:'improve_executive_summary',suggestions:(output.summaryBlocks||[]).map(summaryBlock=>({summaryBlock:{...summaryBlock,generatedBy:'ai_dry_run'}})),warnings:output.warnings||[],summaryTitle:output.summaryTitle,keyTakeaways:output.keyTakeaways};
+  }
+  const output=normalizeExecutiveSummaryPreviewResponse(payload,payload?.provider||aiStatus.provider||'dry_run');
+  const validation=validateExecutiveSummaryOutput(output,REPORT);
+  if(!validation.ok){failAiPreviewAudit(REPORT,audit,'validation_failed',output.warnings||[]); return {ok:false, errors:validation.errors, warnings:output.warnings||[], output:null};}
+  applyAiTaskOutputPreview(REPORT,'improve_executive_summary',output,{...audit,provider:payload?.provider||audit.provider});
+  return {ok:true, errors:[], warnings:output.warnings||[], output};
+}
+function latestAiExecutiveSummaryPreview(reportData){
+  const ai=normalizeAiAssistanceState(reportData);
+  return [...(ai.suggestions||[])].reverse().find(item=>item.taskType==='improve_executive_summary' && item.outputPreview?.taskType==='improve_executive_summary')||null;
+}
+function renderExecutiveSummaryPreview(preview){
+  const output=preview?.outputPreview||preview;
+  if(!output || output.taskType!=='improve_executive_summary') return '';
+  const validation=validateExecutiveSummaryOutput(output,REPORT);
+  const warnings=[...(output.warnings||[]),...(validation.errors||[])];
+  const rows=(output.summaryBlocks||[]).slice(0,8).map(block=>{
+    const section=getReportSection(REPORT,block.suggestedSectionId);
+    return `<label class="materialRow">
+      <input type="checkbox" class="adminOnly" data-ai-summary-check="${esc(block.id)}">
+      <div class="itemName">${esc(block.heading||'Executive summary block')}
+        <div class="itemMeta">${esc(section?.title||'Executive Summary')} - importance: ${esc(block.importance)} - confidence: ${esc(block.confidenceStatus)} - status: ${esc(block.reviewStatus)}</div>
+        <div class="itemMeta">${esc(block.text||'')}</div>
+        <div class="itemMeta">Evidence ${(block.evidenceCardIds||[]).length} - Sources ${(block.sourceIds||[]).length}</div>
+        ${(block.warnings||[]).length?`<div class="itemMeta">Warnings: ${esc(block.warnings.join(' | '))}</div>`:''}
+      </div>
+    </label>`;
+  }).join('');
+  return `<div class="materialsHead"><b>${esc(output.summaryTitle||'Executive Summary Preview')}</b><span class="pill">${(output.summaryBlocks||[]).length} block${(output.summaryBlocks||[]).length===1?'':'s'}</span></div>
+    <div class="itemMeta">AI executive summary requires review before export.</div>
+    ${warnings.length?`<div class="itemMeta">Warnings: ${esc(warnings.join(' | '))}</div>`:''}
+    ${rows||'<div class="empty">No executive summary blocks were suggested. Approve evidence cards first.</div>'}
+    ${(output.summaryBlocks||[]).length?'<button class="btn small primary adminOnly" data-ai-add-summary="1">Add selected summary blocks to draft</button><button class="btn small adminOnly" data-ai-queue-summary="1">Send selected suggestions to review queue</button>':''}`;
+}
+function convertExecutiveSummarySuggestionToDraftBlock(suggestion, reportData=REPORT){
+  const now=new Date().toISOString();
+  const sectionIds=new Set((reportData.reportSections||[]).map(section=>section.id));
+  const fallback=sectionIds.has('executiveSummary')?'executiveSummary':'';
+  const sectionId=sectionIds.has(suggestion.suggestedSectionId)?suggestion.suggestedSectionId:fallback;
+  if(!sectionId) return null;
+  return normalizeDraftBlock({
+    id:uid('draft'),
+    type:'paragraph',
+    title:String(suggestion.heading||'Executive summary'),
+    text:String(suggestion.text||''),
+    sectionId,
+    evidenceCardIds:Array.isArray(suggestion.evidenceCardIds)?suggestion.evidenceCardIds.map(String).filter(Boolean):[],
+    sourceIds:Array.isArray(suggestion.sourceIds)?suggestion.sourceIds.map(String).filter(Boolean):[],
+    generatedBy:String(suggestion.generatedBy||'ai_preview')==='ai_dry_run'?'ai_dry_run':'ai_preview',
+    createdAt:now,
+    updatedAt:now,
+    status:'needs_review',
+    confidenceStatus:suggestion.confidenceStatus,
+    importance:suggestion.importance
+  });
+}
+function addSelectedSummaryBlocksToDraft(reportData, summaryIds){
+  const report=normalizeReportSchema(reportData&&typeof reportData==='object'?reportData:{});
+  const preview=latestAiExecutiveSummaryPreview(report);
+  const selected=new Set((summaryIds||[]).map(String));
+  const validation=validateExecutiveSummaryOutput(preview?.outputPreview,report);
+  if(!preview || !validation.ok || !selected.size) return {added:0, errors:validation.errors||['No selected summary blocks.']};
+  let added=0;
+  for(const item of (preview.outputPreview.summaryBlocks||[])){
+    if(!selected.has(String(item.id))) continue;
+    const block=convertExecutiveSummarySuggestionToDraftBlock(item,report);
+    if(!block) continue;
+    recordAiSuggestionOutput(report,item,block,'draft_block');
+    const section=getReportSection(report,block.sectionId);
+    if(!section) continue;
+    section.blocks=[...(section.blocks||[]),block];
+    section.status=section.status==='approved'?'approved':'needs_review';
+    section.updatedAt=new Date().toISOString();
+    added++;
+  }
+  return {added, errors:added?[]:['No valid executive summary section is available.']};
+}
+async function requestSourceCoveragePreview(options={}){
+  const aiStatus=state.aiStatusLoaded?state.aiStatus:await fetchAiStatus();
+  const gate=canRunAiSourceCoveragePreview(REPORT,aiStatus,currentAiUser());
+  if(!gate.ok) return {ok:false, errors:gate.reasons, warnings:[], output:null};
+  const safeOptions={
+    selectedSourceIds:Array.isArray(options.selectedSourceIds)?options.selectedSourceIds.map(String).filter(Boolean):[],
+    selectedMaterialIds:Array.isArray(options.selectedMaterialIds)?options.selectedMaterialIds.map(String).filter(Boolean):[],
+    selectedSectionIds:Array.isArray(options.selectedSectionIds)?options.selectedSectionIds.map(String).filter(Boolean):[],
+    mode:String(options.mode||aiStatus.currentMode||'dry_run')
+  };
+  const audit=beginAiPreviewAudit(REPORT,'check_source_coverage',aiStatus,safeOptions);
+  let payload=null;
+  if(aiStatus.source==='backend' && !BROWSER_ONLY_MODE && HOSTED_MODE){
+    try{
+      const nativeFetch=globalThis['fetch'];
+      if(typeof nativeFetch!=='function') throw new Error('AI preview API unavailable.');
+      const res=await nativeFetch('/api/ai/preview',{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify({taskType:'check_source_coverage',user:currentAiUser(),reportData:exportReportSnapshot(),options:safeOptions})});
+      payload=await res.json();
+      if(!res.ok || payload?.ok===false){failAiPreviewAudit(REPORT,audit,payload?.errorCode||'preview_failed',payload?.warnings||[]); return {ok:false, errors:payload?.errors?.length?payload.errors:['AI source coverage preview failed.'], warnings:payload?.warnings||[], output:null};}
+    }catch(e){
+      failAiPreviewAudit(REPORT,audit,'preview_unavailable');
+      return {ok:false, errors:['AI source coverage service is unavailable.'], warnings:[], output:null};
+    }
+  }else{
+    const output=runAiSourceCoverageDryRun(REPORT);
+    payload={ok:true,provider:'dry_run',taskType:'check_source_coverage',suggestions:(output.coverageGaps||[]).map(gap=>({gap:{...gap,generatedBy:'ai_dry_run'}})),warnings:output.warnings||[],overallCoverageStatus:output.overallCoverageStatus,coverageScore:output.coverageScore,sectionCoverage:output.sectionCoverage,weakSources:output.weakSources,suggestedNextSources:output.suggestedNextSources};
+  }
+  const output=normalizeSourceCoveragePreviewResponse(payload);
+  const validation=validateSourceCoverageOutput(output,REPORT);
+  if(!validation.ok){failAiPreviewAudit(REPORT,audit,'validation_failed',output.warnings||[]); return {ok:false, errors:validation.errors, warnings:output.warnings||[], output:null};}
+  applyAiTaskOutputPreview(REPORT,'check_source_coverage',output,{...audit,provider:payload?.provider||audit.provider});
+  return {ok:true, errors:[], warnings:output.warnings||[], output};
+}
+function latestAiSourceCoveragePreview(reportData){
+  const ai=normalizeAiAssistanceState(reportData);
+  return [...(ai.suggestions||[])].reverse().find(item=>item.taskType==='check_source_coverage' && item.outputPreview?.taskType==='check_source_coverage')||null;
+}
+function renderSourceCoveragePreview(preview){
+  const output=preview?.outputPreview||preview;
+  if(!output || output.taskType!=='check_source_coverage') return '';
+  const validation=validateSourceCoverageOutput(output,REPORT);
+  const warnings=[...(output.warnings||[]),...(validation.errors||[])];
+  const blockerCount=(output.coverageGaps||[]).filter(gap=>gap.severity==='blocker').length;
+  const warningCount=(output.coverageGaps||[]).filter(gap=>gap.severity==='warning').length;
+  const sections=(output.sectionCoverage||[]).slice(0,6).map(item=>`<div class="materialRow"><div class="itemName">${esc(item.sectionTitle||item.sectionId)}<div class="itemMeta">${esc(item.status)} - evidence ${item.approvedEvidenceCount}/${item.evidenceCount} - sources ${item.sourceCount} - weak ${item.weakSourceCount}</div></div></div>`).join('');
+  const gaps=(output.coverageGaps||[]).slice(0,8).map(gap=>`<label class="materialRow"><input type="checkbox" class="adminOnly" data-ai-gap-check="${esc(gap.id)}"><div class="itemName">${esc(gap.title)}<div class="itemMeta">${esc(gap.severity)} - ${esc(gap.description)}</div><div class="itemMeta">Fix: ${esc(gap.suggestedFix||'Review source coverage.')}</div></div></label>`).join('');
+  const next=(output.suggestedNextSources||[]).slice(0,4).map(item=>`<div class="itemMeta">Next source: ${esc(item.reason)} (${esc(item.priority)})</div>`).join('');
+  return `<div class="materialsHead"><b>Source Coverage Preview</b><span class="pill">${esc(output.overallCoverageStatus)} ${Number(output.coverageScore||0)}%</span></div>
+    <div class="itemMeta">Coverage analysis is a preview and requires human review.</div>
+    <div class="itemMeta">${blockerCount} blocker(s) - ${warningCount} warning(s) - ${(output.weakSources||[]).length} weak source(s)</div>
+    ${warnings.length?`<div class="itemMeta">Warnings: ${esc(warnings.join(' | '))}</div>`:''}
+    ${sections}
+    ${gaps||'<div class="empty">No source coverage gaps found in this preview.</div>'}
+    ${next}
+    ${(output.coverageGaps||[]).length?'<button class="btn small primary adminOnly" data-ai-add-gaps="1">Add selected gaps to checklist</button><button class="btn small adminOnly" data-ai-queue-gaps="1">Send selected suggestions to review queue</button>':''}`;
+}
+function addSelectedCoverageGapsToSuggestions(reportData, gapIds){
+  const report=reportData&&typeof reportData==='object'?reportData:{};
+  const preview=latestAiSourceCoveragePreview(report);
+  const selected=new Set((gapIds||[]).map(String));
+  const validation=validateSourceCoverageOutput(preview?.outputPreview,report);
+  if(!preview || !validation.ok || !selected.size) return {added:0, errors:validation.errors||['No selected coverage gaps.']};
+  const ai=normalizeAiAssistanceState(report);
+  let added=0;
+  for(const gap of (preview.outputPreview.coverageGaps||[])){
+    if(!selected.has(String(gap.id))) continue;
+    ai.suggestions.push(normalizeAiSuggestion({id:uid('ai-gap'),taskType:'check_source_coverage',title:gap.title||'Source coverage gap',summary:gap.description||'',inputRefs:gap.inputRefs||[gap.sectionId,...(gap.sourceIds||[]),...(gap.evidenceCardIds||[])].filter(Boolean),outputPreview:{gap:{...gap,reviewStatus:'needs_review',generatedBy:gap.generatedBy||'ai_dry_run'}},status:'ready_for_review',taskRunId:gap.taskRunId||'',provider:gap.provider||'dry_run',providerMode:gap.providerMode||'dry_run',createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()}));
+    recordAiSuggestionOutput(report,gap,{id:gap.id,title:gap.title||'Source coverage gap',message:gap.description||'',sectionId:gap.sectionId,status:'needs_review'},'checklist_item');
+    added++;
+  }
+  if(added) ai.updatedAt=new Date().toISOString();
+  return {added, errors:[]};
+}
+async function requestSectionDraftPreview(options={}){
+  const aiStatus=state.aiStatusLoaded?state.aiStatus:await fetchAiStatus();
+  const selectedSectionId=String(options.selectedSectionId||state.aiSectionId||'');
+  const gate=canRunAiSectionDraftPreview(REPORT,aiStatus,currentAiUser());
+  if(!gate.ok) return {ok:false, errors:gate.reasons, warnings:[], output:null};
+  const safeOptions={selectedSectionId,selectedSectionIds:selectedSectionId?[selectedSectionId]:[],maxDraftBlocks:Math.max(1,Math.min(Number(options.maxDraftBlocks||options.maxCandidates)||5,8)),mode:String(options.mode||aiStatus.currentMode||'dry_run')};
+  const audit=beginAiPreviewAudit(REPORT,'suggest_report_sections',aiStatus,safeOptions);
+  let payload=null;
+  if(aiStatus.source==='backend' && !BROWSER_ONLY_MODE && HOSTED_MODE){
+    try{
+      const nativeFetch=globalThis['fetch'];
+      if(typeof nativeFetch!=='function') throw new Error('AI preview API unavailable.');
+      const res=await nativeFetch('/api/ai/preview',{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify({taskType:'suggest_report_sections',user:currentAiUser(),reportData:exportReportSnapshot(),options:safeOptions})});
+      payload=await res.json();
+      if(!res.ok || payload?.ok===false){failAiPreviewAudit(REPORT,audit,payload?.errorCode||'preview_failed',payload?.warnings||[]); return {ok:false, errors:payload?.errors?.length?payload.errors:['AI section draft preview failed.'], warnings:payload?.warnings||[], output:null};}
+    }catch(e){
+      failAiPreviewAudit(REPORT,audit,'preview_unavailable');
+      return {ok:false, errors:['AI section draft service is unavailable.'], warnings:[], output:null};
+    }
+  }else{
+    const output=runAiSectionDraftDryRun(REPORT,safeOptions);
+    payload={ok:true,provider:'dry_run',taskType:'suggest_report_sections',suggestions:(output.draftBlocks||[]).map(block=>({block:{...block,generatedBy:'ai_dry_run'}})),warnings:output.warnings||[],sectionId:output.sectionId,sectionTitle:output.sectionTitle,coverageWarnings:output.coverageWarnings,missingInputs:output.missingInputs};
+  }
+  const output=normalizeSectionDraftPreviewResponse(payload,payload?.provider||aiStatus.provider||'dry_run');
+  const validation=validateSectionDraftOutput(output,REPORT);
+  if(!validation.ok){failAiPreviewAudit(REPORT,audit,'validation_failed',output.warnings||[]); return {ok:false, errors:validation.errors, warnings:output.warnings||[], output:null};}
+  applyAiTaskOutputPreview(REPORT,'suggest_report_sections',output,{...audit,provider:payload?.provider||audit.provider});
+  return {ok:true, errors:[], warnings:output.warnings||[], output};
+}
+function latestAiSectionDraftPreview(reportData){
+  const ai=normalizeAiAssistanceState(reportData);
+  return [...(ai.suggestions||[])].reverse().find(item=>item.taskType==='suggest_report_sections' && item.outputPreview?.taskType==='suggest_report_sections')||null;
+}
+function renderSectionDraftPreview(preview){
+  const output=preview?.outputPreview||preview;
+  if(!output || output.taskType!=='suggest_report_sections') return '';
+  const validation=validateSectionDraftOutput(output,REPORT);
+  const warnings=[...(output.warnings||[]),...(output.coverageWarnings||[]),...(output.missingInputs||[]),...(validation.errors||[])];
+  const rows=(output.draftBlocks||[]).slice(0,8).map(block=>`<label class="materialRow"><input type="checkbox" class="adminOnly" data-ai-section-block-check="${esc(block.id)}"><div class="itemName">${esc(block.title||block.type)}<div class="itemMeta">${esc(block.type)} - evidence ${(block.evidenceCardIds||[]).length} - sources ${(block.sourceIds||[]).length} - confidence ${esc(block.confidenceStatus)} - ${esc(block.reviewStatus)}</div><div class="itemMeta">${esc(String(block.text||'').slice(0,220))}</div>${(block.warnings||[]).length?`<div class="itemMeta">Warnings: ${esc(block.warnings.join(' | '))}</div>`:''}</div></label>`).join('');
+  return `<div class="materialsHead"><b>Section Draft Preview: ${esc(output.sectionTitle||output.sectionId)}</b><span class="pill">${(output.draftBlocks||[]).length} block${(output.draftBlocks||[]).length===1?'':'s'}</span></div>
+    <div class="itemMeta">AI section drafts require review before export.</div>
+    ${warnings.length?`<div class="itemMeta">Warnings: ${esc(warnings.join(' | '))}</div>`:''}
+    ${rows||'<div class="empty">No section draft blocks were suggested. Approve evidence linked to this section first.</div>'}
+    ${(output.draftBlocks||[]).length?'<button class="btn small primary adminOnly" data-ai-add-section-blocks="1">Add selected blocks to section draft</button><button class="btn small adminOnly" data-ai-queue-section-blocks="1">Send selected suggestions to review queue</button>':''}`;
+}
+function convertSectionDraftSuggestionToDraftBlock(suggestion, reportData=REPORT){
+  const sectionIds=new Set((reportData.reportSections||[]).map(section=>section.id));
+  if(!sectionIds.has(suggestion.sectionId)) return null;
+  return normalizeDraftBlock({id:uid('draft'),type:DRAFT_BLOCK_TYPES.includes(String(suggestion.type))?suggestion.type:'paragraph',title:String(suggestion.title||'AI section draft'),text:String(suggestion.text||''),sectionId:suggestion.sectionId,evidenceCardIds:Array.isArray(suggestion.evidenceCardIds)?suggestion.evidenceCardIds.map(String).filter(Boolean):[],sourceIds:Array.isArray(suggestion.sourceIds)?suggestion.sourceIds.map(String).filter(Boolean):[],generatedBy:String(suggestion.generatedBy||'ai_preview')==='ai_dry_run'?'ai_dry_run':'ai_preview',createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),status:'needs_review',confidenceStatus:suggestion.confidenceStatus,analystNotes:suggestion.analystNotes});
+}
+function addSelectedSectionDraftBlocks(reportData, blockIds){
+  const report=normalizeReportSchema(reportData&&typeof reportData==='object'?reportData:{});
+  const preview=latestAiSectionDraftPreview(report);
+  const selected=new Set((blockIds||[]).map(String));
+  const validation=validateSectionDraftOutput(preview?.outputPreview,report);
+  if(!preview || !validation.ok || !selected.size) return {added:0, errors:validation.errors||['No selected section draft blocks.']};
+  let added=0;
+  for(const item of (preview.outputPreview.draftBlocks||[])){
+    if(!selected.has(String(item.id))) continue;
+    const block=convertSectionDraftSuggestionToDraftBlock(item,report);
+    if(!block) continue;
+    recordAiSuggestionOutput(report,item,block,'draft_block');
+    const section=getReportSection(report,block.sectionId);
+    if(!section) continue;
+    section.blocks=[...(section.blocks||[]),block];
+    section.status=section.status==='approved'?'approved':'needs_review';
+    section.updatedAt=new Date().toISOString();
+    added++;
+  }
+  return {added, errors:added?[]:['No valid section draft blocks were selected.']};
+}
+function queueSelectedPreviewItems(reportData, kind, ids){
+  const selected=new Set((ids||[]).map(String));
+  let payloads=[];
+  if(kind==='evidence_candidate') payloads=(latestAiEvidenceCandidatePreview(reportData)?.outputPreview?.candidates||[]).filter(item=>selected.has(item.id)).map(candidate=>({candidate}));
+  if(kind==='recommendation') payloads=(latestAiRecommendationPreview(reportData)?.outputPreview?.recommendations||[]).filter(item=>selected.has(item.id)).map(recommendation=>({recommendation}));
+  if(kind==='executive_summary') payloads=(latestAiExecutiveSummaryPreview(reportData)?.outputPreview?.summaryBlocks||[]).filter(item=>selected.has(item.id)).map(summaryBlock=>({summaryBlock}));
+  if(kind==='source_coverage_gap') payloads=(latestAiSourceCoveragePreview(reportData)?.outputPreview?.coverageGaps||[]).filter(item=>selected.has(item.id)).map(gap=>({gap}));
+  if(kind==='section_draft') payloads=(latestAiSectionDraftPreview(reportData)?.outputPreview?.draftBlocks||[]).filter(item=>selected.has(item.id)).map(block=>({block}));
+  return addAiSuggestionsToReviewQueue(reportData,payloads);
+}
+function latestAiEvidenceCandidatePreview(reportData){
+  const ai=normalizeAiAssistanceState(reportData);
+  return [...(ai.suggestions||[])].reverse().find(item=>item.taskType==='extract_evidence_candidates' && item.outputPreview?.taskType==='extract_evidence_candidates')||null;
+}
+function convertCandidateToEvidenceCard(candidate, reportData=REPORT){
+  const sectionIds=new Set((reportData.reportSections||[]).map(section=>section.id));
+  const sourceIds=new Set((reportData.sourceRegistry?.items||[]).map(source=>source.id));
+  const safeSourceIds=(candidate.sourceIds||[]).filter(id=>sourceIds.has(id));
+  const sectionId=sectionIds.has(candidate.suggestedSectionId)?candidate.suggestedSectionId:'';
+  return createEvidenceCard({
+    claim:String(candidate.claim||'').trim(),
+    summary:String(candidate.summary||'').trim(),
+    sourceIds:safeSourceIds,
+    materialIds:Array.isArray(candidate.materialIds)?candidate.materialIds.map(String).filter(Boolean):[],
+    sectionId,
+    evidenceType:EVIDENCE_TYPES.includes(String(candidate.evidenceType))?String(candidate.evidenceType):'observation',
+    reviewStatus:'needs_review',
+    confidenceStatus:EVIDENCE_CONFIDENCE_STATUS.includes(String(candidate.confidenceStatus))?String(candidate.confidenceStatus):'low',
+    credibilityStatus:EVIDENCE_CREDIBILITY_STATUS.includes(String(candidate.credibilityStatus))?String(candidate.credibilityStatus):'unreviewed',
+    analystNotes:'Created from AI evidence preview. Verify against source material before approval.',
+    generatedBy:String(candidate.generatedBy||'ai_preview')==='ai_dry_run'?'ai_dry_run':'ai_preview'
+  });
+}
+function addSelectedEvidenceCandidates(reportData, candidateIds){
+  const report=reportData&&typeof reportData==='object'?reportData:{};
+  const preview=latestAiEvidenceCandidatePreview(report);
+  const selected=new Set((candidateIds||[]).map(String));
+  const validation=validateEvidenceCandidateOutput(preview?.outputPreview, report);
+  if(!preview || !validation.ok || !selected.size) return {added:0, errors:validation.errors||['No selected candidates.']};
+  const cards=normalizeEvidenceCards(report);
+  let added=0;
+  for(const candidate of (preview.outputPreview.candidates||[])){
+    if(!selected.has(String(candidate.id))) continue;
+    cards.items.push(recordAiSuggestionOutput(report,candidate,convertCandidateToEvidenceCard(candidate, report),'evidence_card'));
+    added++;
+  }
+  if(added) cards.updatedAt=new Date().toISOString();
+  return {added, errors:[]};
+}
+function normalizeReport(r){r=clone(r); r.meta=r.meta||{}; r.datasets=Array.isArray(r.datasets)?r.datasets:[]; r.files=Array.isArray(r.files)?r.files:[]; r.charts=Array.isArray(r.charts)?r.charts:[]; r.tables=Array.isArray(r.tables)?r.tables:[]; r.companies=Array.isArray(r.companies)?r.companies:[]; normalizeReportSchema(r); normalizeMaterialsInventory(r); normalizeSourceRegistry(r); normalizeEvidenceCards(r); normalizeCompetitorProfiles(r); normalizePricingFeatureMatrix(r); normalizeAiAssistanceState(r); normalizeAiReviewQueue(r); normalizeAiAuditLog(r); normalizeVersionRetentionPolicy(r); normalizeGovernanceSettings(r); normalizeOnboardingState(r); normalizeFirstReportFlowState(r); r.ci=normalizeCiModel(r.ci); stripLiveMarkdownDerived(r); for(const ds of r.datasets){ds.id=ds.id||uid('ds'); ds.name=ds.name||'Таблиця'; ds.rows=Array.isArray(ds.rows)?ds.rows:[]; ds.columns=inferColumns(ds.rows);} syncCompaniesFromRows(r); for(const f of r.files){f.id=f.id||uid('file'); f.folder=f.folder||'Загальні'; f.path=f.path||((f.companyId?((company(f.companyId,r)?.folder||'company')+'/'):'')+f.name);} collectMaterialsFromCurrentState(r); buildSourcesFromMaterials(r); normalizeCompetitorProfiles(r); normalizePricingFeatureMatrix(r); return r;}
 function isGenericLiveMarkdownArtifact(x){return String(x?.sourceKind||'')==='markdown-live';}
 function isLiveMarkdownArtifact(x){return ['markdown-live','markdown-fs-video'].includes(String(x?.sourceKind||''));}
 function stripLiveMarkdownDerived(r){
@@ -1509,6 +6346,8 @@ function stripLiveMarkdownDerived(r){
 function persistedReportSnapshot(){
   const r=clone(REPORT);
   stripLiveMarkdownDerived(r);
+  collectMaterialsFromCurrentState(r);
+  buildSourcesFromMaterials(r);
   r.meta=r.meta||{};
   r.meta.savedAt=r.meta.updatedAt=new Date().toISOString();
   r.meta.lang=state.lang||r.meta.lang||'uk';
@@ -1538,6 +6377,8 @@ function makeFsDerivedPortable(report){
 }
 function exportReportSnapshot(){
   const r=makeFsDerivedPortable(clone(REPORT));
+  collectMaterialsFromCurrentState(r);
+  buildSourcesFromMaterials(r);
   r.meta=r.meta||{};
   r.meta.savedAt=r.meta.updatedAt=new Date().toISOString();
   r.meta.lang=state.lang||r.meta.lang||'uk';
@@ -1600,14 +6441,15 @@ function stripLegacyTrueSavageDemoPack(r){
 }
 REPORT=stripLegacyTrueSavageDemoPack(REPORT);
 function inferColumns(rows){const names=[]; for(const row of rows.slice(0,100)){Object.keys(row||{}).forEach(k=>{if(!String(k).startsWith('_')&&!names.includes(k)) names.push(k)})} return names.map(name=>{let seen=0, numeric=0; for(const r of rows.slice(0,80)){const v=r?.[name]; if(v!==''&&v!==null&&v!==undefined){seen++; if(isNum(v)) numeric++;}} return {name, type: seen && numeric/seen>=0.75 ? 'number':'text'};});}
-function initState(){REPORT.meta=REPORT.meta||{}; REPORT.meta.title=REPORT.meta.title||'Ринкова конкурентна розвідка'; REPORT.meta.companyName=String(REPORT.meta.companyName||'').trim(); state.lang=REPORT.meta.lang || getSavedLang() || state.lang || 'uk'; REPORT.meta.lang=state.lang; const useCloudAccess=HOSTED_MODE&&!BROWSER_ONLY_MODE&&!cloudSync.localFallback; state.access=REPORT.meta.clientLocked?'viewer':(useCloudAccess?(cloudCanWrite()?'admin':'viewer'):(REPORT.meta.accessMode||state.access||'admin')); REPORT.meta.accessMode=state.access; app.dataset.access=state.access; const firstClient=(REPORT.companies||[]).find(c=>c.type==='client') || (REPORT.companies||[])[0]; state.activeCompany=REPORT.meta.activeCompany || firstClient?.id || null; state.compareA=REPORT.meta.compareA || firstClient?.id || (REPORT.companies||[])[0]?.id || null; state.compareB=REPORT.meta.compareB || (REPORT.companies||[]).find(c=>c.id!==state.compareA)?.id || null; state.openFolders=REPORT.meta.openFolders||{}; state.showCompare=!!REPORT.meta.showCompare; state.analyticsSite=REPORT.meta.analyticsSite||'all'; state.analyticsResearch=REPORT.meta.analyticsResearch||'all'; state.activeDataset=REPORT.meta.activeDataset || state.activeDataset || REPORT.datasets[0]?.id || null; applyLanguage();}
+function initState(){REPORT.meta=REPORT.meta||{}; REPORT.meta.title=REPORT.meta.title||'Marketing Report Studio'; REPORT.meta.companyName=String(REPORT.meta.companyName||'').trim(); state.lang=REPORT.meta.lang || getSavedLang() || state.lang || 'uk'; REPORT.meta.lang=state.lang; const useCloudAccess=HOSTED_MODE&&!BROWSER_ONLY_MODE&&!cloudSync.localFallback; state.access=REPORT.meta.clientLocked?'viewer':(useCloudAccess?(cloudCanWrite()?'admin':'viewer'):(REPORT.meta.accessMode||state.access||'admin')); REPORT.meta.accessMode=state.access; app.dataset.access=state.access; const firstClient=(REPORT.companies||[]).find(c=>c.type==='client') || (REPORT.companies||[])[0]; state.activeCompany=REPORT.meta.activeCompany || firstClient?.id || null; state.compareA=REPORT.meta.compareA || firstClient?.id || (REPORT.companies||[])[0]?.id || null; state.compareB=REPORT.meta.compareB || (REPORT.companies||[]).find(c=>c.id!==state.compareA)?.id || null; state.openFolders=REPORT.meta.openFolders||{}; state.showCompare=!!REPORT.meta.showCompare; state.analyticsSite=REPORT.meta.analyticsSite||'all'; state.analyticsResearch=REPORT.meta.analyticsResearch||'all'; state.activeDataset=REPORT.meta.activeDataset || state.activeDataset || REPORT.datasets[0]?.id || null; applyLanguage();}
 function renderReportTitle(){
-  const name=String(REPORT.meta?.companyName||'').trim() || t('reportTitleDefaultCompany');
   const titleEl=$('reportTitle');
-  if(titleEl) titleEl.textContent=t('reportTitlePrefix', {company:name});
+  if(titleEl) titleEl.textContent=t('reportTitlePrefix');
+  const subtitle=$('reportSubtitle');
+  if(subtitle) subtitle.textContent=REPORT.meta?.isDemoReport?translateText('Demo report - fictional sample data'):t('reportSubtitle');
   const input=$('companyNameInput');
   if(input && input.value!==String(REPORT.meta?.companyName||'')) input.value=String(REPORT.meta?.companyName||'');
-  document.title=t('reportTitlePrefix', {company:name});
+  document.title=t('reportTitlePrefix');
 }
 function localizedChartTitle(title){
   const t=String(title||'').trim().toLowerCase();
@@ -1659,13 +6501,68 @@ function refresh(){
       ensureVideoMetricsWidgets(ds, ds.sourceFileId||'');
     }
   }
-  REPORT.meta.activeCompany=state.activeCompany; REPORT.meta.compareA=state.compareA; REPORT.meta.compareB=state.compareB; REPORT.meta.openFolders=state.openFolders; REPORT.meta.showCompare=state.showCompare; REPORT.meta.analyticsSite=state.analyticsSite; REPORT.meta.analyticsResearch=state.analyticsResearch; REPORT.meta.activeDataset=state.activeDataset; REPORT.meta.lang=state.lang; app.dataset.access=state.access; schedulePersist(); renderAnalytics(); renderSide(); renderReaderTabs(); const co=(REPORT.companies||[]).length; $('storageStat').textContent = t('storageStat', {datasets:REPORT.datasets.length, files:REPORT.files.length, folders:co}); const rp=$('rolePill'); if(rp) rp.textContent=isAdmin()?t('admin'):t('viewer'); const unlock=$('unlockAdminBtn'); if(unlock) unlock.classList.toggle('hidden',isClientLocked()); const members=$('membersBtn'); if(members) members.classList.toggle('hidden',cloudSync.role!=='owner');
+  collectMaterialsFromCurrentState(REPORT, state.fsRoots);
+  buildSourcesFromMaterials(REPORT);
+  REPORT.meta.activeCompany=state.activeCompany;
+  REPORT.meta.compareA=state.compareA;
+  REPORT.meta.compareB=state.compareB;
+  REPORT.meta.openFolders=state.openFolders;
+  REPORT.meta.showCompare=state.showCompare;
+  REPORT.meta.analyticsSite=state.analyticsSite;
+  REPORT.meta.analyticsResearch=state.analyticsResearch;
+  REPORT.meta.activeDataset=state.activeDataset;
+  REPORT.meta.lang=state.lang;
+  app.dataset.access=state.access;
+  schedulePersist();
+  renderAnalytics();
+  renderSide();
+  renderReaderTabs();
+  applyLanguage();
+  const co=(REPORT.companies||[]).length;
+  $('storageStat').textContent = t('storageStat', {datasets:REPORT.datasets.length, files:REPORT.files.length, folders:co});
+  const rp=$('rolePill');
+  if(rp) rp.textContent=isAdmin()?t('admin'):t('viewer');
+  const unlock=$('unlockAdminBtn');
+  if(unlock) unlock.classList.toggle('hidden',isClientLocked());
+  const members=$('membersBtn');
+  if(members) members.classList.toggle('hidden',cloudSync.role!=='owner');
 }
 
 function renderAnalytics(){
   state.widgetSnapshots={};
   if(!(REPORT.datasets||[]).length && !(REPORT.charts||[]).length && !(REPORT.tables||[]).length){
-    analytics.innerHTML=translateText(`<div class="empty"><b>Почніть із даних</b><br><br>${isAdmin()?'Додайте таблицю, файли або локальну папку, щоб створити аналітику.':'У цьому звіті ще немає опублікованої аналітики.'}<br><br>${isAdmin()?'<button class="btn primary adminOnly" data-open-add>Додати дані</button>':''}</div>`);
+    analytics.innerHTML=renderFirstReportEmptyState()+`
+      <div class="productHero">
+        <div class="workflowSteps" aria-label="Product workflow">
+          <div class="workflowStep"><span>1</span><b>${esc(t('workflowUploadMaterialsTitle'))}</b><small>${esc(t('workflowUploadMaterialsBody'))}</small></div>
+          <div class="workflowStep"><span>2</span><b>${esc(t('workflowStructureTitle'))}</b><small>${esc(t('workflowStructureBody'))}</small></div>
+          <div class="workflowStep"><span>3</span><b>${esc(t('workflowReviewEvidenceTitle'))}</b><small>${esc(t('workflowReviewEvidenceBody'))}</small></div>
+          <div class="workflowStep"><span>4</span><b>${esc(t('workflowExportReportTitle'))}</b><small>${esc(t('workflowExportReportBody'))}</small></div>
+        </div>
+        <div class="productInfoGrid">
+          <div class="infoBlock">
+            <b>${esc(t('workflowBestFor'))}</b>
+            <ul>
+              <li>${esc(t('workflowBestForAgencies'))}</li>
+              <li>${esc(t('workflowBestForCiTeams'))}</li>
+              <li>${esc(t('workflowBestForConsultants'))}</li>
+              <li>${esc(t('workflowBestForFounders'))}</li>
+              <li>${esc(t('workflowBestForResearchTeams'))}</li>
+            </ul>
+          </div>
+          <div class="infoBlock">
+            <b>${esc(t('workflowClientReceives'))}</b>
+            <ul>
+              <li>${esc(t('workflowClientSummary'))}</li>
+              <li>${esc(t('workflowClientComparison'))}</li>
+              <li>${esc(t('workflowClientPricing'))}</li>
+              <li>${esc(t('workflowClientCharts'))}</li>
+              <li>${esc(t('workflowClientSources'))}</li>
+              <li>${esc(t('workflowClientReport'))}</li>
+            </ul>
+          </div>
+        </div>
+      </div>`;
     return;
   }
   analytics.innerHTML = translateText(`
@@ -2317,15 +7214,918 @@ function listSiteResearchFoldersFromFs(author){
   return [...out.values()];
 }
 function renderSmallTable(tb){const ds=dataset(tb.datasetId); if(!ds) return translateText('<div class="empty">Таблицю не знайдено</div>'); const cols=(tb.columns&&tb.columns.length?tb.columns:columns(ds).slice(0,5).map(c=>c.name)); const rows=ds.rows.slice(0,num(tb.top)||20); return translateText(`<table class="miniTable"><thead><tr>${cols.map(c=>`<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr class="${/client|клієнт|наш/i.test(String(r.type||r.brand||''))?'clientRow':''}">${cols.map(c=>`<td class="${isNum(r[c])?'num':''}">${esc(isNum(r[c])?fmt(r[c]):r[c])}</td>`).join('')}</tr>`).join('')}</tbody></table>`);}
-function renderSide(){
-  const q=search.value.trim().toLowerCase();
-  const match=s=>!q || String(s||'').toLowerCase().includes(q);
-  const datasetItems=(REPORT.datasets||[]).filter(d=>match(d.name)).map(d=>{
-    const imported=d.createdAt?new Date(d.createdAt).toLocaleDateString(uiLocale()):'';
-    return `<div class="item ${state.activeDataset===d.id?'active':''}" data-type="dataset" data-id="${esc(d.id)}"><div class="icon">▦</div><div class="itemName">${esc(d.name)}<div class="itemMeta">${d.rows?.length||0} рядків${imported?' · '+esc(imported):''}</div></div><button class="btn small ghost adminOnly" data-act="export-dataset" data-id="${esc(d.id)}" title="Експорт CSV">⇩</button><button class="btn small ghost danger adminOnly" data-act="delete-dataset" data-id="${esc(d.id)}" title="Видалити таблицю">×</button></div>`;
+function competitorProfileWarnings(profile){
+  const warnings=[];
+  const sources=getCompetitorSources(REPORT,profile.id);
+  if(sources.some(source=>['weak','unreviewed','needs_review'].includes(source.credibilityStatus))) warnings.push('Linked sources need credibility review.');
+  if(getCompetitorEvidence(REPORT,profile.id).some(card=>!card.sourceIds?.length)) warnings.push('Some linked evidence has no source.');
+  if(profile.reviewStatus==='approved') warnings.push('Approved profile status still requires source-backed report content.');
+  return warnings;
+}
+function buildCompetitorProfileSummaryBlock(reportData, competitorId){
+  const profile=getCompetitorProfileById(reportData,competitorId);
+  if(!profile) return null;
+  const evidence=getCompetitorEvidence(reportData,competitorId).filter(card=>card.reviewStatus==='approved');
+  const sources=getCompetitorSources(reportData,competitorId);
+  const text=[profile.shortDescription,profile.positioning?`Positioning: ${profile.positioning}`:'',profile.pricingNotes?`Pricing notes: ${profile.pricingNotes}`:'',profile.featureNotes?`Feature notes: ${profile.featureNotes}`:'',profile.strengths?`Strengths: ${profile.strengths}`:'',profile.weaknesses?`Weaknesses: ${profile.weaknesses}`:''].filter(Boolean).join('\n');
+  return normalizeDraftBlock({id:uid('draft'),type:'comparison_note',title:`Competitor profile: ${profile.name}`,text:text||`Draft competitor summary for ${profile.name}. Add source-backed notes before client export.`,sectionId:'competitors',evidenceCardIds:evidence.map(card=>card.id),sourceIds:sources.map(source=>source.id),generatedBy:'rule_based',createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),status:'needs_review',competitorId:profile.id,analystNotes:'Generated from competitor profile. Review before client export.'});
+}
+function addCompetitorProfileSummaryToDraft(reportData, competitorId){
+  const block=buildCompetitorProfileSummaryBlock(reportData,competitorId);
+  const section=getReportSection(reportData,'competitors');
+  if(!block||!section) return null;
+  section.blocks=Array.isArray(section.blocks)?section.blocks:[];
+  section.blocks.push(block);
+  section.status=section.status==='approved'?'approved':'draft';
+  return block;
+}
+function renderCompetitorProfiles(){
+  const profiles=normalizeCompetitorProfiles(REPORT).items||[];
+  const active=profiles.filter(p=>p.status==='active'), archived=profiles.filter(p=>p.status==='archived'), needsReview=profiles.filter(p=>p.reviewStatus!=='approved'&&p.status==='active');
+  const filters=['all','active','needs_review','high','archived'];
+  const selected=filters.includes(state.competitorFilter)?state.competitorFilter:'all';
+  state.competitorFilter=selected;
+  const visible=profiles.filter(profile=>selected==='active'?profile.status==='active':selected==='needs_review'?(profile.status==='active'&&profile.reviewStatus!=='approved'):selected==='high'?(profile.status==='active'&&profile.priority==='high'):selected==='archived'?profile.status==='archived':true);
+  const filterButtons=filters.map(filter=>`<button class="btn small ${selected===filter?'primary':''}" data-competitor-filter="${esc(filter)}">${esc(filter==='all'?t('all'):statusLabel(filter))}</button>`).join('');
+  const rows=visible.slice(0,10).map(profile=>{
+    const sourceCount=getCompetitorSources(REPORT,profile.id).length, evidenceCount=getCompetitorEvidence(REPORT,profile.id).length, warnings=competitorProfileWarnings(profile);
+    return `<div class="materialRow"><div class="itemName">${esc(profile.name)}<div class="itemMeta">${esc(profile.website||t('noWebsite'))} - ${esc([profile.category,profile.market].filter(Boolean).join(' / ')||t('noCategory'))} - ${t('priorityLabel')} ${esc(priorityLabel(profile.priority))} - ${esc(statusLabel(profile.reviewStatus))} - ${esc(countLabel(sourceCount,'sourceSingular','sourcePlural'))} - ${esc(countLabel(evidenceCount,'evidenceCardSingular','evidenceCardPlural'))}</div>${warnings.length?`<div class="itemMeta warn">${esc(translateText(warnings[0]))}</div>`:''}</div><div class="materialFilters adminOnly"><button class="btn small" data-competitor-edit="${esc(profile.id)}">${esc(t('edit'))}</button><button class="btn small" data-competitor-summary="${esc(profile.id)}">${esc(t('addSummaryToDraft'))}</button>${profile.status==='archived'?'':`<button class="btn small ghost" data-competitor-archive="${esc(profile.id)}">${esc(t('archive'))}</button>`}</div></div>`;
   }).join('');
-  const chartItems=(REPORT.charts||[]).filter(ch=>match(ch.title)).map(ch=>`<div class="item" data-type="chart" data-id="${esc(ch.id)}"><div class="icon">▥</div><div class="itemName">${esc(ch.title)}</div></div>`).join('');
-  let html=`<div class="sectionTitle">Таблиці даних</div>${datasetItems||'<div class="empty">Таблиць ще немає.</div>'}<div class="sectionTitle">Графіки</div>${chartItems||'<div class="empty">Графіків ще немає.</div>'}<div class="sectionTitle">Файли й папки</div>`;
+  return `<div class="materialsInventory"><div class="materialsHead"><b>${esc(t('competitorProfilesTitle'))}</b><span class="pill">${esc(t('totalCount',{count:profiles.length}))}</span></div><div class="itemMeta">${esc(t('activeCount',{count:active.length}))} - ${esc(t('archivedCount',{count:archived.length}))} - ${esc(t('needsReviewCount',{count:needsReview.length}))}</div><div class="materialFilters">${filterButtons}<button class="btn small primary adminOnly" data-competitor-add="1">${esc(t('addCompetitor'))}</button></div>${rows||`<div class="empty">${esc(t('competitorProfilesEmpty'))}</div>`}</div>`;
+}
+function competitorProfileFormHtml(profile){
+  normalizeReportSchema(REPORT); normalizeMaterialsInventory(REPORT); normalizeSourceRegistry(REPORT); normalizeEvidenceCards(REPORT);
+  const selected=(arr,id)=>arr.includes(id)?'selected':'';
+  const materialOptions=(REPORT.materialsInventory?.items||[]).map(item=>`<option value="${esc(item.id)}" ${selected(profile.linkedMaterialIds,item.id)}>${esc(item.name)} (${esc(item.type)})</option>`).join('');
+  const sourceOptions=(REPORT.sourceRegistry?.items||[]).map(source=>`<option value="${esc(source.id)}" ${selected(profile.linkedSourceIds,source.id)}>${esc(source.title)} (${esc(source.credibilityStatus)})</option>`).join('');
+  const evidenceOptions=(REPORT.evidenceCards?.items||[]).map(card=>`<option value="${esc(card.id)}" ${selected(profile.linkedEvidenceCardIds,card.id)}>${esc(evidenceTitle(card))} (${esc(card.reviewStatus)})</option>`).join('');
+  const sectionOptions=(REPORT.reportSections||[]).map(section=>`<option value="${esc(section.id)}" ${selected(profile.linkedSectionIds,section.id)}>${esc(section.title)}</option>`).join('');
+  return `<div class="formGrid"><div class="field"><label>Name *</label><input id="competitorName" value="${esc(profile.name)}" required></div><div class="field"><label>Website</label><input id="competitorWebsite" value="${esc(profile.website)}" placeholder="https://example.com"></div><div class="field"><label>Category</label><input id="competitorCategory" value="${esc(profile.category)}"></div><div class="field"><label>Market</label><input id="competitorMarket" value="${esc(profile.market)}"></div><div class="field full"><label>Short description</label><textarea id="competitorDescription" rows="2">${esc(profile.shortDescription)}</textarea></div><div class="field full"><label>Positioning</label><textarea id="competitorPositioning" rows="2">${esc(profile.positioning)}</textarea></div><div class="field full"><label>Pricing notes</label><textarea id="competitorPricing" rows="2">${esc(profile.pricingNotes)}</textarea></div><div class="field full"><label>Feature notes</label><textarea id="competitorFeatures" rows="2">${esc(profile.featureNotes)}</textarea></div><div class="field full"><label>Channels / content notes</label><textarea id="competitorChannels" rows="2">${esc(profile.channelNotes)}</textarea></div><div class="field"><label>Strengths</label><textarea id="competitorStrengths" rows="2">${esc(profile.strengths)}</textarea></div><div class="field"><label>Weaknesses</label><textarea id="competitorWeaknesses" rows="2">${esc(profile.weaknesses)}</textarea></div><div class="field"><label>Risks</label><textarea id="competitorRisks" rows="2">${esc(profile.risks)}</textarea></div><div class="field"><label>Opportunities</label><textarea id="competitorOpportunities" rows="2">${esc(profile.opportunities)}</textarea></div><div class="field"><label>Priority</label><select id="competitorPriority">${COMPETITOR_PRIORITY.map(v=>`<option value="${esc(v)}" ${profile.priority===v?'selected':''}>${esc(v)}</option>`).join('')}</select></div><div class="field"><label>Review status</label><select id="competitorReview">${COMPETITOR_REVIEW_STATUS.map(v=>`<option value="${esc(v)}" ${profile.reviewStatus===v?'selected':''}>${esc(v)}</option>`).join('')}</select></div><div class="field full"><label>Materials</label><select id="competitorMaterials" multiple size="4">${materialOptions||'<option disabled>No materials available</option>'}</select></div><div class="field full"><label>Sources</label><select id="competitorSources" multiple size="4">${sourceOptions||'<option disabled>No sources available</option>'}</select></div><div class="field full"><label>Evidence cards</label><select id="competitorEvidence" multiple size="4">${evidenceOptions||'<option disabled>No evidence cards available</option>'}</select></div><div class="field full"><label>Report sections</label><select id="competitorSections" multiple size="4">${sectionOptions}</select></div><div class="field full"><label>Analyst notes</label><textarea id="competitorNotes" rows="3">${esc(profile.analystNotes)}</textarea></div></div>`;
+}
+function readCompetitorProfileForm(existing){
+  const selectedIds=id=>[...($(id)?.selectedOptions||[])].map(option=>option.value).filter(Boolean);
+  return {...(existing||{}),name:String($('competitorName')?.value||'').trim(),website:String($('competitorWebsite')?.value||'').trim(),category:String($('competitorCategory')?.value||'').trim(),market:String($('competitorMarket')?.value||'').trim(),shortDescription:String($('competitorDescription')?.value||'').trim(),positioning:String($('competitorPositioning')?.value||'').trim(),pricingNotes:String($('competitorPricing')?.value||'').trim(),featureNotes:String($('competitorFeatures')?.value||'').trim(),channelNotes:String($('competitorChannels')?.value||'').trim(),strengths:String($('competitorStrengths')?.value||'').trim(),weaknesses:String($('competitorWeaknesses')?.value||'').trim(),risks:String($('competitorRisks')?.value||'').trim(),opportunities:String($('competitorOpportunities')?.value||'').trim(),priority:String($('competitorPriority')?.value||'medium'),reviewStatus:String($('competitorReview')?.value||'draft'),linkedMaterialIds:selectedIds('competitorMaterials'),linkedSourceIds:selectedIds('competitorSources'),linkedEvidenceCardIds:selectedIds('competitorEvidence'),linkedSectionIds:selectedIds('competitorSections'),analystNotes:String($('competitorNotes')?.value||'').trim(),updatedAt:new Date().toISOString()};
+}
+function openCompetitorProfileModal(profileId){
+  if(!guardAdmin()) return;
+  const existing=profileId?getCompetitorProfileById(REPORT,profileId):null;
+  const profile=existing?normalizeCompetitorProfileItem(existing):createCompetitorProfile({name:'New competitor',linkedSectionIds:['competitiveLandscape','competitors','pricing','features','messaging','channels','risksOpportunities','recommendations']});
+  openModal(existing?'Edit competitor profile':'Add competitor profile',competitorProfileFormHtml(profile),'<button class="btn" id="cancelCompetitorProfile">Cancel</button><button class="btn primary" id="saveCompetitorProfile">Save competitor</button>');
+  $('cancelCompetitorProfile').onclick=closeModal;
+  $('saveCompetitorProfile').onclick=()=>{try{const next=readCompetitorProfileForm(existing||profile); if(!next.name){toast('Competitor name is required.'); return;} const profiles=normalizeCompetitorProfiles(REPORT); let saved=existing?updateCompetitorProfile(REPORT,existing.id,next):null; if(!saved){saved=createCompetitorProfile(next); profiles.items.push(saved); profiles.updatedAt=new Date().toISOString(); ensureCompany(saved.name,'competitor',REPORT);} for(const id of saved.linkedSourceIds) linkCompetitorToSource(REPORT,saved.id,id); for(const id of saved.linkedEvidenceCardIds) linkCompetitorToEvidence(REPORT,saved.id,id); for(const id of saved.linkedMaterialIds) linkCompetitorToMaterial(REPORT,saved.id,id); markFirstReportStepComplete(REPORT,'addCompetitors'); closeModal(); refresh(); toast('Competitor profile saved');}catch(err){toast(err.message||'Could not save competitor profile');}};
+}
+function matrixCompanyLabel(id){
+  if(!id) return 'Client';
+  const profile=getCompetitorProfileById(REPORT,id);
+  if(profile) return profile.name+(profile.status==='archived'?' (archived)':'');
+  return company(id)?.name||'Missing competitor';
+}
+function matrixCellBadge(status){return status==='yes'?'good':(status==='partial'?'warn':(status==='no'?'danger':''));}
+function buildPricingFeatureMatrixSummaryBlock(reportData){
+  const matrix=normalizePricingFeatureMatrix(reportData);
+  const coverage=getMatrixEvidenceCoverage(reportData);
+  const rows=matrix.featureRows.slice(0,6).map(row=>{
+    const cells=matrix.competitorIds.map(id=>getMatrixCell(reportData,row.id,id)).filter(Boolean);
+    const known=cells.filter(cell=>cell.availabilityStatus!=='unknown').length;
+    return `${row.featureName}: ${known}/${Math.max(1,matrix.competitorIds.length)} competitor cells have known values.`;
+  });
+  const sourceIds=[...new Set([...(matrix.featureRows||[]).flatMap(row=>row.sourceIds||[]),...(matrix.matrixCells||[]).flatMap(cell=>cell.sourceIds||[])])];
+  const evidenceCardIds=[...new Set([...(matrix.featureRows||[]).flatMap(row=>row.evidenceCardIds||[]),...(matrix.matrixCells||[]).flatMap(cell=>cell.evidenceCardIds||[])])].filter(id=>getEvidenceCardById(reportData,id)?.reviewStatus!=='rejected');
+  return normalizeDraftBlock({id:uid('draft'),type:'comparison_note',title:'Pricing & feature matrix summary',text:[`Matrix coverage: ${coverage.score}% of cells have at least one source or non-rejected evidence link.`,...rows,'Unknown cells are missing data, not proof that a feature is absent.'].join('\n'),sectionId:'pricing',evidenceCardIds,sourceIds,generatedBy:'rule_based',createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),status:'needs_review',analystNotes:'Generated from pricing/feature matrix. Review before client export.'});
+}
+function addPricingFeatureMatrixSummaryToDraft(reportData){
+  const block=buildPricingFeatureMatrixSummaryBlock(reportData);
+  const section=getReportSection(reportData,'pricing')||getReportSection(reportData,'features');
+  if(!section) return null;
+  section.blocks=Array.isArray(section.blocks)?section.blocks:[];
+  section.blocks.push(block);
+  section.status=section.status==='approved'?'approved':'draft';
+  return block;
+}
+function renderPricingFeatureMatrix(){
+  const matrix=normalizePricingFeatureMatrix(REPORT), coverage=getMatrixEvidenceCoverage(REPORT), needing=getMatrixCellsNeedingReview(REPORT);
+  const filters=['all','pricing','core_product','integrations','reporting','security','needs_review','missing_sources'];
+  const selected=filters.includes(state.matrixFilter)?state.matrixFilter:'all';
+  state.matrixFilter=selected;
+  const filterButtons=filters.map(filter=>{
+    const label=filter==='all'?t('allRows'):(filter==='needs_review'?t('needsReview'):(filter==='missing_sources'?t('missingSources'):featureCategoryLabel(filter)));
+    return `<button class="btn small ${selected===filter?'primary':''}" data-matrix-filter="${esc(filter)}">${esc(label)}</button>`;
+  }).join('');
+  const competitorIds=matrix.competitorIds.slice(0,5);
+  const rows=matrix.featureRows.filter(row=>selected==='all'?true:selected==='needs_review'?matrix.matrixCells.some(cell=>cell.rowId===row.id&&cell.reviewStatus!=='approved'):selected==='missing_sources'?matrix.matrixCells.some(cell=>cell.rowId===row.id&&!cell.sourceIds.length&&!cell.evidenceCardIds.length):row.category===selected).slice(0,8);
+  const header=[t('featurePricing'),...competitorIds.map(matrixCompanyLabel)].map(h=>`<th>${esc(h)}</th>`).join('');
+  const body=rows.map(row=>`<tr><td><b>${esc(row.featureName)}</b><div class="itemMeta">${esc(featureCategoryLabel(row.category))} - ${t('importanceLabel')} ${esc(priorityLabel(row.importance))}</div></td>${competitorIds.map(id=>{const cell=getMatrixCell(REPORT,row.id,id)||normalizeMatrixCell({rowId:row.id,competitorId:id}); const warn=cell.reviewStatus!=='approved'||(!cell.sourceIds.length&&!cell.evidenceCardIds.length); return `<td><button class="btn small ${matrixCellBadge(cell.availabilityStatus)} adminOnly" data-matrix-cell="${esc(row.id)}" data-company="${esc(id)}">${esc(cell.value||statusLabel(cell.availabilityStatus)||t('statusUnknown'))}</button><div class="itemMeta ${warn?'warn':''}">${esc(statusLabel(cell.reviewStatus))} - ${cell.sourceIds.length} ${t('srcAbbr')} / ${cell.evidenceCardIds.length} ${t('evAbbr')}</div></td>`;}).join('')}</tr>`).join('');
+  const tierRows=matrix.pricingTiers.slice(0,5).map(tier=>`<div class="materialRow"><div class="itemName">${esc(matrixCompanyLabel(tier.competitorId||tier.companyId))}: ${esc(tier.tierName||t('untitledTier'))}<div class="itemMeta">${esc(tier.priceLabel||[tier.priceAmount,tier.priceCurrency,tier.pricePeriod].filter(Boolean).join(' '))} - ${t('publicPricing')} ${esc(statusLabel(tier.publicPricingAvailable))} - ${esc(countLabel(tier.sourceIds.length,'sourceSingular','sourcePlural'))}</div></div></div>`).join('');
+  return `<div class="materialsInventory"><div class="materialsHead"><b>${esc(t('pricingFeatureMatrixTitle'))}</b><span class="pill">${esc(t('coverageLabel',{score:coverage.score}))}</span></div><div class="itemMeta">${esc(t('competitorsCount',{count:matrix.competitorIds.length}))} - ${esc(t('pricingTiersCount',{count:matrix.pricingTiers.length}))} - ${esc(t('featureRowsCount',{count:matrix.featureRows.length}))} - ${esc(t('cellsNeedingReviewCount',{count:needing.length}))}</div><div class="materialFilters">${filterButtons}</div><div class="materialFilters adminOnly"><button class="btn small primary" data-matrix-add-competitor="1">${esc(t('addCompetitorToMatrix'))}</button><button class="btn small" data-matrix-add-tier="1">${esc(t('addPricingTier'))}</button><button class="btn small" data-matrix-add-row="1">${esc(t('addFeatureRow'))}</button><button class="btn small" data-matrix-summary="1">${esc(t('addMatrixSummaryToDraft'))}</button></div>${tierRows}<div style="overflow:auto"><table class="previewTable"><thead><tr>${header}</tr></thead><tbody>${body||`<tr><td colspan="6">${esc(t('noMatrixRowsYet'))}</td></tr>`}</tbody></table></div></div>`;
+}
+function openMatrixCompetitorModal(){
+  if(!guardAdmin()) return;
+  const matrix=normalizePricingFeatureMatrix(REPORT);
+  const options=(normalizeCompetitorProfiles(REPORT).items||[]).filter(p=>p.status==='active'&&!matrix.competitorIds.includes(p.id)).map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
+  openModal('Add competitor to matrix',`<div class="formGrid"><div class="field full"><label>Competitor</label><select id="matrixCompetitor">${options||'<option disabled>No active competitors available</option>'}</select></div></div>`,'<button class="btn" id="cancelMatrixCompetitor">Cancel</button><button class="btn primary" id="saveMatrixCompetitor">Add competitor</button>');
+  $('cancelMatrixCompetitor').onclick=closeModal;
+  $('saveMatrixCompetitor').onclick=()=>{const id=$('matrixCompetitor')?.value||''; if(id) addMatrixCompetitor(REPORT,id); closeModal(); refresh(); toast(id?'Competitor added to matrix':'No competitor selected');};
+}
+function openMatrixFeatureRowModal(rowId){
+  if(!guardAdmin()) return;
+  const row=normalizePricingFeatureMatrix(REPORT).featureRows.find(item=>item.id===rowId)||normalizeFeatureRow({featureName:'',category:'core_product'});
+  openModal(rowId?'Edit feature row':'Add feature row',`<div class="formGrid"><div class="field"><label>Feature name *</label><input id="matrixFeatureName" value="${esc(row.featureName)}"></div><div class="field"><label>Category</label><select id="matrixFeatureCategory">${FEATURE_CATEGORIES.map(c=>`<option value="${esc(c)}" ${row.category===c?'selected':''}>${esc(c)}</option>`).join('')}</select></div><div class="field"><label>Importance</label><select id="matrixFeatureImportance">${COMPETITOR_PRIORITY.map(v=>`<option value="${esc(v)}" ${row.importance===v?'selected':''}>${esc(v)}</option>`).join('')}</select></div><div class="field full"><label>Description</label><textarea id="matrixFeatureDescription" rows="3">${esc(row.description)}</textarea></div></div>`,'<button class="btn" id="cancelMatrixRow">Cancel</button><button class="btn primary" id="saveMatrixRow">Save row</button>');
+  $('cancelMatrixRow').onclick=closeModal;
+  $('saveMatrixRow').onclick=()=>{try{const patch={featureName:$('matrixFeatureName')?.value||'',category:$('matrixFeatureCategory')?.value||'other',importance:$('matrixFeatureImportance')?.value||'medium',description:$('matrixFeatureDescription')?.value||''}; if(rowId) updateFeatureRow(REPORT,rowId,patch); else addFeatureRow(REPORT,patch); closeModal(); refresh(); toast('Matrix row saved');}catch(e){toast(e.message||'Could not save row');}};
+}
+function openMatrixPricingTierModal(){
+  if(!guardAdmin()) return;
+  const matrix=normalizePricingFeatureMatrix(REPORT);
+  const companies=matrix.competitorIds.map(id=>`<option value="${esc(id)}">${esc(matrixCompanyLabel(id))}</option>`).join('');
+  openModal('Add pricing tier',`<div class="formGrid"><div class="field"><label>Company</label><select id="tierCompany">${companies}</select></div><div class="field"><label>Tier name</label><input id="tierName"></div><div class="field"><label>Price amount</label><input id="tierAmount" placeholder="Unknown if blank"></div><div class="field"><label>Currency</label><input id="tierCurrency" value="USD"></div><div class="field"><label>Period</label><select id="tierPeriod">${PRICE_PERIODS.map(p=>`<option value="${esc(p)}">${esc(p)}</option>`).join('')}</select></div><div class="field"><label>Public pricing</label><select id="tierPublic">${PUBLIC_PRICING_STATUS.map(p=>`<option value="${esc(p)}">${esc(p)}</option>`).join('')}</select></div><div class="field full"><label>Billing notes</label><textarea id="tierNotes" rows="3"></textarea></div></div>`,'<button class="btn" id="cancelTier">Cancel</button><button class="btn primary" id="saveTier">Save tier</button>');
+  $('cancelTier').onclick=closeModal;
+  $('saveTier').onclick=()=>{addPricingTier(REPORT,{competitorId:$('tierCompany')?.value||'',tierName:$('tierName')?.value||'',priceAmount:$('tierAmount')?.value||'',priceCurrency:$('tierCurrency')?.value||'',pricePeriod:$('tierPeriod')?.value||'unknown',publicPricingAvailable:$('tierPublic')?.value||'unknown',billingNotes:$('tierNotes')?.value||'',reviewStatus:'needs_review'}); closeModal(); refresh(); toast('Pricing tier added');};
+}
+function openMatrixCellModal(rowId,companyId){
+  if(!guardAdmin()) return;
+  const cell=getMatrixCell(REPORT,rowId,companyId)||normalizeMatrixCell({rowId,competitorId:companyId,companyId});
+  const sourceOptions=(REPORT.sourceRegistry?.items||[]).map(s=>`<option value="${esc(s.id)}" ${(cell.sourceIds||[]).includes(s.id)?'selected':''}>${esc(s.title)} (${esc(s.credibilityStatus)})</option>`).join('');
+  const evidenceOptions=(REPORT.evidenceCards?.items||[]).map(card=>`<option value="${esc(card.id)}" ${(cell.evidenceCardIds||[]).includes(card.id)?'selected':''}>${esc(evidenceTitle(card))} (${esc(card.reviewStatus)})</option>`).join('');
+  const warning=(!cell.sourceIds.length&&!cell.evidenceCardIds.length)?'<div class="empty">This cell has no evidence yet.</div>':'';
+  openModal('Edit matrix cell',`<div class="formGrid">${warning}<div class="field"><label>Availability</label><select id="cellAvailability">${MATRIX_AVAILABILITY_STATUS.map(s=>`<option value="${esc(s)}" ${cell.availabilityStatus===s?'selected':''}>${esc(s)}</option>`).join('')}</select></div><div class="field"><label>Value</label><input id="cellValue" value="${esc(cell.value)}"></div><div class="field full"><label>Notes</label><textarea id="cellNotes" rows="3">${esc(cell.notes)}</textarea></div><div class="field full"><label>Sources</label><select id="cellSources" multiple size="4">${sourceOptions||'<option disabled>No sources available</option>'}</select></div><div class="field full"><label>Evidence</label><select id="cellEvidence" multiple size="4">${evidenceOptions||'<option disabled>No evidence available</option>'}</select></div><div class="field"><label>Confidence</label><select id="cellConfidence">${EVIDENCE_CONFIDENCE_STATUS.map(s=>`<option value="${esc(s)}" ${cell.confidenceStatus===s?'selected':''}>${esc(s)}</option>`).join('')}</select></div><div class="field"><label>Review</label><select id="cellReview">${COMPETITOR_REVIEW_STATUS.map(s=>`<option value="${esc(s)}" ${cell.reviewStatus===s?'selected':''}>${esc(s)}</option>`).join('')}</select></div></div>`,'<button class="btn" id="cancelCell">Cancel</button><button class="btn primary" id="saveCell">Save cell</button>');
+  $('cancelCell').onclick=closeModal;
+  $('saveCell').onclick=()=>{const ids=id=>[...($(id)?.selectedOptions||[])].map(o=>o.value).filter(Boolean); updateMatrixCell(REPORT,rowId,companyId,{availabilityStatus:$('cellAvailability')?.value||'unknown',value:$('cellValue')?.value||'',normalizedValue:$('cellAvailability')?.value||'unknown',notes:$('cellNotes')?.value||'',sourceIds:ids('cellSources'),evidenceCardIds:ids('cellEvidence'),confidenceStatus:$('cellConfidence')?.value||'unknown',reviewStatus:$('cellReview')?.value||'draft',lastReviewedAt:new Date().toISOString()}); closeModal(); refresh(); toast('Matrix cell saved');};
+}
+function materialTypeLabel(type){
+  const key=String(type||'unknown');
+  return ({
+    spreadsheet:t('typeSpreadsheet'),
+    image:t('typeImage'),
+    text:t('typeText'),
+    unknown:t('typeUnknown')
+  })[key]||key.toUpperCase();
+}
+function materialLinkedLabel(item){
+  if(item.linkedCompanyId){
+    const co=company(item.linkedCompanyId);
+    return co?.name||t('linkedCompany');
+  }
+  if(item.linkedSectionId){
+    const section=getReportSection(REPORT,item.linkedSectionId);
+    return section?.title||t('reportSection');
+  }
+  return t('notLinked');
+}
+function renderMaterialsInventory(){
+  const inv=normalizeMaterialsInventory(REPORT);
+  const items=inv.items||[];
+  const counts=new Map();
+  for(const item of items) counts.set(item.type,(counts.get(item.type)||0)+1);
+  const types=[...counts.keys()].sort();
+  const selected=types.includes(state.materialType)?state.materialType:'all';
+  state.materialType=selected;
+  const visible=selected==='all'?items:items.filter(item=>item.type===selected);
+  const filterButtons=[
+    `<button class="btn small ${selected==='all'?'primary':''}" data-material-filter="all">${esc(t('all'))}</button>`,
+    ...types.map(type=>`<button class="btn small ${selected===type?'primary':''}" data-material-filter="${esc(type)}">${esc(materialTypeLabel(type))} (${counts.get(type)})</button>`)
+  ].join('');
+  if(!items.length){
+    return `<div class="materialsInventory"><div class="materialsHead"><b>${esc(t('materialsInventoryTitle'))}</b><span class="pill">0</span></div><div class="empty">${esc(t('materialsInventoryEmpty'))}</div></div>`;
+  }
+  const rows=visible.slice(0,12).map(item=>`
+    <div class="materialRow">
+      <div class="itemName">${esc(item.name)}<div class="itemMeta">${esc(materialTypeLabel(item.type))} · ${esc(statusLabel(item.status))} · ${esc(item.sizeLabel)} · ${esc(materialLinkedLabel(item))}</div></div>
+    </div>`).join('');
+  const more=visible.length>12?`<div class="tiny">${esc(t('showingMaterials',{count:visible.length}))}</div>`:'';
+  return `<div class="materialsInventory"><div class="materialsHead"><b>${esc(t('materialsInventoryTitle'))}</b><span class="pill">${esc(t('totalCount',{count:items.length}))}</span></div><div class="materialFilters">${filterButtons}</div>${rows}${more}</div>`;
+}
+function sourceTypeLabel(type){return String(type||'unknown').replace(/_/g,' ');}
+function sourceSectionCountLabel(source){
+  const count=(source.linkedSectionIds||[]).length;
+  return t('sectionsCount',{count});
+}
+function renderSourceRegistry(){
+  const registry=normalizeSourceRegistry(REPORT);
+  const sources=registry.items||[];
+  if(!sources.length){
+    return `<div class="materialsInventory"><div class="materialsHead"><b>${esc(t('sourceRegistryTitle'))}</b><span class="pill">0</span></div><button class="btn small adminOnly" data-source-refresh="1">${esc(t('refreshSourcesFromMaterials'))}</button><div class="empty">${esc(t('sourceRegistryEmpty'))}</div></div>`;
+  }
+  const rows=sources.slice(0,10).map(source=>`
+    <div class="materialRow">
+      <div class="itemName">${esc(source.title)}<div class="itemMeta">${esc(sourceTypeLabel(source.sourceType))} - ${esc(sourceSectionCountLabel(source))} - ${t('evidenceLabel')}: ${esc(statusLabel(source.evidenceStatus))} - ${t('credibilityLabel')}: ${esc(statusLabel(source.credibilityStatus))}</div></div>
+    </div>`).join('');
+  const more=sources.length>10?`<div class="tiny">${esc(t('showingSources',{count:sources.length}))}</div>`:'';
+  return `<div class="materialsInventory"><div class="materialsHead"><b>${esc(t('sourceRegistryTitle'))}</b><span class="pill">${esc(t('totalCount',{count:sources.length}))}</span></div><button class="btn small adminOnly" data-source-refresh="1">${esc(t('refreshSourcesFromMaterials'))}</button>${rows}${more}</div>`;
+}
+function evidenceSectionLabel(card){
+  if(!card.sectionId) return t('unlinkedSection');
+  const section=getReportSection(REPORT,card.sectionId);
+  return section?.title||t('missingSection');
+}
+function evidenceTitle(card){
+  return card.claim||card.summary||t('untitledEvidenceCard');
+}
+function renderEvidenceCards(){
+  const cards=normalizeEvidenceCards(REPORT).items||[];
+  if(!cards.length){
+    return `<div class="materialsInventory"><div class="materialsHead"><b>${esc(t('evidenceCardsTitle'))}</b><span class="pill">0</span></div><button class="btn small adminOnly" data-evidence-add="1">${esc(t('addEvidenceCard'))}</button><div class="empty">${esc(t('evidenceCardsEmpty'))}</div></div>`;
+  }
+  const rows=cards.slice(0,10).map(card=>`
+    <div class="materialRow">
+      <div class="itemName">${esc(evidenceTitle(card))}<div class="itemMeta">${esc(evidenceSectionLabel(card))} - ${esc(countLabel((card.sourceIds||[]).length,'sourceSingular','sourcePlural'))} - ${esc(statusLabel(card.reviewStatus))} - ${t('confidenceLabel')}: ${esc(statusLabel(card.confidenceStatus))}</div></div>
+      <button class="btn small ghost adminOnly" data-evidence-edit="${esc(card.id)}">${esc(t('edit'))}</button>
+    </div>`).join('');
+  const more=cards.length>10?`<div class="tiny">${esc(t('showingEvidenceCards',{count:cards.length}))}</div>`:'';
+  return `<div class="materialsInventory"><div class="materialsHead"><b>${esc(t('evidenceCardsTitle'))}</b><span class="pill">${esc(t('totalCount',{count:cards.length}))}</span></div><button class="btn small adminOnly" data-evidence-add="1">${esc(t('addEvidenceCard'))}</button>${rows}${more}</div>`;
+}
+function evidenceReviewCounts(cards){
+  const counts={draft:0,needs_review:0,approved:0,rejected:0};
+  for(const card of cards) if(Object.prototype.hasOwnProperty.call(counts,card.reviewStatus)) counts[card.reviewStatus]++;
+  return counts;
+}
+function renderEvidenceReview(){
+  const cards=normalizeEvidenceCards(REPORT).items||[];
+  const counts=evidenceReviewCounts(cards);
+  const filters=['all','draft','needs_review','approved','rejected'];
+  const selected=filters.includes(state.reviewFilter)?state.reviewFilter:'all';
+  state.reviewFilter=selected;
+  const visible=getEvidenceCardsForReview(REPORT,{reviewStatus:selected}).slice(0,8);
+  const filterButtons=filters.map(filter=>{
+    const label=filter==='all'?t('all'):statusLabel(filter);
+    const count=filter==='all'?cards.length:counts[filter];
+    return `<button class="btn small ${selected===filter?'primary':''}" data-review-filter="${esc(filter)}">${esc(label)} (${count})</button>`;
+  }).join('');
+  const summary=`<div class="itemMeta">${esc(t('approvedCount',{count:counts.approved}))} - ${esc(t('needsReviewCount',{count:counts.needs_review}))} - ${esc(t('rejectedCount',{count:counts.rejected}))} - ${esc(t('draftCount',{count:counts.draft}))}</div>`;
+  if(!cards.length){
+    return `<div class="materialsInventory"><div class="materialsHead"><b>${esc(t('evidenceReviewTitle'))}</b><span class="pill">0</span></div>${summary}<div class="materialFilters">${filterButtons}</div><div class="empty">${esc(t('evidenceCardsEmpty'))}</div></div>`;
+  }
+  const rows=visible.map(card=>`
+    <div class="materialRow">
+      <div class="itemName">${esc(evidenceTitle(card))}<div class="itemMeta">${esc(evidenceSectionLabel(card))} - ${esc(countLabel((card.sourceIds||[]).length,'sourceSingular','sourcePlural'))} - ${t('credibilityLabel')}: ${esc(statusLabel(card.credibilityStatus))} - ${t('confidenceLabel')}: ${esc(statusLabel(card.confidenceStatus))} - ${esc(statusLabel(card.reviewStatus))}</div></div>
+      <div class="materialFilters adminOnly">
+        <button class="btn small ${card.reviewStatus==='approved'?'primary':''}" data-review-status="approved" data-id="${esc(card.id)}">${esc(t('approve'))}</button>
+        <button class="btn small ${card.reviewStatus==='needs_review'?'primary':''}" data-review-status="needs_review" data-id="${esc(card.id)}">${esc(t('needsReview'))}</button>
+        <button class="btn small danger ${card.reviewStatus==='rejected'?'primary':''}" data-review-status="rejected" data-id="${esc(card.id)}">${esc(t('reject'))}</button>
+        <button class="btn small ghost" data-review-save="${esc(card.id)}">${esc(t('saveNotes'))}</button>
+      </div>
+      <textarea class="reviewNotes adminOnly" data-review-notes="${esc(card.id)}" rows="2" placeholder="${esc(t('reviewNotesPlaceholder'))}">${esc(card.reviewStatus==='rejected'?(card.rejectionReason||card.reviewNotes):card.reviewNotes)}</textarea>
+    </div>`).join('');
+  const more=getEvidenceCardsForReview(REPORT,{reviewStatus:selected}).length>8?`<div class="tiny">${esc(t('showingFilteredEvidenceCards'))}</div>`:'';
+  return `<div class="materialsInventory"><div class="materialsHead"><b>${esc(t('evidenceReviewTitle'))}</b><span class="pill">${esc(t('totalCount',{count:cards.length}))}</span></div>${summary}<div class="materialFilters">${filterButtons}</div>${rows}${more}<div class="itemMeta">${esc(t('approvedCardsReady',{count:counts.approved}))}</div></div>`;
+}
+function generatedDraftBlocks(section){
+  return (section?.blocks||[]).filter(block=>String(block?.generatedBy||'')==='rule_based');
+}
+function renderDraftBuilder(){
+  const approved=getApprovedEvidenceCards(REPORT);
+  const sections=(normalizeReportSchema(REPORT).reportSections||[])
+    .map(section=>({section,blocks:generatedDraftBlocks(section)}))
+    .filter(entry=>entry.blocks.length);
+  const totalBlocks=sections.reduce((sum,entry)=>sum+entry.blocks.length,0);
+  const actions=`<div class="materialFilters adminOnly"><button class="btn small primary" data-draft-build="1">${esc(t('buildDraftFromEvidence'))}</button><button class="btn small ghost" data-draft-clear="1">${esc(t('clearGeneratedDraft'))}</button></div>`;
+  if(!approved.length && !totalBlocks){
+    return `<div class="materialsInventory"><div class="materialsHead"><b>${esc(t('draftBuilderTitle'))}</b><span class="pill">${esc(t('blocksCount',{count:0}))}</span></div>${actions}<div class="empty">${esc(t('approveEvidenceFirst'))}</div></div>`;
+  }
+  const rows=sections.map(({section,blocks})=>{
+    const evidenceIds=new Set(blocks.flatMap(block=>block.evidenceCardIds||[]));
+    const preview=blocks.map(block=>block.text).filter(Boolean).join(' ').slice(0,160);
+    return `<div class="materialRow"><div class="itemName">${esc(section.title)}<div class="itemMeta">${esc(t('generatedBlocksCount',{blocks:blocks.length}))} - ${esc(t('evidenceCardsCount',{count:evidenceIds.size}))}</div><div class="itemMeta">${esc(preview||t('draftBlockNoPreview'))}</div></div></div>`;
+  }).join('');
+  const emptyPreview=rows||`<div class="empty">${esc(t('noGeneratedDraftBlocks'))}</div>`;
+  return `<div class="materialsInventory"><div class="materialsHead"><b>${esc(t('draftBuilderTitle'))}</b><span class="pill">${esc(t('blocksCount',{count:totalBlocks}))}</span></div>${actions}<div class="itemMeta">${esc(t('approvedEvidenceAvailable',{count:approved.length}))}</div>${emptyPreview}</div>`;
+}
+function readinessLabel(status){
+  if(status==='ready') return t('ready');
+  if(status==='needs_review') return t('needsReview');
+  return t('blocked');
+}
+function renderChecklistItems(items){
+  return items.slice(0,8).map(item=>`
+    <div class="materialRow">
+      <div class="itemName">${esc(item.message)}<div class="itemMeta">${esc(item.category)} - ${esc(item.severity)}</div></div>
+    </div>`).join('');
+}
+function renderReportQualityChecklist(){
+  const result=mergeCoveragePreviewWithQualityChecklist(REPORT,latestAiSourceCoveragePreview(REPORT));
+  const priority=[...result.blockers,...result.warnings,...result.passed];
+  return `<div class="materialsInventory">
+    <div class="materialsHead"><b>${esc(t('exportReadinessTitle'))}</b><span class="pill">${esc(readinessLabel(result.status))}</span></div>
+    <div class="itemMeta">${esc(t('completenessLabel'))} ${result.completenessScore}% - ${esc(t('evidenceLabel'))} ${result.evidenceScore}% - ${esc(t('sourcePlural'))} ${result.sourceCoverageScore}% - ${esc(t('clientSafetyLabel'))} ${esc(readinessLabel(result.clientSafetyStatus))}</div>
+    <div class="itemMeta">${esc(t('blockersCount',{count:result.blockers.length}))} - ${esc(t('warningsCount',{count:result.warnings.length}))} - ${esc(t('passedCount',{count:result.passed.length}))}</div>
+    ${renderChecklistItems(priority)}
+  </div>`;
+}
+function getCurrentVersionDiff(){
+  ensureVersionDiffBaselineReport();
+  return diffReportVersions(VERSION_DIFF_BASELINE,createReportVersionSnapshot(REPORT));
+}
+function versionDiffRiskLabel(risk){return risk==='high'?'High risk':(risk==='medium'?'Medium risk':(risk==='low'?'Low risk':'Unknown risk'));}
+function renderVersionDiffRows(diff,filter){
+  const row=(title,meta)=>`<div class="materialRow"><div class="itemName">${esc(title)}<div class="itemMeta">${esc(meta)}</div></div></div>`;
+  if(filter==='sections') return (diff.sectionChanges||[]).slice(0,8).map(item=>row(item.sectionTitle||item.sectionId,`${item.changeType} - status ${item.beforeStatus||'n/a'} -> ${item.afterStatus||'n/a'} - blocks +${item.blocksAdded}/-${item.blocksRemoved}/${item.blocksChanged} changed`)).join('');
+  if(filter==='evidence') return (diff.evidenceChanges||[]).slice(0,8).map(item=>row(item.claim||item.evidenceCardId,`${item.changeType} - review ${item.beforeReviewStatus||'n/a'} -> ${item.afterReviewStatus||'n/a'} - sources ${(item.sourceIdsBefore||[]).length} -> ${(item.sourceIdsAfter||[]).length}${item.riskNotes?.length?' - '+item.riskNotes.join(' | '):''}`)).join('');
+  if(filter==='sources') return (diff.sourceChanges||[]).slice(0,8).map(item=>row(item.title||item.sourceId,`${item.changeType} - credibility ${item.beforeCredibilityStatus||'n/a'} -> ${item.afterCredibilityStatus||'n/a'} - evidence ${item.beforeEvidenceStatus||'n/a'} -> ${item.afterEvidenceStatus||'n/a'}`)).join('');
+  if(filter==='review') return (diff.reviewStatusChanges||[]).slice(0,8).map(item=>row(item.label||item.objectId,`${item.objectType} - ${item.statusBefore||'n/a'} -> ${item.statusAfter||'n/a'}${item.riskNotes?.length?' - '+item.riskNotes.join(' | '):''}`)).join('');
+  if(filter==='ai') return (diff.aiSuggestionChanges||[]).slice(0,8).map(item=>row(item.title||item.suggestionId,`${item.suggestionType} - ${item.changeType} - ${item.beforeStatus||'n/a'} -> ${item.afterStatus||'n/a'}`)).join('');
+  if(filter==='quality') return [
+    ...diff.qualityChecklistChanges.blockersAdded.map(item=>row('Blocker added',item)),
+    ...diff.qualityChecklistChanges.blockersResolved.map(item=>row('Blocker resolved',item)),
+    ...diff.qualityChecklistChanges.warningsAdded.map(item=>row('Warning added',item)),
+    ...diff.qualityChecklistChanges.warningsResolved.map(item=>row('Warning resolved',item))
+  ].slice(0,8).join('');
+  if(filter==='export') return row('Export readiness',`Can export ${diff.exportReadinessChanges.canExportBefore?'yes':'no'} -> ${diff.exportReadinessChanges.canExportAfter?'yes':'no'} - client safety ${diff.exportReadinessChanges.clientLockedSafetyBefore} -> ${diff.exportReadinessChanges.clientLockedSafetyAfter}`);
+  return [
+    ...renderVersionDiffRows(diff,'sections').split('</div></div></div>').filter(Boolean).map(x=>x+'</div></div></div>'),
+    ...renderVersionDiffRows(diff,'evidence').split('</div></div></div>').filter(Boolean).map(x=>x+'</div></div></div>'),
+    ...renderVersionDiffRows(diff,'sources').split('</div></div></div>').filter(Boolean).map(x=>x+'</div></div></div>'),
+    ...renderVersionDiffRows(diff,'review').split('</div></div></div>').filter(Boolean).map(x=>x+'</div></div></div>')
+  ].slice(0,8).join('');
+}
+function renderVersionDiffPanel(){
+  if(isClientLocked()||!isAdmin()) return '';
+  const diff=getCurrentVersionDiff();
+  const c=diff.changedCounts;
+  const filter=state.versionDiffFilter||'all';
+  const filters=[['all','All changes'],['sections','Sections'],['evidence','Evidence'],['sources','Sources'],['review','Review statuses'],['ai','AI suggestions'],['quality','Quality checklist'],['export','Export readiness']]
+    .map(([id,label])=>`<button class="btn small ${filter===id?'primary':''}" data-version-diff-filter="${esc(id)}">${esc(label)}</button>`).join('');
+  const rows=renderVersionDiffRows(diff,filter);
+  const highRisk=diff.riskLevel==='high'?`<div class="empty">High-risk changes detected. Review before client export.</div>`:'';
+  return `<div class="materialsInventory">
+    <div class="materialsHead"><b>Version Diff</b><span class="pill">${esc(versionDiffRiskLabel(diff.riskLevel))}</span></div>
+    <div class="itemMeta">Comparing loaded/start snapshot to current report. Backend version comparison can be added later.</div>
+    <div class="itemMeta">${esc(diff.summary)}</div>
+    <div class="itemMeta">Sections ${c.sectionsAdded}/${c.sectionsRemoved}/${c.sectionsChanged} - Evidence ${c.evidenceAdded}/${c.evidenceRemoved}/${c.evidenceChanged} - Sources ${c.sourcesAdded}/${c.sourcesRemoved}/${c.sourcesChanged} - Status changes ${c.reviewStatusesChanged}</div>
+    <div class="itemMeta">Readiness ${esc(diff.qualityChecklistChanges.readinessBefore)} -> ${esc(diff.qualityChecklistChanges.readinessAfter)} - Blockers +${c.blockersAdded}/-${c.blockersResolved} - Warnings +${c.warningsAdded}/-${c.warningsResolved}</div>
+    ${highRisk}
+    <div class="materialFilters">${filters}</div>
+    <div class="materialFilters adminOnly"><button class="btn small danger" data-version-restore-preview="1">Restore selected version</button><button class="btn small" data-version-diff-copy="1">Copy diff summary</button><button class="btn small" data-version-diff-download="1">Download diff JSON</button><button class="btn small ghost" data-version-diff-baseline="1">Use current as baseline</button></div>
+    ${rows||'<div class="empty">No changes in this category.</div>'}
+  </div>`;
+}
+function retentionBadge(item){
+  const labels=[];
+  if(item.versionId===currentVersionLabel()) labels.push('Current');
+  if(item.protected) labels.push('Protected');
+  if(item.pinned) labels.push('Pinned');
+  if(item.archived) labels.push('Archived');
+  if(item.classification==='archive_candidate') labels.push('Archive candidate');
+  if(item.classification==='cleanup_candidate') labels.push('Cleanup candidate');
+  return labels.length?labels.join(' / '):'Unknown';
+}
+function renderVersionRetentionPanel(){
+  if(isClientLocked()||!isAdmin()) return '';
+  const versions=localReportVersionsForRetention(REPORT);
+  const policy=normalizeVersionRetentionPolicy(REPORT);
+  const preview=buildVersionCleanupPreview(REPORT,versions,policy);
+  const rows=preview.versions.slice(0,8).map(item=>`
+    <div class="materialRow">
+      <div class="itemName">${esc(item.label||item.versionId)}
+        <div class="itemMeta">${esc(retentionBadge(item))} - ${esc(item.versionId)} - ${esc((item.protectedReasons||[]).join(' | ')||'preview-only')}</div>
+      </div>
+      <div class="materialFilters adminOnly">
+        ${item.pinned?`<button class="btn small" data-retention-unpin="${esc(item.versionId)}">Unpin</button>`:`<button class="btn small" data-retention-pin="${esc(item.versionId)}">Pin version</button>`}
+      </div>
+    </div>`).join('');
+  return `<div class="materialsInventory">
+    <div class="materialsHead"><b>Version Retention</b><span class="pill">${esc(policy.mode)}</span></div>
+    <div class="itemMeta">Cleanup feature: ${VERSION_CLEANUP_ENABLED?'enabled':'disabled'} - Hard delete: disabled - Local version retention is limited because this report is stored in the current browser/session.</div>
+    <div class="itemMeta">Total ${preview.totalVersions} - Protected ${preview.protectedVersions} - Pinned ${preview.pinnedVersions} - Archive candidates ${preview.archiveCandidates} - Cleanup candidates ${preview.cleanupCandidates}</div>
+    <div class="empty">Cleanup is preview-only by default. No snapshots are deleted automatically.</div>
+    <div class="materialFilters adminOnly"><button class="btn small" data-retention-preview="1">Preview cleanup</button></div>
+    ${rows||'<div class="empty">No local version snapshots are available for retention preview.</div>'}
+  </div>`;
+}
+function governanceBool(value){return value?'On':'Off';}
+function governanceRow(label,value,warn=false){return `<div class="materialRow"><div class="itemName">${esc(label)}<div class="itemMeta ${warn?'warn':''}">${esc(value)}</div></div></div>`;}
+function onboardingStepLabel(stepId){
+  return ({
+    welcome:'Welcome',
+    workspaceBasics:'Workspace Basics',
+    rolesAndAccess:'Roles and Access',
+    exportSafety:'Export Safety',
+    aiPolicy:'AI Policy',
+    reviewPolicy:'Review Policy',
+    versionRetention:'Version Retention',
+    restorePolicy:'Restore Policy',
+    demoReport:'Demo Report',
+    finalChecklist:'Final Checklist'
+  })[stepId]||'Workspace Setup';
+}
+function renderOnboardingSummaryPanel(){
+  if(isClientLocked()||state.access==='viewer') return '';
+  const progress=getOnboardingProgress(REPORT);
+  const canRun=canCurrentUserRunOnboarding(REPORT);
+  const status=progress.completed?'Complete':(progress.dismissed?'Skipped':'Not complete');
+  const mode=BROWSER_ONLY_MODE||!cloudSync.ready?'Local setup':'Cloud workspace';
+  const action=canRun?'<button class="btn small primary" data-open-onboarding="1">Open setup again</button>':'';
+  return `<div class="materialRow">
+    <div class="itemName">Workspace Setup<div class="itemMeta">${esc(status)} - ${progress.completedSteps}/${progress.totalSteps} steps - ${esc(mode)}</div></div>
+    <div class="materialFilters adminOnly">${action}</div>
+  </div>`;
+}
+function renderFirstReportGovernanceRow(){
+  if(isClientLocked()||state.access==='viewer') return '';
+  const progress=getFirstReportProgress(REPORT);
+  const flow=normalizeFirstReportFlowState(REPORT);
+  const status=flow.completed?'Complete':(flow.dismissed?'Hidden':'Active');
+  return `<div class="materialRow">
+    <div class="itemName">First Report Guide<div class="itemMeta">${esc(status)} - ${progress.completed}/${progress.total} steps - next: ${esc(firstReportStepLabel(progress.nextStepId))}</div></div>
+    <div class="materialFilters adminOnly"><button class="btn small" data-first-report-show="1">Show guide again</button></div>
+  </div>`;
+}
+function renderWorkspaceGovernancePanel(){
+  if(isClientLocked()||state.access==='viewer') return '';
+  const settings=getGovernanceSettings(REPORT);
+  const validation=validateGovernanceSettings(settings);
+  const summary=getGovernancePolicySummary(settings);
+  const canManage=canCurrentUserManageGovernance(REPORT);
+  const warnings=[...validation.blockers,...validation.warnings];
+  const rows=[
+    governanceRow('Export Safety',`${summary.exportSafety}; rejected evidence excluded: ${governanceBool(settings.exportPolicy.excludeRejectedEvidence)}`),
+    governanceRow('AI Policy',`${summary.aiPolicy}; human review required: ${governanceBool(settings.aiPolicy.requireHumanReview)}`),
+    governanceRow('Review Policy',`Source links for approved evidence: ${governanceBool(settings.reviewPolicy.requireSourceLinksForApprovedEvidence)}; rejected client content: ${governanceBool(settings.reviewPolicy.allowRejectedContentInClientExport)}`,settings.reviewPolicy.allowRejectedContentInClientExport),
+    governanceRow('Version Retention',`${summary.retention}; hard delete: ${governanceBool(settings.retentionPolicy.allowHardDelete)}`,settings.retentionPolicy.allowHardDelete),
+    governanceRow('Restore Policy',`${summary.restore}; expected current version: ${governanceBool(settings.restorePolicy.requireExpectedCurrentVersion)}`),
+    governanceRow('Audit Visibility',`${summary.audit}; viewer audit visibility: ${governanceBool(settings.auditPolicy.allowViewerAuditVisibility)}`,settings.auditPolicy.allowViewerAuditVisibility),
+    governanceRow('Permissions',`${summary.permissions}; viewer governance: ${governanceBool(settings.permissionsPolicy.viewerCanManageGovernance)}`,settings.permissionsPolicy.viewerCanManageGovernance)
+  ].join('');
+  const warningHtml=warnings.length?`<div class="empty">${esc(warnings.slice(0,3).join(' | '))}</div>`:'<div class="itemMeta">Governance settings are using safe defaults.</div>';
+  const actions=canManage?'<div class="materialFilters adminOnly"><button class="btn small primary" data-governance-save="1">Save governance settings</button><button class="btn small ghost" data-governance-reset="1">Reset to safe defaults</button></div>':'<div class="itemMeta">Read-only: owner manages governance settings by default.</div>';
+  return `<div class="materialsInventory">
+    <div class="materialsHead"><b>Workspace Governance</b><span class="pill">${validation.ok?'Safe':'Needs review'}</span></div>
+    <div class="itemMeta">Local governance settings apply only to this local report file. Server-side policy remains authoritative in cloud mode.</div>
+    ${renderOnboardingSummaryPanel()}
+    ${renderFirstReportGovernanceRow()}
+    ${warningHtml}
+    ${rows}
+    ${actions}
+  </div>`;
+}
+function onboardingModeLabel(){
+  if(isClientLocked()) return 'clientLocked';
+  if(cloudSync.ready) return `Cloud workspace (${cloudSync.role||'unknown role'})`;
+  return 'Local-only report file/browser session';
+}
+function onboardingStepBody(stepId){
+  const settings=getGovernanceSettings(REPORT);
+  const checklist=runReportQualityChecklist(REPORT);
+  const warnings=getOnboardingWarnings(REPORT,{});
+  if(stepId==='welcome') return `<div class="hintBox"><b>Marketing Report Studio</b><br>Set up your workspace for safe client-ready marketing intelligence reports.</div><div class="materialFilters"><button class="btn primary" data-onboarding-next>Start setup</button><button class="btn" data-onboarding-demo>Open demo report</button><button class="btn ghost" data-onboarding-skip>Skip for now</button></div>`;
+  if(stepId==='workspaceBasics') return `<div class="formGrid"><div class="field full"><label>Workspace name</label><input id="onboardingWorkspaceName" value="${esc(REPORT.meta?.workspaceName||'Marketing Report Studio Workspace')}"></div><div class="field full"><label>Default report title</label><input id="onboardingReportTitle" value="${esc(REPORT.meta?.title||'Marketing Report Studio')}"></div><div class="field"><label>Default client name</label><input id="onboardingClientName" value="${esc(REPORT.meta?.companyName||'')}"></div><div class="field"><label>Research language</label><input id="onboardingResearchLanguage" value="${esc(REPORT.meta?.lang||state.lang||'en')}"></div><div class="field full"><div class="hintBox">${esc(onboardingModeLabel())}. Local setup applies only to this standalone report file/browser session.</div></div></div>`;
+  if(stepId==='rolesAndAccess') return `<div class="hintBox">Owner manages users and governance. Editor edits reports. Viewer is read-only.</div><div class="itemMeta">${cloudSync.ready?`Current member count is available in the existing Members panel when the API is enabled. Role: ${esc(cloudSync.role||'unknown')}.`:'Local mode has no server-side team access or Cloudflare Access enforcement.'}</div><div class="materialFilters">${cloudSync.role==='owner'?'<button class="btn small" id="onboardingMembersBtn">Open members</button>':''}</div>`;
+  if(stepId==='exportSafety') return `<div class="hintBox">Safe client exports require quality review, block on blockers, exclude rejected evidence, exclude internal audit, exclude AI prompts, exclude secrets, and include source/evidence summaries plus print CSS.</div><div class="itemMeta">Current: blockers ${settings.exportPolicy.blockExportOnQualityBlockers?'blocked':'not blocked'}; secrets excluded ${settings.exportPolicy.excludeSecrets?'yes':'no'}.</div>`;
+  if(stepId==='aiPolicy') return `<div class="hintBox">AI is disabled by default. Dry-run previews may be available, but real providers require server-side Worker secrets. Do not paste API keys into the browser.</div><div class="itemMeta">Human review required: ${settings.aiPolicy.requireHumanReview?'yes':'no'}; auto-approve: ${settings.aiPolicy.allowAutoApproveAiOutput?'unsafe':'disabled'}; clientLocked AI: ${settings.aiPolicy.allowClientLockedAiPreview?'unsafe':'disabled'}.</div>`;
+  if(stepId==='reviewPolicy') return `<div class="hintBox">Draft builder output should use approved evidence, source links, and human review for AI suggestions. Rejected content stays out of client export.</div><div class="itemMeta">Approved-source links required: ${settings.reviewPolicy.requireSourceLinksForApprovedEvidence?'yes':'no'}; needs_review client export: ${settings.reviewPolicy.allowNeedsReviewContentInClientExport?'allowed by current policy':'blocked by setup defaults'}.</div>`;
+  if(stepId==='versionRetention') return `<div class="hintBox">Retention remains preview-only. Keep all versions by default, keep at least 20 versions for 90 days, protect current/restore/client-export/audit-referenced versions, and keep hard delete disabled.</div><div class="itemMeta">Mode: ${esc(settings.retentionPolicy.mode)}; hard delete: disabled.</div>`;
+  if(stepId==='restorePolicy') return `<div class="hintBox">Restore is safe-copy only: require diff, confirmation, strong confirmation for high risk, expected current version, and an audit event.</div><div class="itemMeta">Restore allowed: ${settings.restorePolicy.allowRestore?'yes':'no'}; expected current version: ${settings.restorePolicy.requireExpectedCurrentVersion?'required':'not required'}.</div>`;
+  if(stepId==='demoReport') return `<div class="hintBox">Use fictional sample data to see the materials -> evidence -> report workflow, or keep the current workspace empty.</div><div class="materialFilters"><button class="btn small primary" data-onboarding-demo>Open demo report</button><button class="btn small" data-onboarding-next>Keep current workspace</button></div><div class="itemMeta">If the current report has data, demo loading asks for confirmation before replacing the in-memory workspace.</div>`;
+  return `<div class="hintBox">Setup summary: export safety configured, AI policy safe, review policy safe, retention policy safe, restore policy safe, demo available, quality checklist available.</div><div class="itemMeta">Quality status: ${esc(checklist.status)} - blockers ${checklist.blockers.length} - warnings ${checklist.warnings.length}</div>${warnings.length?`<div class="empty">${esc(warnings.slice(0,5).join(' | '))}</div>`:'<div class="itemMeta">No setup warnings.</div>'}<div class="materialFilters"><button class="btn small primary" data-onboarding-first-report>Start guided first report</button><button class="btn small" data-governance-scroll>Go to Governance Settings</button><button class="btn small" data-onboarding-demo>Open demo report</button></div>`;
+}
+function readOnboardingSelections(){
+  return {
+    workspaceName:$('onboardingWorkspaceName')?.value||REPORT.meta?.workspaceName||'',
+    reportTitle:$('onboardingReportTitle')?.value||REPORT.meta?.title||'',
+    clientName:$('onboardingClientName')?.value||REPORT.meta?.companyName||'',
+    researchLanguage:$('onboardingResearchLanguage')?.value||REPORT.meta?.lang||state.lang||'en'
+  };
+}
+function openOnboardingWizard(stepId){
+  if(isClientLocked()){toast('Workspace setup is unavailable in clientLocked mode.'); return;}
+  const stateObj=normalizeOnboardingState(REPORT);
+  const id=ONBOARDING_STEPS.includes(String(stepId||''))?String(stepId):stateObj.currentStepId||'welcome';
+  stateObj.currentStepId=id;
+  stateObj.updatedAt=new Date().toISOString();
+  appendAiAuditEvent(REPORT,createAiAuditEvent(REPORT,{eventType:'workspace_onboarding_started',provider:'local',providerMode:'disabled',generatedBy:'manual',notes:`Opened onboarding step: ${id}`}));
+  const idx=ONBOARDING_STEPS.indexOf(id);
+  const canRun=canCurrentUserRunOnboarding(REPORT);
+  const body=`<div class="itemMeta">Step ${idx+1} of ${ONBOARDING_STEPS.length} - ${esc(onboardingStepLabel(id))}</div>${onboardingStepBody(id)}${canRun?'<label class="checkLine"><input id="onboardingDoNotShow" type="checkbox"> Do not show again</label>':'<div class="itemMeta">Read-only summary: owner manages setup and governance by default.</div>'}`;
+  const back=idx>0?'<button class="btn" id="onboardingBack">Back</button>':'';
+  const next=idx<ONBOARDING_STEPS.length-1?'<button class="btn primary" id="onboardingNext">Next</button>':'<button class="btn primary" id="onboardingFinish">Finish setup</button>';
+  const skip=canRun?'<button class="btn ghost" id="onboardingSkip">Skip</button>':'';
+  openModal('Workspace Setup',body,`${back}${skip}${next}`);
+  bindOnboardingWizard(id);
+}
+function bindOnboardingWizard(stepId){
+  const idx=ONBOARDING_STEPS.indexOf(stepId);
+  const go=nextId=>{openOnboardingWizard(nextId);};
+  const saveBasics=()=>{if(stepId==='workspaceBasics') Object.assign(REPORT.meta,readOnboardingSelections());};
+  $('onboardingBack')?.addEventListener('click',()=>go(ONBOARDING_STEPS[Math.max(0,idx-1)]));
+  const next=()=>{saveBasics(); markOnboardingStepComplete(REPORT,stepId); schedulePersist(); go(ONBOARDING_STEPS[Math.min(ONBOARDING_STEPS.length-1,idx+1)]);};
+  $('onboardingNext')?.addEventListener('click',next);
+  $('modalBody')?.querySelectorAll('[data-onboarding-next]')?.forEach(btn=>btn.addEventListener('click',next));
+  $('onboardingFinish')?.addEventListener('click',()=>{saveBasics(); const result=applyOnboardingSelections(REPORT,readOnboardingSelections()); if(!result.ok){toast(result.errors?.[0]||'Onboarding settings rejected'); return;} closeModal(); refresh(); persistNow(); toast('Workspace setup completed with safe defaults');});
+  const skip=()=>{if(!canCurrentUserRunOnboarding(REPORT)){closeModal(); return;} const stateObj=normalizeOnboardingState(REPORT); stateObj.dismissed=true; stateObj.dismissedAt=new Date().toISOString(); stateObj.updatedAt=stateObj.dismissedAt; if($('onboardingDoNotShow')?.checked) stateObj.enabled=false; appendAiAuditEvent(REPORT,createAiAuditEvent(REPORT,{eventType:'workspace_onboarding_dismissed',provider:'local',providerMode:'disabled',generatedBy:'manual',notes:`Dismissed onboarding at step: ${stepId}`})); closeModal(); renderSide(); persistNow(); toast('Workspace setup skipped');};
+  $('onboardingSkip')?.addEventListener('click',skip);
+  $('modalBody')?.querySelectorAll('[data-onboarding-skip]')?.forEach(btn=>btn.addEventListener('click',skip));
+  $('modalBody')?.querySelectorAll('[data-onboarding-demo]')?.forEach(btn=>btn.addEventListener('click',()=>{closeModal(); loadDemoReport();}));
+  $('modalBody')?.querySelector('[data-onboarding-first-report]')?.addEventListener('click',()=>{const flow=normalizeFirstReportFlowState(REPORT); flow.enabled=true; flow.dismissed=false; flow.updatedAt=new Date().toISOString(); closeModal(); refresh(); performFirstReportAction(getNextRecommendedFirstReportStep(REPORT));});
+  $('onboardingMembersBtn')?.addEventListener('click',()=>{closeModal(); openMembersModal();});
+  $('modalBody')?.querySelector('[data-governance-scroll]')?.addEventListener('click',()=>{closeModal(); renderSide();});
+}
+function maybeOpenOnboardingWizard(){
+  const stateObj=normalizeOnboardingState(REPORT);
+  if(!stateObj.enabled||stateObj.completed||stateObj.dismissed||!stateObj.firstRunDetected) return;
+  if(!canCurrentUserRunOnboarding(REPORT)) return;
+  if(isClientLocked()||state.access==='viewer') return;
+  setTimeout(()=>{if(!$('modalBackdrop')?.classList.contains('open')) openOnboardingWizard(stateObj.currentStepId||'welcome');},350);
+}
+function firstReportStatusClass(status){
+  if(status==='completed') return 'good';
+  if(status==='blocked') return 'warn';
+  if(status==='skipped') return 'muted';
+  if(status==='in_progress') return 'primary';
+  return '';
+}
+function firstReportActionLabel(stepId){
+  return ({
+    createReport:t('firstReportNameReport'),
+    addClientBasics:t('firstReportAddClient'),
+    addCompetitors:t('firstReportAddCompetitors'),
+    uploadMaterials:t('firstReportUploadMaterials'),
+    reviewMaterialsInventory:t('firstReportReviewMaterials'),
+    buildSourceRegistry:t('firstReportRefreshSources'),
+    addEvidence:t('firstReportAddEvidence'),
+    reviewEvidence:t('firstReportReviewEvidence'),
+    buildDraft:t('firstReportBuildDraft'),
+    runQualityChecklist:t('firstReportRunQualityChecklist'),
+    exportClientReport:t('firstReportExportClientReport')
+  })[stepId]||t('firstReportContinue');
+}
+function renderGuidedFirstReportPanel({hero=false}={}){
+  if(!canShowFirstReportFlow(REPORT)) return '';
+  const flow=normalizeFirstReportFlowState(REPORT);
+  if(!flow.enabled||flow.dismissed) return '';
+  const progress=getFirstReportProgress(REPORT);
+  const next=progress.nextStepId;
+  const rows=progress.steps.map(step=>{
+    const warn=step.warnings?.[0]||'';
+    return `<div class="materialRow">
+      <div class="itemName">${esc(step.label)}<div class="itemMeta ${step.status==='blocked'?'warn':''}">${esc(step.status)}${warn?' - '+esc(warn):''}</div></div>
+      <span class="pill ${firstReportStatusClass(step.status)}">${esc(step.status)}</span>
+    </div>`;
+  }).join('');
+  const title=progress.isEmpty?t('firstReportTitleEmpty'):t('firstReportTitleContinue');
+  const subtitle=progress.isEmpty?t('firstReportSubtitleEmpty'):t('firstReportSubtitleContinue');
+  const demo=REPORT.meta?.isDemoReport?`<div class="empty">${esc(t('firstReportSampleData'))}</div>`:'';
+  const localLabel=BROWSER_ONLY_MODE||!cloudSync.ready?`<div class="itemMeta">${esc(t('firstReportLocalOnly'))}</div>`:'';
+  const primary=`<button class="btn small primary adminOnly" data-first-report-action="${esc(next)}">${esc(firstReportActionLabel(next))}</button>`;
+  const secondary=`<button class="btn small adminOnly" data-first-report-upload="1">${esc(t('firstReportUploadMaterials'))}</button><button class="btn small adminOnly" data-open-demo>${esc(t('firstReportOpenDemo'))}</button><button class="btn small ghost adminOnly" data-first-report-skip="${esc(next)}">${esc(t('firstReportSkipStep'))}</button><button class="btn small ghost adminOnly" data-first-report-hide="1">${esc(t('firstReportHideGuide'))}</button>`;
+  const extra=hero?`<div class="materialFilters adminOnly"><button class="btn small" data-first-report-action="createReport">${esc(t('firstReportStartGuided'))}</button><button class="btn small" data-first-report-upload="1">${esc(t('firstReportUploadMaterials'))}</button><button class="btn small" data-open-demo>${esc(t('firstReportOpenDemo'))}</button><button class="btn small" data-first-report-paste="1">${esc(t('firstReportPasteTable'))}</button><button class="btn small" data-first-report-folder="1">${esc(t('firstReportConnectLocalFolder'))}</button></div>`:'';
+  return `<div class="materialsInventory firstReportFlow">
+    <div class="materialsHead"><b>${esc(title)}</b><span class="pill">${progress.completed}/${progress.total}</span></div>
+    <div class="itemMeta">${esc(subtitle)}</div>
+    ${demo}${localLabel}
+    <div class="itemMeta">${esc(t('firstReportProgress',{percent:progress.percent,step:firstReportStepLabel(next)}))}</div>
+    <div class="materialFilters">${primary}${secondary}</div>
+    ${extra}
+    ${rows}
+  </div>`;
+}
+function renderFirstReportEmptyState(){
+  return `<div class="productHero">
+    <h1>${esc(t('firstReportTitleEmpty'))}</h1>
+    <p>${esc(t('firstReportSubtitleEmpty'))}</p>
+    <div class="productActions">
+      ${isAdmin()?`<button class="btn primary adminOnly" data-first-report-action="createReport">${esc(t('firstReportStartGuided'))}</button>`:''}
+      ${isAdmin()?`<button class="btn adminOnly" data-first-report-upload="1">${esc(t('firstReportUploadMaterials'))}</button>`:''}
+      ${isAdmin()?`<button class="btn adminOnly" data-open-demo>${esc(t('firstReportOpenDemo'))}</button>`:''}
+    </div>
+    <div class="productActions">
+      ${isAdmin()?`<button class="btn small adminOnly" data-first-report-paste="1">${esc(t('firstReportImportSpreadsheet'))}</button><button class="btn small adminOnly" data-first-report-paste="1">${esc(t('firstReportPasteTable'))}</button><button class="btn small adminOnly" data-first-report-folder="1">${esc(t('firstReportConnectLocalFolder'))}</button>`:''}
+    </div>
+    ${renderGuidedFirstReportPanel({hero:true})}
+  </div>`;
+}
+function applyFirstReportBasicsFromModal(){
+  REPORT.meta=REPORT.meta||{};
+  const title=String($('firstReportTitle')?.value||'').trim();
+  const client=String($('firstReportClient')?.value||'').trim();
+  const market=String($('firstReportMarket')?.value||'').trim();
+  const objective=String($('firstReportObjective')?.value||'').trim();
+  const lang=String($('firstReportLanguage')?.value||'').trim();
+  if(title) REPORT.meta.title=title;
+  if(client) REPORT.meta.companyName=client;
+  if(market) REPORT.meta.marketCategory=market;
+  if(objective) REPORT.meta.researchObjective=objective;
+  if(lang) REPORT.meta.lang=lang;
+  markFirstReportStepComplete(REPORT,'createReport');
+}
+function openFirstReportBasicsModal(){
+  if(!guardAdmin()) return;
+  openModal('Create report',`<div class="formGrid">
+    <div class="field full"><label>Report title</label><input id="firstReportTitle" value="${esc(REPORT.meta?.title||'Marketing Intelligence Report')}"></div>
+    <div class="field"><label>Client/company name</label><input id="firstReportClient" value="${esc(REPORT.meta?.companyName||'')}"></div>
+    <div class="field"><label>Market/category</label><input id="firstReportMarket" value="${esc(REPORT.meta?.marketCategory||'')}"></div>
+    <div class="field"><label>Language</label><input id="firstReportLanguage" value="${esc(REPORT.meta?.lang||state.lang||'en')}"></div>
+    <div class="field full"><label>Research objective</label><textarea id="firstReportObjective" rows="3">${esc(REPORT.meta?.researchObjective||'')}</textarea></div>
+    <div class="field full"><div class="hintBox">These fields set workspace context only. They do not create unsupported client claims.</div></div>
+  </div>`,'<button class="btn" id="cancelFirstReportBasics">Cancel</button><button class="btn primary" id="saveFirstReportBasics">Save and continue</button>');
+  $('cancelFirstReportBasics').onclick=closeModal;
+  $('saveFirstReportBasics').onclick=()=>{applyFirstReportBasicsFromModal(); closeModal(); refresh(); toast('Report basics saved');};
+}
+function openFirstReportClientModal(){
+  if(!guardAdmin()) return;
+  const client=(REPORT.companies||[]).find(c=>c.type==='client')||{};
+  openModal('Add client basics',`<div class="formGrid">
+    <div class="field"><label>Company name</label><input id="firstClientName" value="${esc(client.name||REPORT.meta?.companyName||'')}"></div>
+    <div class="field"><label>Website</label><input id="firstClientWebsite" value="${esc(client.website||'')}"></div>
+    <div class="field"><label>Category</label><input id="firstClientCategory" value="${esc(client.category||REPORT.meta?.marketCategory||'')}"></div>
+    <div class="field"><label>Market</label><input id="firstClientMarket" value="${esc(client.market||'')}"></div>
+    <div class="field full"><label>Short description / notes</label><textarea id="firstClientNotes" rows="3">${esc(client.notes||'')}</textarea></div>
+  </div>`,'<button class="btn" id="cancelFirstClient">Cancel</button><button class="btn primary" id="saveFirstClient">Save client</button>');
+  $('cancelFirstClient').onclick=closeModal;
+  $('saveFirstClient').onclick=()=>{const name=String($('firstClientName')?.value||'').trim(); if(name){const co=ensureCompany(name,'client',REPORT); Object.assign(co,{website:String($('firstClientWebsite')?.value||'').trim(),category:String($('firstClientCategory')?.value||'').trim(),market:String($('firstClientMarket')?.value||'').trim(),notes:String($('firstClientNotes')?.value||'').trim(),updatedAt:new Date().toISOString()}); REPORT.meta.companyName=name;} markFirstReportStepComplete(REPORT,'addClientBasics'); closeModal(); refresh(); toast('Client basics saved');};
+}
+function openFirstReportCompetitorsModal(){
+  if(!guardAdmin()) return;
+  const existing=(normalizeCompetitorProfiles(REPORT).items||[]).filter(c=>c.status!=='archived').slice(0,5);
+  const rows=[0,1,2,3,4].map(i=>{const c=existing[i]||{}; return `<div class="field"><label>Competitor ${i+1}</label><input id="firstCompetitorName${i}" value="${esc(c.name||'')}" placeholder="Name"></div><div class="field"><label>Website / notes</label><input id="firstCompetitorNotes${i}" value="${esc(c.website||c.notes||'')}" placeholder="Optional"></div>`;}).join('');
+  openModal('Add competitors',`<div class="formGrid">${rows}<div class="field full"><div class="hintBox">Add 2-5 competitors if you know them. The guide will not scrape websites or generate claims.</div></div></div>`,'<button class="btn" id="cancelFirstCompetitors">Cancel</button><button class="btn primary" id="saveFirstCompetitors">Save competitors</button>');
+  $('cancelFirstCompetitors').onclick=closeModal;
+  $('saveFirstCompetitors').onclick=()=>{const profiles=normalizeCompetitorProfiles(REPORT); for(let i=0;i<5;i++){const name=String($(`firstCompetitorName${i}`)?.value||'').trim(); if(!name) continue; const notes=String($(`firstCompetitorNotes${i}`)?.value||'').trim(); let profile=(profiles.items||[]).find(item=>String(item.name||'').toLowerCase()===name.toLowerCase()); if(!profile){profile=createCompetitorProfile({name,priority:i<2?'high':'medium',linkedSectionIds:['competitiveLandscape','competitors','pricing','features','messaging','channels','risksOpportunities','recommendations']}); profiles.items.push(profile);} if(/^https?:\/\//i.test(notes)) profile.website=notes; else profile.shortDescription=notes||profile.shortDescription; updateCompetitorProfile(REPORT,profile.id,profile);} markFirstReportStepComplete(REPORT,'addCompetitors'); closeModal(); refresh(); toast('Competitor profiles saved');};
+}
+function performFirstReportAction(stepId){
+  if(!guardAdmin()) return;
+  if(stepId==='createReport') return openFirstReportBasicsModal();
+  if(stepId==='addClientBasics') return openFirstReportClientModal();
+  if(stepId==='addCompetitors'){state.sidePanelView='report'; return openFirstReportCompetitorsModal();}
+  if(stepId==='uploadMaterials'){state.sidePanelView='materials'; return openDataModal();}
+  if(stepId==='reviewMaterialsInventory'){state.sidePanelView='materials'; markFirstReportStepComplete(REPORT,'reviewMaterialsInventory'); renderSide(); toast('Materials step marked complete'); return;}
+  if(stepId==='buildSourceRegistry'){state.sidePanelView='evidence'; collectMaterialsFromCurrentState(REPORT,state.fsRoots); buildSourcesFromMaterials(REPORT); markFirstReportStepComplete(REPORT,'buildSourceRegistry'); refresh(); toast('Sources refreshed from materials'); return;}
+  if(stepId==='addEvidence'){state.sidePanelView='evidence'; return openEvidenceCardModal();}
+  if(stepId==='reviewEvidence'){state.sidePanelView='evidence'; renderSide(); toast('Use Evidence Review to approve, mark needs review, or reject evidence.'); return;}
+  if(stepId==='buildDraft'){state.sidePanelView='report'; const approved=getApprovedEvidenceCards(REPORT); if(!approved.length){toast('Approve evidence cards first.'); return;} const result=buildRuleBasedReportDraft(REPORT); markFirstReportStepComplete(REPORT,'buildDraft'); refresh(); toast(result.blocksCreated?`Built ${result.blocksCreated} draft blocks`:'No draft blocks created'); return;}
+  if(stepId==='runQualityChecklist'){state.sidePanelView='report'; markFirstReportStepComplete(REPORT,'runQualityChecklist'); renderSide(); toast('Quality checklist refreshed'); return;}
+  if(stepId==='exportClientReport') return saveClientHtml();
+}
+function openRestoreVersionPreview(){
+  if(!guardAdmin()) return;
+  ensureVersionDiffBaselineReport();
+  const preview=prepareRestorePreview(REPORT,VERSION_DIFF_BASELINE_REPORT);
+  const highRisk=preview.riskLevel==='high';
+  const confirmLabel=highRisk?'Type RESTORE to confirm':'Check to confirm';
+  const confirmControl=highRisk
+    ? '<input id="restoreConfirmText" placeholder="Type RESTORE">'
+    : '<label class="checkLine"><input id="restoreConfirmCheck" type="checkbox"> Restore this version as a new current version</label>';
+  const warning=highRisk?'<div class="empty">This restore may reduce export readiness or remove reviewed evidence/source links.</div>':'';
+  openModal('Restore selected version',`
+    <div class="formGrid">
+      <div class="field"><label>Selected version</label><input readonly value="${esc(preview.targetVersionId)}"></div>
+      <div class="field"><label>Current version</label><input readonly value="${esc(preview.currentVersionId)}"></div>
+      <div class="field"><label>Risk level</label><input readonly value="${esc(versionDiffRiskLabel(preview.riskLevel))}"></div>
+      <div class="field"><label>Readiness after restore</label><input readonly value="${esc(preview.diff.qualityChecklistChanges.readinessAfter)}"></div>
+      <div class="field full"><div class="hintBox">${esc(preview.impactSummary)} Current version will remain available through normal saved/exported history. The selected version is copied into a new active local snapshot.</div></div>
+      ${warning}
+      <div class="field full"><label>Why are you restoring this version?</label><textarea id="restoreReason" rows="3" placeholder="Optional restore reason"></textarea></div>
+      <div class="field full"><label>${esc(confirmLabel)}</label>${confirmControl}</div>
+    </div>`,
+    '<button class="btn" id="cancelRestoreVersion">Cancel</button><button class="btn primary danger" id="confirmRestoreVersion" disabled>Restore this version as a new current version</button>'
+  );
+  const confirmBtn=$('confirmRestoreVersion');
+  const update=()=>{
+    confirmBtn.disabled=highRisk
+      ? String($('restoreConfirmText')?.value||'').trim()!=='RESTORE'
+      : !$('restoreConfirmCheck')?.checked;
+  };
+  $('cancelRestoreVersion').onclick=closeModal;
+  $('restoreConfirmText')?.addEventListener('input',update);
+  $('restoreConfirmCheck')?.addEventListener('change',update);
+  confirmBtn.onclick=()=>{
+    const reason=String($('restoreReason')?.value||'');
+    const check=validateRestorePreconditions(REPORT,preview.targetReport,preview.expectedCurrentVersion);
+    if(!check.ok){toast(check.error); closeModal(); renderSide(); return;}
+    const restored=restoreVersionAsNewSnapshot(REPORT,preview.targetReport,{restoredFromVersionId:preview.targetVersionId,restoreReason:reason,restoreRiskLevel:preview.riskLevel,restoreDiffSummary:preview.diff.summary,warnings:preview.diff.warnings});
+    REPORT=restored;
+    VERSION_DIFF_BASELINE_REPORT=normalizeReport(clone(restored));
+    VERSION_DIFF_BASELINE=createReportVersionSnapshot(restored);
+    state.activeDataset=REPORT.datasets[0]?.id||null;
+    state.openTabs=[];
+    state.activeFile=null;
+    initState();
+    closeModal();
+    refresh();
+    persistNow();
+    toast(`Restored as ${REPORT.meta.versionId}. Recheck export readiness before client export.`);
+  };
+  update();
+}
+function renderAiAssistancePanel(){
+  const ai=normalizeAiAssistanceState(REPORT);
+  const tasks=getAvailableAiTasks(REPORT);
+  const aiStatus=state.aiStatus||createDefaultAiStatus();
+  const evidenceGate=canRunAiEvidencePreview(REPORT,aiStatus,currentAiUser());
+  const recommendationGate=canRunAiRecommendationPreview(REPORT,aiStatus,currentAiUser());
+  const summaryGate=canRunAiExecutiveSummaryPreview(REPORT,aiStatus,currentAiUser());
+  const coverageGate=canRunAiSourceCoveragePreview(REPORT,aiStatus,currentAiUser());
+  const sectionGate=canRunAiSectionDraftPreview(REPORT,aiStatus,currentAiUser());
+  const canPreview=evidenceGate.ok;
+  const canRecommend=recommendationGate.ok;
+  const canSummarize=summaryGate.ok;
+  const canCheckCoverage=coverageGate.ok;
+  const canDraftSection=sectionGate.ok;
+  const disabledReason=aiPreviewDisabledReason(REPORT,aiStatus,currentAiUser());
+  const recommendationReason=aiRecommendationDisabledReason(REPORT,aiStatus,currentAiUser());
+  const summaryReason=aiExecutiveSummaryDisabledReason(REPORT,aiStatus,currentAiUser());
+  const coverageReason=aiSourceCoverageDisabledReason(REPORT,aiStatus,currentAiUser());
+  const sectionDraftReason=aiSectionDraftDisabledReason(REPORT,aiStatus,currentAiUser());
+  const preview=latestAiEvidenceCandidatePreview(REPORT);
+  const recommendationPreview=latestAiRecommendationPreview(REPORT);
+  const summaryPreview=latestAiExecutiveSummaryPreview(REPORT);
+  const coveragePreview=latestAiSourceCoveragePreview(REPORT);
+  const sectionDraftPreview=latestAiSectionDraftPreview(REPORT);
+  const previewPanel=preview?renderEvidenceCandidatePreview(preview):'';
+  const recommendationPanel=recommendationPreview?renderRecommendationPreview(recommendationPreview):'';
+  const summaryPanel=summaryPreview?renderExecutiveSummaryPreview(summaryPreview):'';
+  const coveragePanel=coveragePreview?renderSourceCoveragePreview(coveragePreview):'';
+  const sectionDraftPanel=sectionDraftPreview?renderSectionDraftPreview(sectionDraftPreview):'';
+  const sectionOptions=(REPORT.reportSections||[]).map(section=>`<option value="${esc(section.id)}" ${state.aiSectionId===section.id?'selected':''}>${esc(section.title)}</option>`).join('');
+  const buttons=[
+    ['extract_evidence_candidates','Preview evidence candidates'],
+    ['improve_executive_summary','Preview executive summary'],
+    ['suggest_recommendations','Preview recommendations'],
+    ['check_source_coverage','Preview source coverage'],
+    ['suggest_report_sections','Preview section draft']
+  ].map(([type,label])=>{
+    const isEvidence=type==='extract_evidence_candidates';
+    const isRecommendation=type==='suggest_recommendations';
+    const isSummary=type==='improve_executive_summary';
+    const isCoverage=type==='check_source_coverage';
+    const isSectionDraft=type==='suggest_report_sections';
+    const active=(isEvidence&&canPreview)||(isRecommendation&&canRecommend)||(isSummary&&canSummarize)||(isCoverage&&canCheckCoverage)||(isSectionDraft&&canDraftSection);
+    const disabled=!active;
+    const attrs=isEvidence?' data-ai-preview-candidates="1"':(isRecommendation?' data-ai-preview-recommendations="1"':(isSummary?' data-ai-preview-summary="1"':(isCoverage?' data-ai-preview-coverage="1"':(isSectionDraft?' data-ai-preview-section-draft="1"':''))));
+    const title=isEvidence?'Preview evidence suggestions only. No automatic approval.':(isRecommendation?'Preview recommendation suggestions only. No automatic approval.':(isSummary?'Preview executive summary suggestions only. No automatic approval.':(isCoverage?'Preview source coverage gaps only. No automatic fixes.':(isSectionDraft?'Preview section draft blocks only. No automatic approval.':AI_TASK_DEFINITIONS[type]?.label||type))));
+    return `<button class="btn small ${active?'primary':''}" ${disabled?'disabled':''}${attrs} title="${esc(title)}">${esc(label)}</button>`;
+  }).join('');
+  const taskRows=tasks.slice(0,6).map(task=>`
+    <div class="materialRow">
+      <div class="itemName">${esc(task.label)}<div class="itemMeta">disabled - ${esc(task.outputContract)} contract ready</div></div>
+    </div>`).join('');
+  return `<div class="materialsInventory">
+    <div class="materialsHead"><b>AI Assistance</b><span class="pill">${esc(aiStatusLabel(aiStatus))}</span></div>
+    <div class="itemMeta">AI suggestions require review before export. AI output is not added to the client report automatically.</div>
+    <div class="itemMeta">AI server: ${esc(aiStatusLabel(aiStatus))} - Provider: ${esc(aiStatus.provider||'dry_run')} - Permission: ${isAdmin()?'allowed':'not allowed'} - Client mode: ${isClientLocked()?'clientLocked':'workspace'}</div>
+    <div class="itemMeta">Mode: ${esc(ai.aiMode)} - Suggestions: ${(ai.suggestions||[]).length}</div>
+    <select class="input adminOnly" data-ai-section-select="1"><option value="">Select section for draft</option>${sectionOptions}</select>
+    <div class="materialFilters">${buttons}</div>
+    ${disabledReason?`<div class="empty">${esc(disabledReason)}</div>`:''}
+    ${recommendationReason?`<div class="empty">${esc(recommendationReason)}</div>`:''}
+    ${summaryReason?`<div class="empty">${esc(summaryReason)}</div>`:''}
+    ${coverageReason?`<div class="empty">${esc(coverageReason)}</div>`:''}
+    ${sectionDraftReason?`<div class="empty">${esc(sectionDraftReason)}</div>`:''}
+    ${previewPanel}
+    ${recommendationPanel}
+    ${summaryPanel}
+    ${coveragePanel}
+    ${sectionDraftPanel}
+    ${taskRows}
+  </div>`;
+}
+function queueTypeLabel(type){return String(type||'unknown').replace(/_/g,' ');}
+function renderAiReviewQueue(){
+  const allItems=normalizeAiReviewQueue(REPORT).items||[];
+  const counts=allItems.reduce((acc,item)=>{acc[item.reviewStatus]=(acc[item.reviewStatus]||0)+1; return acc;},{});
+  const items=getAiReviewQueueItems(REPORT,{type:state.aiQueueType||'all',status:state.aiQueueStatus||'all'});
+  const rows=items.slice(0,10).map(item=>`
+    <div class="materialRow">
+      <div class="itemName">${esc(item.title)}<div class="itemMeta">${esc(queueTypeLabel(item.suggestionType))} - ${esc(item.reviewStatus)} - section: ${esc(item.sectionId||'unlinked')} - evidence ${item.evidenceCardIds.length} - sources ${item.sourceIds.length} - confidence ${esc(item.confidenceStatus)} - warnings ${item.warnings.length}</div><div class="itemMeta">${esc(item.summary).slice(0,220)}</div></div>
+      <div class="materialFilters adminOnly">
+        <button class="btn small" data-aiq-detail="${esc(item.id)}">View</button>
+        <button class="btn small" data-aiq-edit="${esc(item.id)}">Edit</button>
+        <button class="btn small primary" data-aiq-accept="${esc(item.id)}">Accept</button>
+        <button class="btn small danger" data-aiq-reject="${esc(item.id)}">Reject</button>
+        <button class="btn small" data-aiq-convert="${esc(item.id)}">Accept and convert to needs-review draft</button>
+      </div>
+    </div>`).join('');
+  return `<div class="materialsInventory">
+    <div class="materialsHead"><b>AI Review Queue</b><span class="pill">${allItems.length} total</span></div>
+    <div class="itemMeta">Ready ${(counts.ready_for_review||0)} - Accepted ${(counts.accepted||0)} - Rejected ${(counts.rejected||0)} - Converted ${(counts.converted||0)}</div>
+    <div class="materialFilters">
+      ${['all','evidence_candidate','recommendation','executive_summary','source_coverage_gap','section_draft'].map(type=>`<button class="btn small ${state.aiQueueType===type?'primary':''}" data-aiq-type="${esc(type)}">${esc(type==='all'?'All':queueTypeLabel(type))}</button>`).join('')}
+    </div>
+    <div class="materialFilters">
+      ${['all','ready_for_review','accepted','rejected','converted'].map(status=>`<button class="btn small ${state.aiQueueStatus===status?'primary':''}" data-aiq-status="${esc(status)}">${esc(status==='all'?'All statuses':status.replace(/_/g,' '))}</button>`).join('')}
+    </div>
+    ${rows||'<div class="empty">AI suggestions sent for review will appear here.</div>'}
+  </div>`;
+}
+function aiAuditFilterMatch(event,filter){
+  if(filter==='preview') return ['ai_preview_requested','ai_preview_completed','ai_preview_failed'].includes(event.eventType);
+  if(filter==='created') return event.eventType==='suggestion_created';
+  if(filter==='accepted') return event.eventType==='suggestion_accepted';
+  if(filter==='rejected') return event.eventType==='suggestion_rejected';
+  if(filter==='converted') return ['suggestion_converted','evidence_card_created_from_suggestion','draft_block_created_from_suggestion','checklist_item_created_from_suggestion'].includes(event.eventType);
+  if(filter==='errors') return event.eventType==='ai_preview_failed'||event.errorCode;
+  return true;
+}
+function renderAiAuditPanel(){
+  if(isClientLocked()||!isAdmin()) return '';
+  const log=normalizeAiAuditLog(REPORT);
+  const events=log.events||[];
+  const taskRuns=new Set(events.map(event=>event.taskRunId).filter(Boolean));
+  const suggestions=new Set(events.map(event=>event.suggestionId).filter(Boolean));
+  const accepted=events.filter(event=>event.eventType==='suggestion_accepted').length;
+  const rejected=events.filter(event=>event.eventType==='suggestion_rejected').length;
+  const converted=events.filter(event=>event.eventType==='suggestion_converted').length;
+  const last=events.map(event=>event.createdAt).filter(Boolean).sort().pop()||'';
+  const filter=state.aiAuditFilter||'all';
+  const filtered=events.filter(event=>aiAuditFilterMatch(event,filter)).slice(-10).reverse();
+  const filters=[['all','All events'],['preview','Preview runs'],['created','Created suggestions'],['accepted','Accepted'],['rejected','Rejected'],['converted','Converted'],['errors','Errors']]
+    .map(([id,label])=>`<button class="btn small ${filter===id?'primary':''}" data-audit-filter="${esc(id)}">${esc(label)}</button>`).join('');
+  const rows=filtered.map(event=>`
+    <div class="materialRow">
+      <div class="itemName">${esc(event.eventType.replace(/_/g,' '))}
+        <div class="itemMeta">${esc(event.taskType||'task')} - ${esc(event.providerMode)} - suggestion: ${esc(event.suggestionId||'n/a')} - output: ${esc([event.outputType,event.outputId].filter(Boolean).join(':')||'n/a')}</div>
+        <div class="itemMeta">Actor ${esc(event.actorLabel||event.actorRole)} - ${esc(event.createdAt)} - warnings ${(event.warnings||[]).length}</div>
+      </div>
+      ${event.suggestionId?`<div class="materialFilters adminOnly"><button class="btn small" data-audit-provenance="${esc(event.suggestionId)}">View provenance</button></div>`:''}
+    </div>`).join('');
+  return `<div class="materialsInventory">
+    <div class="materialsHead"><b>AI Audit & Provenance</b><span class="pill">${events.length} events</span></div>
+    <div class="itemMeta">Task runs ${taskRuns.size} - Suggestions ${suggestions.size} - Accepted ${accepted} - Rejected ${rejected} - Converted ${converted}</div>
+    <div class="itemMeta">Last AI/dry-run activity: ${esc(last||'none')}</div>
+    <div class="materialFilters">${filters}</div>
+    ${rows||'<div class="empty">AI preview and review actions will appear here.</div>'}
+  </div>`;
+}
+function clientRefLabels(ids, prefix){
+  return (ids||[]).map((id,index)=>`${prefix}${index+1}`).join(', ');
+}
+function renderClientDraftBlock(block, reportData){
+  const b=normalizeDraftBlock(block);
+  if(!isBlockClientVisible(b)) return '';
+  const refs=[
+    b.evidenceCardIds?.length?`${esc(t('evidenceRefLabel'))}: ${esc(clientRefLabels(b.evidenceCardIds,'E'))}`:'',
+    b.sourceIds?.length?`${esc(t('sourceRefLabel'))}: ${esc(clientRefLabels(b.sourceIds,'S'))}`:''
+  ].filter(Boolean).join(' - ');
+  const label=String(b.type||'paragraph').replace(/_/g,' ');
+  const text=esc(b.text);
+  if(b.type==='bullet_list'){
+    const bullets=String(b.text||'').split(/\n+/).map(line=>line.replace(/^[-*]\s*/,'').trim()).filter(Boolean);
+    return `<div class="clientBlock" data-evidence="${esc((b.evidenceCardIds||[]).join(','))}" data-sources="${esc((b.sourceIds||[]).join(','))}"><b>${esc(b.title||label)}</b><ul>${bullets.map(line=>`<li>${esc(line)}</li>`).join('')}</ul>${refs?`<div class="itemMeta">${refs}</div>`:''}</div>`;
+  }
+  return `<div class="clientBlock" data-evidence="${esc((b.evidenceCardIds||[]).join(','))}" data-sources="${esc((b.sourceIds||[]).join(','))}"><div class="pill">${esc(label)}</div><p>${text}</p>${refs?`<div class="itemMeta">${refs}</div>`:''}</div>`;
+}
+function renderClientReportSectionsV2(reportData){
+  const data=reportData.clientExportV2||buildClientExportDataV2(reportData);
+  if(!data.sections?.length) return `<div class="empty">${esc(t('noApprovedDraftSections'))}</div>`;
+  return data.sections.map(section=>`
+    <section class="widget clientSection" id="client-section-${esc(section.id)}">
+      <div class="widgetHead"><b>${esc(section.title)}</b></div>
+      <div class="widgetBody">${(section.blocks||[]).map(block=>renderClientDraftBlock(block,reportData)).join('')}</div>
+    </section>`).join('');
+}
+function renderClientSourcesSection(reportData){
+  const data=reportData.clientExportV2||buildClientExportDataV2(reportData);
+  if(!data.sources?.length) return '';
+  const rows=data.sources.map((source,index)=>`
+    <div class="materialRow" id="client-source-${esc(source.id)}">
+      <div class="itemName">S${index+1}. ${esc(source.title||t('untitledSource'))}<div class="itemMeta">${esc(sourceTypeLabel(source.sourceType||'source'))} - ${t('credibilityLabel')}: ${esc(statusLabel(source.credibilityStatus||'unreviewed'))}${source.linkedSections?.length?' - '+esc(source.linkedSections.join(', ')):''}</div></div>
+    </div>`).join('');
+  return `<section class="widget clientSection"><div class="widgetHead"><b>${esc(t('sourcesEvidenceTitle'))}</b></div><div class="widgetBody">${rows}</div></section>`;
+}
+function renderClientExportV2(){
+  if(!isClientLocked() || Number(REPORT.meta?.clientExportVersion||0)<2) return false;
+  const data=REPORT.clientExportV2||buildClientExportDataV2(REPORT);
+  readerTabs.innerHTML='';
+  state.openTabs=[];
+  state.activeFile=null;
+  reader.innerHTML=`
+    <div class="clientReportV2">
+      <div class="heroBlock">
+        <div class="kicker">${esc(t('clientReport'))}</div>
+        <h1>${esc(data.title||REPORT.meta?.title||'Marketing Report Studio')}</h1>
+        <p>${esc(t('evidenceBackedReport'))}</p>
+        <div class="heroActions"><span class="pill">Client Export V2</span><span class="pill">${esc(new Date(data.generatedAt||Date.now()).toLocaleDateString(uiLocale()))}</span></div>
+      </div>
+      ${renderClientReportSectionsV2(REPORT)}
+      ${renderClientSourcesSection(REPORT)}
+    </div>`;
+  return true;
+}
+function scheduleSideSearchRender(){
+  if(sideSearchRenderTimer) clearTimeout(sideSearchRenderTimer);
+  sideSearchRenderTimer=setTimeout(()=>{
+    sideSearchRenderTimer=null;
+    renderSide();
+  }, SIDE_SEARCH_RENDER_DEBOUNCE_MS);
+}
+function sidePanelDefinitions(){
+  const tabs=[
+    ['materials',t('dataFiles')],
+    ['evidence',t('evidenceCardsTitle')],
+    ['report',t('clientReport')]
+  ];
+  if(isAdmin()) tabs.push(['admin',t('admin')]);
+  return tabs;
+}
+function currentSidePanelView(){
+  const ids=sidePanelDefinitions().map(([id])=>id);
+  if(!ids.includes(state.sidePanelView)) state.sidePanelView='materials';
+  return state.sidePanelView;
+}
+function renderSidePanelTabs(active){
+  return `<div class="materialFilters" role="tablist">${sidePanelDefinitions().map(([id,label])=>`
+    <button class="btn small ${active===id?'primary':''}" role="tab" aria-selected="${active===id?'true':'false'}" data-side-panel="${esc(id)}">${esc(label)}</button>
+  `).join('')}</div>`;
+}
+function renderSideFileTree(match){
+  let html='';
   if(state.fsRoots.length){
     for(const root of state.fsRoots){
       const rk='root:'+root.id;
@@ -2339,9 +8139,406 @@ function renderSide(){
     const embHtml=renderEmbeddedTreeNode(embTree,'',match,0);
     html += embHtml || '<div class="empty">Папки не підключені. Натисни "Підключити папку".</div>';
   }
+  return html;
+}
+function renderSide(){
+  if(sideSearchRenderTimer){
+    clearTimeout(sideSearchRenderTimer);
+    sideSearchRenderTimer=null;
+  }
+  const q=search.value.trim().toLowerCase();
+  const match=s=>!q || String(s||'').toLowerCase().includes(q);
+  const renderDatasetItems=()=> (REPORT.datasets||[]).filter(d=>match(d.name)).map(d=>{
+    const imported=d.createdAt?new Date(d.createdAt).toLocaleDateString(uiLocale()):'';
+    return `<div class="item ${state.activeDataset===d.id?'active':''}" data-type="dataset" data-id="${esc(d.id)}"><div class="icon">▦</div><div class="itemName">${esc(d.name)}<div class="itemMeta">${d.rows?.length||0} рядків${imported?' · '+esc(imported):''}</div></div><button class="btn small ghost adminOnly" data-act="export-dataset" data-id="${esc(d.id)}" title="Експорт CSV">⇩</button><button class="btn small ghost danger adminOnly" data-act="delete-dataset" data-id="${esc(d.id)}" title="Видалити таблицю">×</button></div>`;
+  }).join('');
+  const renderChartItems=()=> (REPORT.charts||[]).filter(ch=>match(ch.title)).map(ch=>`<div class="item" data-type="chart" data-id="${esc(ch.id)}"><div class="icon">▥</div><div class="itemName">${esc(ch.title)}</div></div>`).join('');
+  const view=currentSidePanelView();
+  let html=renderSidePanelTabs(view);
+  if(view==='materials'){
+    const datasetItems=renderDatasetItems();
+    html += `${renderMaterialsInventory()}<div class="sectionTitle">Таблиці даних</div>${datasetItems||'<div class="empty">Таблиць ще немає.</div>'}${renderSideFileTree(match)}`;
+  }else if(view==='evidence'){
+    html += `${renderSourceRegistry()}${renderEvidenceCards()}${renderEvidenceReview()}`;
+  }else if(view==='report'){
+    const chartItems=renderChartItems();
+    html += `${renderGuidedFirstReportPanel()}${renderCompetitorProfiles()}${renderPricingFeatureMatrix()}${renderDraftBuilder()}${renderReportQualityChecklist()}<div class="sectionTitle">Графіки</div>${chartItems||'<div class="empty">Графіків ще немає.</div>'}`;
+  }else{
+    html += `${renderVersionDiffPanel()}${renderVersionRetentionPanel()}${renderWorkspaceGovernancePanel()}${renderAiAuditPanel()}${renderAiReviewQueue()}${renderAiAssistancePanel()}`;
+  }
   sideList.innerHTML=translateText(html);
 }
-function onSideListClick(e){
+async function onSideListClick(e){
+  const sidePanel=e.target.closest('[data-side-panel]');
+  if(sidePanel && sideList.contains(sidePanel)){
+    state.sidePanelView=sidePanel.dataset.sidePanel||'materials';
+    renderSide();
+    e.stopPropagation();
+    return;
+  }
+  const materialFilter=e.target.closest('[data-material-filter]');
+  if(materialFilter && sideList.contains(materialFilter)){state.materialType=materialFilter.dataset.materialFilter||'all'; renderSide(); e.stopPropagation(); return;}
+  const reviewFilter=e.target.closest('[data-review-filter]');
+  if(reviewFilter && sideList.contains(reviewFilter)){state.reviewFilter=reviewFilter.dataset.reviewFilter||'all'; renderSide(); e.stopPropagation(); return;}
+  const competitorFilter=e.target.closest('[data-competitor-filter]');
+  if(competitorFilter && sideList.contains(competitorFilter)){state.competitorFilter=competitorFilter.dataset.competitorFilter||'all'; renderSide(); e.stopPropagation(); return;}
+  const competitorAdd=e.target.closest('[data-competitor-add]');
+  if(competitorAdd && sideList.contains(competitorAdd)){openCompetitorProfileModal(); e.stopPropagation(); return;}
+  const competitorEdit=e.target.closest('[data-competitor-edit]');
+  if(competitorEdit && sideList.contains(competitorEdit)){openCompetitorProfileModal(competitorEdit.dataset.competitorEdit); e.stopPropagation(); return;}
+  const competitorArchive=e.target.closest('[data-competitor-archive]');
+  if(competitorArchive && sideList.contains(competitorArchive)){if(!guardAdmin()) return; archiveCompetitorProfile(REPORT,competitorArchive.dataset.competitorArchive); refresh(); toast('Competitor archived'); e.stopPropagation(); return;}
+  const competitorSummary=e.target.closest('[data-competitor-summary]');
+  if(competitorSummary && sideList.contains(competitorSummary)){if(!guardAdmin()) return; const block=addCompetitorProfileSummaryToDraft(REPORT,competitorSummary.dataset.competitorSummary); refresh(); toast(block?'Competitor summary added as needs-review draft':'Could not add competitor summary'); e.stopPropagation(); return;}
+  const matrixFilter=e.target.closest('[data-matrix-filter]');
+  if(matrixFilter && sideList.contains(matrixFilter)){state.matrixFilter=matrixFilter.dataset.matrixFilter||'all'; renderSide(); e.stopPropagation(); return;}
+  const matrixAddCompetitor=e.target.closest('[data-matrix-add-competitor]');
+  if(matrixAddCompetitor && sideList.contains(matrixAddCompetitor)){openMatrixCompetitorModal(); e.stopPropagation(); return;}
+  const matrixAddTier=e.target.closest('[data-matrix-add-tier]');
+  if(matrixAddTier && sideList.contains(matrixAddTier)){openMatrixPricingTierModal(); e.stopPropagation(); return;}
+  const matrixAddRow=e.target.closest('[data-matrix-add-row]');
+  if(matrixAddRow && sideList.contains(matrixAddRow)){openMatrixFeatureRowModal(); e.stopPropagation(); return;}
+  const matrixCell=e.target.closest('[data-matrix-cell]');
+  if(matrixCell && sideList.contains(matrixCell)){openMatrixCellModal(matrixCell.dataset.matrixCell,matrixCell.dataset.company); e.stopPropagation(); return;}
+  const matrixSummary=e.target.closest('[data-matrix-summary]');
+  if(matrixSummary && sideList.contains(matrixSummary)){if(!guardAdmin()) return; const block=addPricingFeatureMatrixSummaryToDraft(REPORT); refresh(); toast(block?'Matrix summary added as needs-review draft':'Could not add matrix summary'); e.stopPropagation(); return;}
+  const qType=e.target.closest('[data-aiq-type]');
+  if(qType && sideList.contains(qType)){state.aiQueueType=qType.dataset.aiqType||'all'; renderSide(); e.stopPropagation(); return;}
+  const qStatus=e.target.closest('[data-aiq-status]');
+  if(qStatus && sideList.contains(qStatus)){state.aiQueueStatus=qStatus.dataset.aiqStatus||'all'; renderSide(); e.stopPropagation(); return;}
+  const auditFilter=e.target.closest('[data-audit-filter]');
+  if(auditFilter && sideList.contains(auditFilter)){state.aiAuditFilter=auditFilter.dataset.auditFilter||'all'; renderSide(); e.stopPropagation(); return;}
+  const auditProvenance=e.target.closest('[data-audit-provenance]');
+  if(auditProvenance && sideList.contains(auditProvenance)){
+    const suggestionId=auditProvenance.dataset.auditProvenance;
+    const provenance=getAiSuggestionProvenance(REPORT,suggestionId);
+    const events=getAiAuditEventsBySuggestionId(REPORT,suggestionId);
+    const body=provenance
+      ? `<div class="formGrid"><div class="field"><label>Task type</label><input readonly value="${esc(provenance.taskType)}"></div><div class="field"><label>Provider mode</label><input readonly value="${esc(provenance.providerMode)}"></div><div class="field full"><label>Input refs</label><pre style="white-space:pre-wrap;max-height:18vh;overflow:auto">${esc(JSON.stringify(provenance.inputRefs,null,2))}</pre></div><div class="field full"><label>Output refs</label><pre style="white-space:pre-wrap;max-height:18vh;overflow:auto">${esc(JSON.stringify(provenance.outputRefs,null,2))}</pre></div><div class="field full"><label>Review history</label><pre style="white-space:pre-wrap;max-height:18vh;overflow:auto">${esc(JSON.stringify(events.map(event=>({eventType:event.eventType,statusBefore:event.statusBefore,statusAfter:event.statusAfter,createdAt:event.createdAt,warnings:event.warnings})),null,2))}</pre></div></div>`
+      : '<div class="empty">No provenance available.</div>';
+    openModal('Suggestion provenance',body,'<button class="btn primary" id="closeAuditProvenance">Close</button>');
+    $('closeAuditProvenance').onclick=closeModal;
+    e.stopPropagation(); return;
+  }
+  const versionDiffFilter=e.target.closest('[data-version-diff-filter]');
+  if(versionDiffFilter && sideList.contains(versionDiffFilter)){state.versionDiffFilter=versionDiffFilter.dataset.versionDiffFilter||'all'; renderSide(); e.stopPropagation(); return;}
+  const versionDiffCopy=e.target.closest('[data-version-diff-copy]');
+  if(versionDiffCopy && sideList.contains(versionDiffCopy)){
+    if(!guardAdmin()) return;
+    const diff=getCurrentVersionDiff();
+    const text=[`Risk: ${versionDiffRiskLabel(diff.riskLevel)}`,diff.summary,`Sections changed: ${getChangedSectionLabels(diff).join(', ')||'none'}`,`Evidence changed: ${getChangedEvidenceLabels(diff).join(', ')||'none'}`,`Sources changed: ${getChangedSourceLabels(diff).join(', ')||'none'}`,`Readiness: ${diff.qualityChecklistChanges.readinessBefore} -> ${diff.qualityChecklistChanges.readinessAfter}`].join('\n');
+    if(navigator.clipboard?.writeText) navigator.clipboard.writeText(text).then(()=>toast('Diff summary copied')).catch(()=>promptI18n('Copy diff summary',text));
+    else promptI18n('Copy diff summary',text);
+    e.stopPropagation(); return;
+  }
+  const versionDiffDownload=e.target.closest('[data-version-diff-download]');
+  if(versionDiffDownload && sideList.contains(versionDiffDownload)){
+    if(!guardAdmin()) return;
+    const diff=sanitizeInternalAuditExport(getCurrentVersionDiff());
+    download('report-version-diff.json',JSON.stringify(diff,null,2),'application/json;charset=utf-8');
+    toast('Version diff JSON downloaded');
+    e.stopPropagation(); return;
+  }
+  const versionRestorePreview=e.target.closest('[data-version-restore-preview]');
+  if(versionRestorePreview && sideList.contains(versionRestorePreview)){
+    if(!guardAdmin()) return;
+    openRestoreVersionPreview();
+    e.stopPropagation(); return;
+  }
+  const versionDiffBaseline=e.target.closest('[data-version-diff-baseline]');
+  if(versionDiffBaseline && sideList.contains(versionDiffBaseline)){
+    if(!guardAdmin()) return;
+    VERSION_DIFF_BASELINE_REPORT=normalizeReport(clone(REPORT));
+    VERSION_DIFF_BASELINE=createReportVersionSnapshot(REPORT);
+    renderSide();
+    toast('Version diff baseline updated');
+    e.stopPropagation(); return;
+  }
+  const retentionPreview=e.target.closest('[data-retention-preview]');
+  if(retentionPreview && sideList.contains(retentionPreview)){
+    if(!guardAdmin()) return;
+    const versions=localReportVersionsForRetention(REPORT);
+    const policy=normalizeVersionRetentionPolicy(REPORT);
+    const preview=buildVersionCleanupPreview(REPORT,versions,policy);
+    appendAiAuditEvent(REPORT,createVersionCleanupAuditEvent({reportData:REPORT,action:'version_cleanup_previewed',versionIds:preview.versions.map(item=>item.versionId),reason:'Preview-only retention review',retentionPolicySnapshot:policy}));
+    renderSide();
+    toast(`Cleanup preview: ${preview.cleanupCandidates} cleanup candidate(s), ${preview.protectedVersions} protected`);
+    e.stopPropagation(); return;
+  }
+  const retentionPin=e.target.closest('[data-retention-pin]');
+  if(retentionPin && sideList.contains(retentionPin)){
+    if(!guardAdmin()) return;
+    pinVersionForRetention(REPORT,retentionPin.dataset.retentionPin);
+    renderSide();
+    toast('Version pinned');
+    e.stopPropagation(); return;
+  }
+  const retentionUnpin=e.target.closest('[data-retention-unpin]');
+  if(retentionUnpin && sideList.contains(retentionUnpin)){
+    if(!guardAdmin()) return;
+    unpinVersionForRetention(REPORT,retentionUnpin.dataset.retentionUnpin);
+    renderSide();
+    toast('Version unpinned');
+    e.stopPropagation(); return;
+  }
+  const openOnboarding=e.target.closest('[data-open-onboarding]');
+  if(openOnboarding && sideList.contains(openOnboarding)){
+    if(!canCurrentUserRunOnboarding(REPORT)){toast('Only owner can run workspace setup by default.'); e.stopPropagation(); return;}
+    openOnboardingWizard('welcome');
+    e.stopPropagation(); return;
+  }
+  const firstReportShow=e.target.closest('[data-first-report-show]');
+  if(firstReportShow && sideList.contains(firstReportShow)){
+    if(!guardAdmin()) return;
+    const flow=normalizeFirstReportFlowState(REPORT);
+    flow.enabled=true; flow.dismissed=false; flow.dismissedAt=null; flow.updatedAt=new Date().toISOString();
+    renderSide(); toast('First report guide shown'); e.stopPropagation(); return;
+  }
+  const firstReportAction=e.target.closest('[data-first-report-action]');
+  if(firstReportAction && sideList.contains(firstReportAction)){
+    performFirstReportAction(firstReportAction.dataset.firstReportAction);
+    e.stopPropagation(); return;
+  }
+  const firstReportUpload=e.target.closest('[data-first-report-upload]');
+  if(firstReportUpload && sideList.contains(firstReportUpload)){if(!guardAdmin()) return; openDataModal(); e.stopPropagation(); return;}
+  const firstReportPaste=e.target.closest('[data-first-report-paste]');
+  if(firstReportPaste && sideList.contains(firstReportPaste)){if(!guardAdmin()) return; openPasteModal(); e.stopPropagation(); return;}
+  const firstReportFolder=e.target.closest('[data-first-report-folder]');
+  if(firstReportFolder && sideList.contains(firstReportFolder)){if(!guardAdmin()) return; pickAndConnectFolder(); e.stopPropagation(); return;}
+  const firstReportSkip=e.target.closest('[data-first-report-skip]');
+  if(firstReportSkip && sideList.contains(firstReportSkip)){
+    if(!guardAdmin()) return;
+    const flow=normalizeFirstReportFlowState(REPORT);
+    const stepId=firstReportSkip.dataset.firstReportSkip;
+    if(FIRST_REPORT_STEPS.includes(stepId) && !flow.skippedStepIds.includes(stepId)) flow.skippedStepIds.push(stepId);
+    flow.currentStepId=getNextRecommendedFirstReportStep(REPORT);
+    flow.updatedAt=new Date().toISOString();
+    renderSide(); toast('Guide step skipped'); e.stopPropagation(); return;
+  }
+  const firstReportHide=e.target.closest('[data-first-report-hide]');
+  if(firstReportHide && sideList.contains(firstReportHide)){
+    if(!guardAdmin()) return;
+    const flow=normalizeFirstReportFlowState(REPORT);
+    flow.dismissed=true; flow.dismissedAt=new Date().toISOString(); flow.updatedAt=flow.dismissedAt;
+    renderSide(); toast('First report guide hidden'); e.stopPropagation(); return;
+  }
+  const governanceSave=e.target.closest('[data-governance-save]');
+  if(governanceSave && sideList.contains(governanceSave)){
+    if(!canCurrentUserManageGovernance(REPORT)){toast('Only owner can manage governance settings by default.'); e.stopPropagation(); return;}
+    const result=updateGovernanceSettings(REPORT,getGovernanceSettings(REPORT));
+    if(!result.ok){toast(result.errors?.[0]||'Governance settings rejected'); e.stopPropagation(); return;}
+    renderSide();
+    toast('Governance settings saved');
+    e.stopPropagation(); return;
+  }
+  const governanceReset=e.target.closest('[data-governance-reset]');
+  if(governanceReset && sideList.contains(governanceReset)){
+    if(!canCurrentUserManageGovernance(REPORT)){toast('Only owner can manage governance settings by default.'); e.stopPropagation(); return;}
+    if(!confirmI18n('Reset governance settings to safe defaults?')){e.stopPropagation(); return;}
+    REPORT.governanceSettings=createDefaultGovernanceSettings();
+    normalizeGovernanceSettings(REPORT);
+    appendAiAuditEvent(REPORT,createAiAuditEvent(REPORT,{eventType:'governance_settings_reset_to_defaults',provider:'local',providerMode:'disabled',generatedBy:'manual',notes:'Governance settings reset to safe defaults.'}));
+    renderSide();
+    toast('Governance settings reset');
+    e.stopPropagation(); return;
+  }
+  const qDetail=e.target.closest('[data-aiq-detail]');
+  if(qDetail && sideList.contains(qDetail)){
+    const item=getAiReviewQueueItemById(REPORT,qDetail.dataset.aiqDetail);
+    if(item) openModal('AI suggestion details',`<pre style="white-space:pre-wrap;max-height:50vh;overflow:auto">${esc(JSON.stringify(item,null,2))}</pre>`,'<button class="btn primary" id="closeAiQueueDetails">Close</button>'),$('closeAiQueueDetails').onclick=closeModal;
+    e.stopPropagation(); return;
+  }
+  const qEdit=e.target.closest('[data-aiq-edit]');
+  if(qEdit && sideList.contains(qEdit)){
+    if(!guardAdmin()) return;
+    const item=getAiReviewQueueItemById(REPORT,qEdit.dataset.aiqEdit);
+    if(item) openModal('Edit AI suggestion',`<div class="formGrid"><div class="field full"><label>Title</label><input id="aiqTitle" value="${esc(item.title)}"></div><div class="field full"><label>Summary</label><textarea id="aiqSummary" rows="3">${esc(item.summary)}</textarea></div><div class="field full"><label>Text / claim / recommendation</label><textarea id="aiqText" rows="4">${esc(item.payload.claim||item.payload.recommendation||item.payload.text||item.payload.description||'')}</textarea></div><div class="field full"><label>Analyst notes</label><textarea id="aiqNotes" rows="3">${esc(item.analystNotes)}</textarea></div></div>`,'<button class="btn" id="cancelAiqEdit">Cancel</button><button class="btn primary" id="saveAiqEdit">Save</button>'),$('cancelAiqEdit').onclick=closeModal,$('saveAiqEdit').onclick=()=>{const payload={...item.payload}; const text=$('aiqText').value; if(item.suggestionType==='evidence_candidate') payload.claim=text; else if(item.suggestionType==='recommendation') payload.recommendation=text; else if(['executive_summary','section_draft'].includes(item.suggestionType)) payload.text=text; else if(item.suggestionType==='source_coverage_gap') payload.description=text; editAiReviewQueueItem(REPORT,item.id,{title:$('aiqTitle').value,summary:$('aiqSummary').value,analystNotes:$('aiqNotes').value,payload}); refresh(); closeModal(); toast('Suggestion updated');};
+    e.stopPropagation(); return;
+  }
+  const qAccept=e.target.closest('[data-aiq-accept]');
+  if(qAccept && sideList.contains(qAccept)){if(!guardAdmin()) return; acceptAiReviewQueueItem(REPORT,qAccept.dataset.aiqAccept); refresh(); toast('Suggestion accepted'); e.stopPropagation(); return;}
+  const qReject=e.target.closest('[data-aiq-reject]');
+  if(qReject && sideList.contains(qReject)){if(!guardAdmin()) return; const reason=promptI18n('Optional rejection reason','')||''; rejectAiReviewQueueItem(REPORT,qReject.dataset.aiqReject,reason); refresh(); toast('Suggestion rejected'); e.stopPropagation(); return;}
+  const qConvert=e.target.closest('[data-aiq-convert]');
+  if(qConvert && sideList.contains(qConvert)){if(!guardAdmin()) return; acceptAiReviewQueueItem(REPORT,qConvert.dataset.aiqConvert); const result=convertAcceptedSuggestion(REPORT,qConvert.dataset.aiqConvert); refresh(); toast(result.converted?'Suggestion converted for review':(result.error||'Could not convert suggestion')); e.stopPropagation(); return;}
+  const reviewStatusBtn=e.target.closest('[data-review-status]');
+  if(reviewStatusBtn && sideList.contains(reviewStatusBtn)){
+    if(!guardAdmin()) return;
+    const cardId=reviewStatusBtn.dataset.id;
+    const notes=sideList.querySelector(`[data-review-notes="${CSS.escape(cardId)}"]`)?.value||'';
+    const status=reviewStatusBtn.dataset.reviewStatus;
+    let card=null;
+    if(status==='approved') card=approveEvidenceCard(REPORT,cardId);
+    else if(status==='needs_review') card=markEvidenceNeedsReview(REPORT,cardId);
+    else if(status==='rejected') card=rejectEvidenceCard(REPORT,cardId);
+    if(card){
+      updateEvidenceAnalystNotes(REPORT,cardId,notes);
+      if(status==='rejected') updateEvidenceCard(REPORT,cardId,{rejectionReason:notes});
+      refresh();
+      toast(`Evidence marked ${status.replace(/_/g,' ')}`);
+    }
+    e.stopPropagation();
+    return;
+  }
+  const reviewSave=e.target.closest('[data-review-save]');
+  if(reviewSave && sideList.contains(reviewSave)){
+    if(!guardAdmin()) return;
+    const cardId=reviewSave.dataset.reviewSave;
+    const notes=sideList.querySelector(`[data-review-notes="${CSS.escape(cardId)}"]`)?.value||'';
+    updateEvidenceAnalystNotes(REPORT,cardId,notes);
+    const card=getEvidenceCardById(REPORT,cardId);
+    if(card?.reviewStatus==='rejected') updateEvidenceCard(REPORT,cardId,{rejectionReason:notes});
+    refresh();
+    toast('Review notes saved');
+    e.stopPropagation();
+    return;
+  }
+  const draftBuild=e.target.closest('[data-draft-build]');
+  if(draftBuild && sideList.contains(draftBuild)){
+    if(!guardAdmin()) return;
+    const approved=getApprovedEvidenceCards(REPORT);
+    if(!approved.length){toast('Approve evidence cards first, then build a draft report.'); e.stopPropagation(); return;}
+    const result=buildRuleBasedReportDraft(REPORT);
+    refresh();
+    toast(result.blocksCreated?`Built ${result.blocksCreated} draft blocks`:'No draft blocks created');
+    e.stopPropagation();
+    return;
+  }
+  const draftClear=e.target.closest('[data-draft-clear]');
+  if(draftClear && sideList.contains(draftClear)){
+    if(!guardAdmin()) return;
+    const removed=clearGeneratedDraftBlocks(REPORT);
+    refresh();
+    toast(removed?`Cleared ${removed} generated draft blocks`:'No generated draft blocks to clear');
+    e.stopPropagation();
+    return;
+  }
+  const sourceRefresh=e.target.closest('[data-source-refresh]');
+  if(sourceRefresh && sideList.contains(sourceRefresh)){if(!guardAdmin()) return; collectMaterialsFromCurrentState(REPORT,state.fsRoots); buildSourcesFromMaterials(REPORT); refresh(); toast('Sources refreshed from materials'); e.stopPropagation(); return;}
+  const aiPreview=e.target.closest('[data-ai-preview-candidates]');
+  if(aiPreview && sideList.contains(aiPreview)){
+    if(!guardAdmin()) return;
+    const result=await requestEvidenceCandidatePreview({mode:state.aiStatus?.currentMode||'dry_run'});
+    if(!result.ok){toast(result.errors?.[0]||'AI preview is unavailable.'); e.stopPropagation(); return;}
+    refresh();
+    toast(result.output.candidates.length?`Previewed ${result.output.candidates.length} candidate evidence item${result.output.candidates.length===1?'':'s'}`:'No evidence candidates found');
+    e.stopPropagation();
+    return;
+  }
+  const aiAdd=e.target.closest('[data-ai-add-candidates]');
+  if(aiAdd && sideList.contains(aiAdd)){
+    if(!guardAdmin()) return;
+    const ids=[...sideList.querySelectorAll('[data-ai-candidate-check]:checked')].map(input=>input.dataset.aiCandidateCheck).filter(Boolean);
+    if(!ids.length){toast('Select candidate evidence first.'); e.stopPropagation(); return;}
+    const result=addSelectedEvidenceCandidates(REPORT,ids);
+    if(result.errors?.length){toast(result.errors[0]); e.stopPropagation(); return;}
+    refresh();
+    toast(`Added ${result.added} candidate${result.added===1?'':'s'} to Evidence Cards for review`);
+    e.stopPropagation();
+    return;
+  }
+  const aiQueueCandidates=e.target.closest('[data-ai-queue-candidates]');
+  if(aiQueueCandidates && sideList.contains(aiQueueCandidates)){if(!guardAdmin()) return; const ids=[...sideList.querySelectorAll('[data-ai-candidate-check]:checked')].map(input=>input.dataset.aiCandidateCheck).filter(Boolean); if(!ids.length){toast('Select candidate evidence first.'); e.stopPropagation(); return;} const added=queueSelectedPreviewItems(REPORT,'evidence_candidate',ids); refresh(); toast(`Queued ${added.length} suggestion${added.length===1?'':'s'} for review`); e.stopPropagation(); return;}
+  const aiRecommendations=e.target.closest('[data-ai-preview-recommendations]');
+  if(aiRecommendations && sideList.contains(aiRecommendations)){
+    if(!guardAdmin()) return;
+    const result=await requestRecommendationPreview({mode:state.aiStatus?.currentMode||'dry_run'});
+    if(!result.ok){toast(result.errors?.[0]||'AI recommendation preview is unavailable.'); e.stopPropagation(); return;}
+    refresh();
+    toast(result.output.recommendations.length?`Previewed ${result.output.recommendations.length} recommendation${result.output.recommendations.length===1?'':'s'}`:'No recommendations suggested');
+    e.stopPropagation();
+    return;
+  }
+  const aiAddRecommendations=e.target.closest('[data-ai-add-recommendations]');
+  if(aiAddRecommendations && sideList.contains(aiAddRecommendations)){
+    if(!guardAdmin()) return;
+    const ids=[...sideList.querySelectorAll('[data-ai-recommendation-check]:checked')].map(input=>input.dataset.aiRecommendationCheck).filter(Boolean);
+    if(!ids.length){toast('Select recommendation suggestions first.'); e.stopPropagation(); return;}
+    const result=addSelectedRecommendationsToDraft(REPORT,ids);
+    if(result.errors?.length){toast(result.errors[0]); e.stopPropagation(); return;}
+    refresh();
+    toast(`Added ${result.added} recommendation${result.added===1?'':'s'} to draft for review`);
+    e.stopPropagation();
+    return;
+  }
+  const aiQueueRecommendations=e.target.closest('[data-ai-queue-recommendations]');
+  if(aiQueueRecommendations && sideList.contains(aiQueueRecommendations)){if(!guardAdmin()) return; const ids=[...sideList.querySelectorAll('[data-ai-recommendation-check]:checked')].map(input=>input.dataset.aiRecommendationCheck).filter(Boolean); if(!ids.length){toast('Select recommendation suggestions first.'); e.stopPropagation(); return;} const added=queueSelectedPreviewItems(REPORT,'recommendation',ids); refresh(); toast(`Queued ${added.length} suggestion${added.length===1?'':'s'} for review`); e.stopPropagation(); return;}
+  const aiSummary=e.target.closest('[data-ai-preview-summary]');
+  if(aiSummary && sideList.contains(aiSummary)){
+    if(!guardAdmin()) return;
+    const result=await requestExecutiveSummaryPreview({mode:state.aiStatus?.currentMode||'dry_run'});
+    if(!result.ok){toast(result.errors?.[0]||'AI executive summary preview is unavailable.'); e.stopPropagation(); return;}
+    refresh();
+    toast(result.output.summaryBlocks.length?`Previewed ${result.output.summaryBlocks.length} summary block${result.output.summaryBlocks.length===1?'':'s'}`:'No summary blocks suggested');
+    e.stopPropagation();
+    return;
+  }
+  const aiAddSummary=e.target.closest('[data-ai-add-summary]');
+  if(aiAddSummary && sideList.contains(aiAddSummary)){
+    if(!guardAdmin()) return;
+    const ids=[...sideList.querySelectorAll('[data-ai-summary-check]:checked')].map(input=>input.dataset.aiSummaryCheck).filter(Boolean);
+    if(!ids.length){toast('Select summary blocks first.'); e.stopPropagation(); return;}
+    const result=addSelectedSummaryBlocksToDraft(REPORT,ids);
+    if(result.errors?.length){toast(result.errors[0]); e.stopPropagation(); return;}
+    refresh();
+    toast(`Added ${result.added} summary block${result.added===1?'':'s'} to draft for review`);
+    e.stopPropagation();
+    return;
+  }
+  const aiQueueSummary=e.target.closest('[data-ai-queue-summary]');
+  if(aiQueueSummary && sideList.contains(aiQueueSummary)){if(!guardAdmin()) return; const ids=[...sideList.querySelectorAll('[data-ai-summary-check]:checked')].map(input=>input.dataset.aiSummaryCheck).filter(Boolean); if(!ids.length){toast('Select summary blocks first.'); e.stopPropagation(); return;} const added=queueSelectedPreviewItems(REPORT,'executive_summary',ids); refresh(); toast(`Queued ${added.length} suggestion${added.length===1?'':'s'} for review`); e.stopPropagation(); return;}
+  const aiCoverage=e.target.closest('[data-ai-preview-coverage]');
+  if(aiCoverage && sideList.contains(aiCoverage)){
+    if(!guardAdmin()) return;
+    const result=await requestSourceCoveragePreview({mode:state.aiStatus?.currentMode||'dry_run'});
+    if(!result.ok){toast(result.errors?.[0]||'AI source coverage preview is unavailable.'); e.stopPropagation(); return;}
+    refresh();
+    toast(`Coverage preview: ${result.output.overallCoverageStatus} (${result.output.coverageScore}%)`);
+    e.stopPropagation();
+    return;
+  }
+  const aiAddGaps=e.target.closest('[data-ai-add-gaps]');
+  if(aiAddGaps && sideList.contains(aiAddGaps)){
+    if(!guardAdmin()) return;
+    const ids=[...sideList.querySelectorAll('[data-ai-gap-check]:checked')].map(input=>input.dataset.aiGapCheck).filter(Boolean);
+    if(!ids.length){toast('Select coverage gaps first.'); e.stopPropagation(); return;}
+    const result=addSelectedCoverageGapsToSuggestions(REPORT,ids);
+    if(result.errors?.length){toast(result.errors[0]); e.stopPropagation(); return;}
+    refresh();
+    toast(`Added ${result.added} coverage gap${result.added===1?'':'s'} for review`);
+    e.stopPropagation();
+    return;
+  }
+  const aiQueueGaps=e.target.closest('[data-ai-queue-gaps]');
+  if(aiQueueGaps && sideList.contains(aiQueueGaps)){if(!guardAdmin()) return; const ids=[...sideList.querySelectorAll('[data-ai-gap-check]:checked')].map(input=>input.dataset.aiGapCheck).filter(Boolean); if(!ids.length){toast('Select coverage gaps first.'); e.stopPropagation(); return;} const added=queueSelectedPreviewItems(REPORT,'source_coverage_gap',ids); refresh(); toast(`Queued ${added.length} suggestion${added.length===1?'':'s'} for review`); e.stopPropagation(); return;}
+  const aiSectionDraft=e.target.closest('[data-ai-preview-section-draft]');
+  if(aiSectionDraft && sideList.contains(aiSectionDraft)){
+    if(!guardAdmin()) return;
+    const result=await requestSectionDraftPreview({selectedSectionId:state.aiSectionId,mode:state.aiStatus?.currentMode||'dry_run'});
+    if(!result.ok){toast(result.errors?.[0]||'AI section draft preview is unavailable.'); e.stopPropagation(); return;}
+    refresh();
+    toast(result.output.draftBlocks.length?`Previewed ${result.output.draftBlocks.length} section draft block${result.output.draftBlocks.length===1?'':'s'}`:'No section draft blocks suggested');
+    e.stopPropagation();
+    return;
+  }
+  const aiAddSectionBlocks=e.target.closest('[data-ai-add-section-blocks]');
+  if(aiAddSectionBlocks && sideList.contains(aiAddSectionBlocks)){
+    if(!guardAdmin()) return;
+    const ids=[...sideList.querySelectorAll('[data-ai-section-block-check]:checked')].map(input=>input.dataset.aiSectionBlockCheck).filter(Boolean);
+    if(!ids.length){toast('Select section draft blocks first.'); e.stopPropagation(); return;}
+    const result=addSelectedSectionDraftBlocks(REPORT,ids);
+    if(result.errors?.length){toast(result.errors[0]); e.stopPropagation(); return;}
+    refresh();
+    toast(`Added ${result.added} section draft block${result.added===1?'':'s'} for review`);
+    e.stopPropagation();
+    return;
+  }
+  const aiQueueSectionBlocks=e.target.closest('[data-ai-queue-section-blocks]');
+  if(aiQueueSectionBlocks && sideList.contains(aiQueueSectionBlocks)){if(!guardAdmin()) return; const ids=[...sideList.querySelectorAll('[data-ai-section-block-check]:checked')].map(input=>input.dataset.aiSectionBlockCheck).filter(Boolean); if(!ids.length){toast('Select section draft blocks first.'); e.stopPropagation(); return;} const added=queueSelectedPreviewItems(REPORT,'section_draft',ids); refresh(); toast(`Queued ${added.length} suggestion${added.length===1?'':'s'} for review`); e.stopPropagation(); return;}
+  const evidenceAdd=e.target.closest('[data-evidence-add]');
+  if(evidenceAdd && sideList.contains(evidenceAdd)){if(!guardAdmin()) return; openEvidenceCardModal(); e.stopPropagation(); return;}
+  const evidenceEdit=e.target.closest('[data-evidence-edit]');
+  if(evidenceEdit && sideList.contains(evidenceEdit)){if(!guardAdmin()) return; openEvidenceCardModal(evidenceEdit.dataset.evidenceEdit); e.stopPropagation(); return;}
   const exportBtn=e.target.closest('[data-act="export-dataset"]');
   if(exportBtn && sideList.contains(exportBtn)){exportDatasetCsv(exportBtn.dataset.id); e.stopPropagation(); return;}
   const deleteDatasetBtn=e.target.closest('[data-act="delete-dataset"]');
@@ -3503,6 +9700,82 @@ function sanitizeHtml(s){
 }
 function blobUrl(f){const bin=atob(f.contentBase64||''); const arr=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i); return URL.createObjectURL(new Blob([arr],{type:f.type||'application/octet-stream'}));}
 function downloadStoredFile(f){const a=document.createElement('a'); const url=f.contentBase64?blobUrl(f):URL.createObjectURL(new Blob([f.contentText||''],{type:f.type||'text/plain'})); a.href=url; a.download=f.name; a.click(); setTimeout(()=>URL.revokeObjectURL(url),1000);}
+function evidenceCardFormHtml(card){
+  normalizeReportSchema(REPORT);
+  normalizeSourceRegistry(REPORT);
+  const sections=REPORT.reportSections||[];
+  const sources=REPORT.sourceRegistry?.items||[];
+  const sourceIds=new Set(card.sourceIds||[]);
+  const missingSourceIds=[...sourceIds].filter(id=>!sources.some(source=>source.id===id));
+  const sectionOptions=[
+    `<option value="">Unlinked section</option>`,
+    ...sections.map(section=>`<option value="${esc(section.id)}" ${card.sectionId===section.id?'selected':''}>${esc(section.title)}</option>`)
+  ].join('');
+  const sourceOptions=[
+    ...sources.map(source=>`<option value="${esc(source.id)}" ${sourceIds.has(source.id)?'selected':''}>${esc(source.title)}</option>`),
+    ...missingSourceIds.map(id=>`<option value="${esc(id)}" selected>Missing source: ${esc(id)}</option>`)
+  ].join('');
+  return `<div class="formGrid">
+    <div class="field full"><label>Claim</label><input id="evidenceClaim" value="${esc(card.claim)}" placeholder="Short evidence-backed claim"></div>
+    <div class="field full"><label>Summary</label><textarea id="evidenceSummary" rows="3" placeholder="Brief context or supporting detail">${esc(card.summary)}</textarea></div>
+    <div class="field"><label>Report section</label><select id="evidenceSection">${sectionOptions}</select></div>
+    <div class="field"><label>Evidence type</label><select id="evidenceType">${EVIDENCE_TYPES.map(type=>`<option value="${esc(type)}" ${card.evidenceType===type?'selected':''}>${esc(type.replace(/_/g,' '))}</option>`).join('')}</select></div>
+    <div class="field full"><label>Sources</label><select id="evidenceSources" multiple size="6">${sourceOptions||'<option disabled>No sources available yet</option>'}</select><div class="itemMeta">Hold Ctrl or Cmd to select multiple sources.</div></div>
+    <div class="field"><label>Review status</label><select id="evidenceReview">${EVIDENCE_REVIEW_STATUS.map(status=>`<option value="${esc(status)}" ${card.reviewStatus===status?'selected':''}>${esc(status)}</option>`).join('')}</select></div>
+    <div class="field"><label>Confidence</label><select id="evidenceConfidence">${EVIDENCE_CONFIDENCE_STATUS.map(status=>`<option value="${esc(status)}" ${card.confidenceStatus===status?'selected':''}>${esc(status)}</option>`).join('')}</select></div>
+    <div class="field"><label>Credibility</label><select id="evidenceCredibility">${EVIDENCE_CREDIBILITY_STATUS.map(status=>`<option value="${esc(status)}" ${card.credibilityStatus===status?'selected':''}>${esc(status)}</option>`).join('')}</select></div>
+    <div class="field"><label>Company / competitor ID</label><input id="evidenceCompany" value="${esc(card.companyId||card.competitorId||'')}" placeholder="Optional"></div>
+    <div class="field full"><label>Analyst notes</label><textarea id="evidenceNotes" rows="3" placeholder="Internal notes, caveats, or review comments">${esc(card.analystNotes)}</textarea></div>
+  </div>`;
+}
+function readEvidenceCardForm(existing){
+  const sourceIds=[...($('evidenceSources')?.selectedOptions||[])].map(option=>option.value).filter(Boolean);
+  const sourceMap=new Map((normalizeSourceRegistry(REPORT).items||[]).map(source=>[source.id,source]));
+  const materialIds=[...new Set(sourceIds.map(id=>sourceMap.get(id)?.materialId).filter(Boolean))];
+  const companyId=String($('evidenceCompany')?.value||'').trim();
+  return createEvidenceCard({
+    ...(existing||{}),
+    claim:String($('evidenceClaim')?.value||'').trim(),
+    summary:String($('evidenceSummary')?.value||'').trim(),
+    sourceIds,
+    sectionId:String($('evidenceSection')?.value||''),
+    materialIds,
+    companyId,
+    competitorId:companyId,
+    evidenceType:String($('evidenceType')?.value||'observation'),
+    reviewStatus:String($('evidenceReview')?.value||'draft'),
+    confidenceStatus:String($('evidenceConfidence')?.value||'unknown'),
+    credibilityStatus:String($('evidenceCredibility')?.value||'unreviewed'),
+    analystNotes:String($('evidenceNotes')?.value||'').trim(),
+    id:existing?.id||uid('evidence'),
+    createdAt:existing?.createdAt||new Date().toISOString(),
+    updatedAt:new Date().toISOString()
+  });
+}
+function openEvidenceCardModal(cardId){
+  const existing=cardId?getEvidenceCardById(REPORT,cardId):null;
+  const card=existing?normalizeEvidenceCardItem(existing):createEvidenceCard();
+  const deleteButton=existing?`<button class="btn danger" id="deleteEvidenceCard">Delete</button>`:'';
+  openModal(existing?'Edit evidence card':'Add evidence card', evidenceCardFormHtml(card), `${deleteButton}<button class="btn" id="cancelEvidenceCard">Cancel</button><button class="btn primary" id="saveEvidenceCard">Save evidence card</button>`);
+  $('cancelEvidenceCard').onclick=closeModal;
+  $('saveEvidenceCard').onclick=()=>{
+    const next=readEvidenceCardForm(existing);
+    const registry=normalizeEvidenceCards(REPORT);
+    if(existing) updateEvidenceCard(REPORT,existing.id,next);
+    else registry.items.push(next);
+    registry.updatedAt=new Date().toISOString();
+    refresh();
+    closeModal();
+    toast('Evidence card saved');
+  };
+  $('deleteEvidenceCard')?.addEventListener('click',()=>{
+    if(!existing) return;
+    deleteEvidenceCard(REPORT,existing.id);
+    refresh();
+    closeModal();
+    toast('Evidence card deleted');
+  });
+}
 let modalReturnFocus=null;
 function openModal(title, body, foot){modalReturnFocus=document.activeElement; $('modalTitle').textContent=translateText(title); $('modalBody').innerHTML=translateText(body); $('modalFoot').innerHTML=translateText(foot); $('modalBackdrop').classList.add('open'); requestAnimationFrame(()=>$('modalBody').querySelector('input,textarea,select,button')?.focus());}
 function closeModal(){const wasOpen=$('modalBackdrop').classList.contains('open'); $('modalBackdrop').classList.remove('open'); if(wasOpen&&modalReturnFocus?.focus) modalReturnFocus.focus(); modalReturnFocus=null;}
@@ -4577,6 +10850,13 @@ function saveProjectHtmlOnly(){
 }
 async function saveClientHtml(){
   if(!guardAdmin()) return;
+  const quality=runReportQualityChecklist(REPORT);
+  if(quality.blockers.length){
+    showNotice(`Client export blocked: ${quality.blockers[0].message}`,'error');
+    toast('Fix export blockers before client export');
+    return;
+  }
+  if(quality.warnings.length) showNotice(`Client export has warnings: ${quality.warnings[0].message}`,'info');
   const titleBase=(REPORT.meta.title||'marketing-report-client').replace(/[^a-z0-9а-яіїєґ_-]+/gi,'-');
   const oldAccess=state.access;
   const oldMetaAccess=REPORT.meta.accessMode;
@@ -4585,7 +10865,8 @@ async function saveClientHtml(){
 
   try{
     toast('Готую архів для клієнта...');
-    const {report:packedReport, zipEntries}=await buildClientBundleFromFs(exportReportSnapshot());
+    let {report:packedReport, zipEntries}=await buildClientBundleFromFs(exportReportSnapshot());
+    packedReport=prepareClientExportReportV2(packedReport);
     packedReport.meta=packedReport.meta||{};
     packedReport.meta.accessMode='viewer';
     packedReport.meta.clientLocked=true;
@@ -4612,6 +10893,8 @@ async function saveClientHtml(){
     }
     const blob=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}});
     download(`${titleBase}-client-bundle.zip`, blob, 'application/zip');
+    REPORT.meta.clientExportedAt=new Date().toISOString();
+    markFirstReportStepComplete(REPORT,'exportClientReport');
     toast(`Готово: архів створено (${zipEntries.length} файлів)`);
   }catch(e){
     console.error(e);
@@ -4625,8 +10908,102 @@ async function saveClientHtml(){
     refresh();
   }
 }
+async function saveClientPackage(){
+  if(!guardAdmin()) return;
+  const quality=runReportQualityChecklist(REPORT);
+  if(quality.blockers.length){
+    showNotice(t('clientPackageBlocked',{message:translateText(quality.blockers[0].message)}),'error');
+    toast(t('fixClientPackageBlockers'));
+    return;
+  }
+  if(quality.warnings.length) showNotice(t('clientPackageWarnings',{message:translateText(quality.warnings[0].message)}),'info');
+  const titleBase=(REPORT.meta.title||'marketing-report-client-package').replace(/[^a-z0-9Р°-СЏС–С—С”Т‘_-]+/gi,'-');
+  const oldAccess=state.access;
+  const oldMetaAccess=REPORT.meta.accessMode;
+  const oldData=$('reportData').textContent;
+  const oldDataset=state.activeDataset;
+
+  try{
+    if(typeof JSZip==='undefined') throw new Error(t('jszipClientPackageUnavailable'));
+    toast(t('preparingClientPackage'));
+    let {report:packedReport, zipEntries}=await buildClientBundleFromFs(exportReportSnapshot());
+    packedReport=sanitizeClientExportData(packedReport);
+    packedReport.meta=packedReport.meta||{};
+    packedReport.meta.accessMode='viewer';
+    packedReport.meta.clientLocked=true;
+    packedReport.meta.clientExportedAt=new Date().toISOString();
+    packedReport.meta.activeDataset=oldDataset||packedReport.meta.activeDataset||packedReport.datasets?.[0]?.id||null;
+
+    state.access='viewer';
+    REPORT.meta.accessMode='viewer';
+    app.dataset.access='viewer';
+    $('reportData').textContent=serializeReportData(packedReport);
+    const html='<!doctype html>\n'+document.documentElement.outerHTML;
+
+    const blob=await buildClientPackageZip(packedReport, html, zipEntries);
+    download(`${titleBase}-client-package.zip`, blob, 'application/zip');
+    REPORT.meta.clientPackageExportedAt=new Date().toISOString();
+    markFirstReportStepComplete(REPORT,'exportClientReport');
+    toast(t('clientPackageCreated',{files:zipEntries.length}));
+  }catch(e){
+    console.error(e);
+    toast(e?.message||t('couldNotBuildClientPackage'));
+  }finally{
+    state.access=oldAccess;
+    REPORT.meta.accessMode=oldMetaAccess;
+    app.dataset.access=oldAccess;
+    $('reportData').textContent=oldData;
+    persistNow();
+    refresh();
+  }
+}
+async function exportInternalAuditPackage(){
+  if(!guardAdmin()) return;
+  if(isClientLocked()){toast(t('internalAuditUnavailableClientLocked')); return;}
+  if(!confirmI18n(t('internalAuditConfirm'))) return;
+  const titleBase=(REPORT.meta.title||'marketing-report-internal-audit').replace(/[^a-z0-9а-яіїєґ_-]+/gi,'-');
+  try{
+    toast(t('buildingInternalAuditPackage'));
+    const blob=await buildInternalAuditPackage(exportReportSnapshot());
+    download(`${titleBase}-internal-audit-package.zip`, blob, 'application/zip');
+    toast(t('internalAuditPackageExported'));
+  }catch(e){
+    console.error(e);
+    showNotice(t('internalAuditPackageFailed',{message:e?.message||e}),'error');
+    toast(e?.message||t('couldNotBuildInternalAuditPackage'));
+  }
+}
 function exportJson(){if(!guardAdmin()) return; const snapshot=persistedReportSnapshot(); download('ci-os-unified-data.json',JSON.stringify(snapshot.ci,null,2),'application/json;charset=utf-8')}
-function setupResizers(){const layout=$('layout'); let drag=null; $('splitX').addEventListener('pointerdown',e=>{drag='x'; e.preventDefault();}); $('splitY').addEventListener('pointerdown',e=>{drag='y'; e.preventDefault();}); window.addEventListener('pointermove',e=>{if(!drag) return; const r=layout.getBoundingClientRect(); if(drag==='x'){const side=Math.min(520,Math.max(220,r.right-e.clientX-10)); document.documentElement.style.setProperty('--side',side+'px');} else {const top=Math.min(90,Math.max(15,((e.clientY-r.top)/r.height)*100)); document.documentElement.style.setProperty('--top',top+'%');}}); window.addEventListener('pointerup',()=>drag=null);}
+function setupResizers(){
+  const layout=$('layout');
+  let drag=null;
+  let frame=null;
+  let lastPointer=null;
+  const applyDrag=()=>{
+    frame=null;
+    if(!drag || !lastPointer) return;
+    const r=layout.getBoundingClientRect();
+    if(drag==='x'){
+      const side=Math.min(520,Math.max(220,r.right-lastPointer.clientX-10));
+      document.documentElement.style.setProperty('--side',side+'px');
+    }else{
+      const top=Math.min(90,Math.max(15,((lastPointer.clientY-r.top)/r.height)*100));
+      document.documentElement.style.setProperty('--top',top+'%');
+    }
+  };
+  const queueDrag=e=>{
+    lastPointer={clientX:e.clientX,clientY:e.clientY};
+    if(!frame) frame=requestAnimationFrame(applyDrag);
+  };
+  $('splitX').addEventListener('pointerdown',e=>{drag='x'; e.preventDefault(); queueDrag(e);});
+  $('splitY').addEventListener('pointerdown',e=>{drag='y'; e.preventDefault(); queueDrag(e);});
+  window.addEventListener('pointermove',e=>{if(!drag) return; queueDrag(e);});
+  window.addEventListener('pointerup',()=>{
+    if(frame){cancelAnimationFrame(frame); applyDrag();}
+    drag=null;
+    lastPointer=null;
+  });
+}
 async function openMembersModal(){
   if(cloudSync.role!=='owner'){toast('Керування користувачами доступне лише власнику');return;}
   openModal('Користувачі спільного звіту','<div class="empty">Завантаження…</div>','<button class="btn" id="cancelModal">Закрити</button><button class="btn primary" id="saveMember">Додати / оновити</button>');
@@ -4634,7 +11011,7 @@ async function openMembersModal(){
   try{
     const payload=await cloudApi('/api/members');
     const rows=(payload.members||[]).map(m=>`<tr><td>${esc(m.email)}</td><td>${esc(m.displayName||'')}</td><td><span class="pill">${esc(m.role)}</span></td></tr>`).join('');
-    $('modalBody').innerHTML=`<div class="formGrid"><div class="field"><label>Email</label><input id="memberEmail" type="email" placeholder="user@example.com"></div><div class="field"><label>Роль</label><select id="memberRole"><option value="editor">editor</option><option value="viewer">viewer</option><option value="owner">owner</option></select></div><div class="field full"><div class="hintBox">Користувач також має бути дозволений у політиці Cloudflare Access. Роль тут визначає права всередині робочого простору.</div></div><div class="field full"><div style="overflow:auto"><table class="previewTable"><thead><tr><th>Email</th><th>Ім'я</th><th>Роль</th></tr></thead><tbody>${rows||'<tr><td colspan="3">Немає користувачів</td></tr>'}</tbody></table></div></div></div>`;
+    $('modalBody').innerHTML=translateText(`<div class="formGrid"><div class="field"><label>Email</label><input id="memberEmail" type="email" placeholder="user@example.com"></div><div class="field"><label>Роль</label><select id="memberRole"><option value="editor">editor</option><option value="viewer">viewer</option><option value="owner">owner</option></select></div><div class="field full"><div class="hintBox">Користувач також має бути дозволений у політиці Cloudflare Access. Роль тут визначає права всередині робочого простору.</div></div><div class="field full"><div style="overflow:auto"><table class="previewTable"><thead><tr><th>Email</th><th>Ім'я</th><th>Роль</th></tr></thead><tbody>${rows||'<tr><td colspan="3">Немає користувачів</td></tr>'}</tbody></table></div></div></div>`);
     $('saveMember').onclick=async()=>{
       const email=String($('memberEmail')?.value||'').trim();
       const role=$('memberRole')?.value||'editor';
@@ -4648,25 +11025,39 @@ async function openMembersModal(){
       }catch(e){toast(e.message||'Не вдалося оновити користувача');$('saveMember').disabled=false;}
     };
   }catch(e){
-    $('modalBody').innerHTML=`<div class="empty">${esc(e.message||'Не вдалося завантажити користувачів')}</div>`;
+    $('modalBody').innerHTML=translateText(`<div class="empty">${esc(e.message||'Не вдалося завантажити користувачів')}</div>`);
     $('saveMember').disabled=true;
   }
 }
 function toggleEditMode(){
-  if(isClientLocked()){toast('Клієнтська версія зафіксована й не має режиму редагування.');return;}
-  if(HOSTED_MODE&&!BROWSER_ONLY_MODE&&cloudSync.ready&&!cloudCanWrite()){toast('Ваша роль у робочому просторі дозволяє лише перегляд.');return;}
-  if(HOSTED_MODE&&!BROWSER_ONLY_MODE&&!cloudSync.ready){toast('Редагування стане доступним після підключення до спільного сховища.');return;}
+  const currentLang=state.lang==='en'?'en':'uk';
+  if(isClientLocked()){toast(t('clientLockedEditUnavailable'));return;}
+  if(HOSTED_MODE&&!BROWSER_ONLY_MODE&&cloudSync.ready&&!cloudCanWrite()){toast(t('viewerRoleOnly'));return;}
+  if(HOSTED_MODE&&!BROWSER_ONLY_MODE&&!cloudSync.ready){toast(t('sharedStorageRequired'));return;}
+  state.lang=currentLang;
+  REPORT.meta=REPORT.meta||{};
+  REPORT.meta.lang=currentLang;
   state.access=state.access==='viewer'?'admin':'viewer';
   REPORT.meta.accessMode=state.access;
   refresh();
-  toast(state.access==='admin'?'Режим редагування':'Режим перегляду');
+  toast(state.access==='admin'?t('editModeEnabled'):t('viewModeEnabled'));
 }
 function bind(){
-  $('pasteBtn').onclick=()=>openDataModal(); $('uploadFilesBtn').onclick=()=>$('fileInput').click(); $('connectFolderBtn').onclick=()=>pickAndConnectFolder(); $('saveDiskBtn').onclick=()=>{toast('Зберігаю HTML-файл на диск...'); saveProjectHtmlOnly();}; $('saveHtmlBtn').onclick=saveHtml; $('saveClientHtmlBtn').onclick=saveClientHtml; $('exportJsonBtn').onclick=exportJson; $('membersBtn').onclick=openMembersModal; $('clearReaderBtn').onclick=()=>{state.openTabs=[]; state.activeFile=null; reader.innerHTML=`<div class="empty">${t('emptyReader')}</div>`; renderReaderTabs(); renderSide();}; $('unlockAdminBtn').onclick=toggleEditMode; $('cloudStatus').onclick=()=>{if(BROWSER_ONLY_MODE){toast('Файли й дані залишаються лише у цьому браузері.');return;} if(cloudSync.conflict){toast('Збережіть свою копію локально, потім перезавантажте сторінку.');return;} if(cloudSync.ready&&cloudSync.dirty){saveReportToCloud();return;} if(cloudSync.ready) reloadCloudReport(); else if(HOSTED_MODE) initCloudSync();}; $('langBtn').onclick=()=>setLanguage(state.lang==='uk'?'en':'uk'); $('themeBtn').onclick=()=>{state.theme=state.theme==='dark'?'light':'dark'; app.dataset.theme=state.theme}; $('modalClose').onclick=closeModal; $('appNoticeClose').onclick=hideNotice; $('modalBackdrop').addEventListener('click',e=>{if(e.target.id==='modalBackdrop')closeModal();}); document.addEventListener('keydown',handleModalKeydown); $('fileInput').addEventListener('change',e=>{handleFiles(e.target.files); e.target.value='';}); search.addEventListener('input',renderSide); sideList.addEventListener('click', onSideListClick);
+  $('pasteBtn').onclick=()=>openDataModal(); $('uploadFilesBtn').onclick=()=>$('fileInput').click(); $('connectFolderBtn').onclick=()=>pickAndConnectFolder(); $('saveDiskBtn').onclick=()=>{toast('Зберігаю HTML-файл на диск...'); saveProjectHtmlOnly();}; $('saveHtmlBtn').onclick=saveHtml; $('saveClientHtmlBtn').onclick=saveClientHtml; $('saveClientPackageBtn').onclick=saveClientPackage; $('internalAuditPackageBtn').onclick=exportInternalAuditPackage; $('exportJsonBtn').onclick=exportJson; $('membersBtn').onclick=openMembersModal; $('clearReaderBtn').onclick=()=>{state.openTabs=[]; state.activeFile=null; reader.innerHTML=`<div class="empty">${t('emptyReader')}</div>`; renderReaderTabs(); renderSide();}; $('unlockAdminBtn').onclick=toggleEditMode; $('cloudStatus').onclick=()=>{if(BROWSER_ONLY_MODE){toast('Файли й дані залишаються лише у цьому браузері.');return;} if(cloudSync.conflict){toast('Збережіть свою копію локально, потім перезавантажте сторінку.');return;} if(cloudSync.ready&&cloudSync.dirty){saveReportToCloud();return;} if(cloudSync.ready) reloadCloudReport(); else if(HOSTED_MODE) initCloudSync();}; $('langBtn').onclick=()=>setLanguage(state.lang==='uk'?'en':'uk'); $('themeBtn').onclick=()=>{state.theme=state.theme==='dark'?'light':'dark'; app.dataset.theme=state.theme}; $('modalClose').onclick=closeModal; $('appNoticeClose').onclick=hideNotice; $('modalBackdrop').addEventListener('click',e=>{if(e.target.id==='modalBackdrop')closeModal();}); document.addEventListener('keydown',handleModalKeydown); $('fileInput').addEventListener('change',e=>{handleFiles(e.target.files); e.target.value='';}); search.addEventListener('input',scheduleSideSearchRender); sideList.addEventListener('click', onSideListClick);
+  sideList.addEventListener('change',e=>{const sel=e.target.closest('[data-ai-section-select]'); if(sel&&sideList.contains(sel)){state.aiSectionId=sel.value||''; renderSide();}});
   $('companyNameInput')?.addEventListener('input',e=>{REPORT.meta=REPORT.meta||{}; REPORT.meta.companyName=String(e.target.value||'').trim(); renderReportTitle(); schedulePersist();});
   renderReportTitle();
   analytics.addEventListener('click',e=>{
+    const firstReportAction=e.target.closest('[data-first-report-action]');
+    if(firstReportAction){performFirstReportAction(firstReportAction.dataset.firstReportAction);return;}
+    if(e.target.closest('[data-first-report-upload]')){openDataModal();return;}
+    if(e.target.closest('[data-first-report-paste]')){openPasteModal();return;}
+    if(e.target.closest('[data-first-report-folder]')){pickAndConnectFolder();return;}
+    if(e.target.closest('[data-first-report-hide]')){const flow=normalizeFirstReportFlowState(REPORT); flow.dismissed=true; flow.dismissedAt=new Date().toISOString(); flow.updatedAt=flow.dismissedAt; refresh(); toast('First report guide hidden'); return;}
+    const firstReportSkip=e.target.closest('[data-first-report-skip]');
+    if(firstReportSkip){const flow=normalizeFirstReportFlowState(REPORT); const stepId=firstReportSkip.dataset.firstReportSkip; if(FIRST_REPORT_STEPS.includes(stepId)&&!flow.skippedStepIds.includes(stepId)) flow.skippedStepIds.push(stepId); flow.currentStepId=getNextRecommendedFirstReportStep(REPORT); flow.updatedAt=new Date().toISOString(); refresh(); toast('Guide step skipped'); return;}
     if(e.target.closest('[data-open-add]')){openDataModal();return;}
+    if(e.target.closest('[data-open-demo]')){loadDemoReport();return;}
     const b=e.target.closest('[data-open-widget]');
     if(!b) return;
     openSimpleWidgetView(b.dataset.openWidget);
@@ -4693,5 +11084,8 @@ reader.innerHTML=`<div class="empty">${t('emptyReader')}</div>`;
 state.openTabs=[];
 state.activeFile=null;
 renderReaderTabs();
+renderClientExportV2();
+fetchAiStatus().then(()=>renderSide()).catch(()=>{state.aiStatus=createDefaultAiStatus(); state.aiStatusLoaded=true; renderSide();});
 initCloudSync();
+setTimeout(maybeOpenOnboardingWizard,900);
 })();

@@ -18,6 +18,10 @@ Production URL: <https://mrsai.lookdata.live/>
   `fetch`, XHR, WebSocket, EventSource, and beacon requests from the page.
 - The application does not include third-party analytics, tracking pixels,
   telemetry SDKs, hidden data-collection iframes, or background downloaders.
+- A server-side AI provider adapter exists for future use, but real AI is
+  disabled by default. Any OpenAI key must be stored as a Cloudflare Worker
+  Secret, AI outputs must remain reviewable suggestions, and client exports
+  must never include secrets, hidden prompts, or unreviewed AI content.
 
 GitHub stores only application source code. Cloudflare serves the static build
 and does not receive the contents of files selected inside the application.
@@ -70,6 +74,9 @@ npm run check
 
 The command runs API-disable, Worker, configuration, and UI smoke tests, then
 creates the production build in `dist/`.
+
+Future Codex work should follow the repository instructions in
+[AGENTS.md](./AGENTS.md).
 
 ```text
 dist/

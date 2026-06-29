@@ -46,10 +46,55 @@ function createHostedShell(documentHtml) {
       title: 'Marketing Report Studio',
       accessMode: 'viewer',
     },
+    reportSchemaVersion: 2,
+    reportSections: createDefaultReportSections(),
     datasets: [],
     files: [],
     charts: [],
     tables: [],
+    competitorProfiles: {
+      items: [],
+      updatedAt: null,
+    },
+    pricingFeatureMatrix: null,
+    materialsInventory: {
+      items: [],
+      updatedAt: null,
+    },
+    sourceRegistry: {
+      items: [],
+      updatedAt: null,
+    },
+    evidenceCards: {
+      items: [],
+      updatedAt: null,
+    },
+    aiAssistance: {
+      aiEnabled: false,
+      aiMode: 'disabled',
+      taskDrafts: [],
+      suggestions: [],
+      updatedAt: null,
+    },
+    aiReviewQueue: {
+      items: [],
+      updatedAt: null,
+    },
+    aiAuditLog: {
+      events: [],
+      provenance: [],
+      updatedAt: null,
+    },
+    versionRetentionPolicy: null,
+    versionRetentionState: {
+      pinnedVersionIds: [],
+      archivedVersionIds: [],
+      cleanupCandidateVersionIds: [],
+      updatedAt: null,
+    },
+    governanceSettings: null,
+    onboardingState: null,
+    firstReportFlow: null,
     companies: [],
     ci: null,
   };
@@ -62,6 +107,30 @@ function createHostedShell(documentHtml) {
     .replace(/>/g, '\\u003e')
     .replace(/&/g, '\\u0026');
   return documentHtml.replace(reportScript, `$1\n${safeJson}\n$2`);
+}
+
+function createDefaultReportSections() {
+  return [
+    ['cover', 'Cover'],
+    ['executiveSummary', 'Executive Summary'],
+    ['researchScope', 'Research Scope'],
+    ['competitiveLandscape', 'Competitive Landscape'],
+    ['competitors', 'Competitors'],
+    ['pricing', 'Pricing'],
+    ['features', 'Features'],
+    ['messaging', 'Messaging / Positioning'],
+    ['channels', 'Channels / Content / SEO'],
+    ['risksOpportunities', 'Risks and Opportunities'],
+    ['recommendations', 'Recommendations'],
+    ['sourcesEvidence', 'Sources and Evidence'],
+  ].map(([id, title], index) => ({
+    id,
+    title,
+    type: id,
+    order: index + 1,
+    blocks: [],
+    status: 'empty',
+  }));
 }
 
 function getExecutableInlineScriptHashes(documentHtml) {
