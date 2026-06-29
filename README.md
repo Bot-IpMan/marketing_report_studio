@@ -38,6 +38,42 @@ opened.
 - ZIP bundles containing explicitly exported files;
 - Ukrainian and English interface modes.
 
+## Recent Product Update
+
+This update moves Marketing Report Studio closer to a full
+`upload materials -> structure evidence -> review -> export` workflow:
+
+- Added a report schema for sections, materials inventory, source registry,
+  evidence cards, competitor profiles, pricing/feature matrices, draft blocks,
+  review statuses, quality checks, version history metadata, governance
+  settings, and onboarding state.
+- Added a guided first-report workflow that helps users create a report, add a
+  client and competitors, upload materials, build sources, review evidence,
+  generate a draft, run export checks, and create a client export.
+- Added evidence-backed report tools: materials inventory, source registry,
+  evidence cards, evidence review, rule-based draft generation, and export
+  readiness checks.
+- Added competitor and pricing/feature workspaces for organizing competitors,
+  pricing tiers, feature rows, source links, evidence links, and draft
+  summaries.
+- Added safer export flows: client package export, internal audit package
+  export, client-locked report sanitization, and checks that block client export
+  when important evidence or safety requirements are missing.
+- Added local AI-assistance scaffolding with disabled-by-default provider
+  boundaries, dry-run previews, review queues, provenance, audit events, and
+  explicit human review before any AI-derived content can be used.
+- Added governance, onboarding, version diff, and retention panels for safer
+  workspace setup and review of important changes before client delivery.
+- Improved the side panel by grouping heavy tools into Materials, Evidence,
+  Client Report, and Admin views, with debounced search rendering for smoother
+  navigation.
+- Expanded Ukrainian and English UI coverage across labels, dialogs, buttons,
+  statuses, warnings, and export messages.
+- Improved readability and accessibility with higher-contrast buttons,
+  non-transparent modals, mobile/tablet responsive layout, larger touch targets,
+  responsive tables, and better handling of long text in sidebars, forms, JSON,
+  Markdown, and report previews.
+
 ## Security Controls
 
 - restrictive CSP with self-hosted scripts and no network connections;
