@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="referrer" content="no-referrer" />
 <meta name="robots" content="noindex,nofollow,noarchive" />
-<meta name="description" content="Marketing Report Studio turns spreadsheets, research files, screenshots, and competitor notes into a structured client-ready marketing intelligence report." />
+<meta name="description" content="Marketing Report Studio turns local tables and files into charts, previews, and a clean client report." />
 <title>Marketing Report Studio</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <style>
@@ -16,7 +16,7 @@
   --glow:rgba(31,200,255,.24);--glow2:rgba(0,224,198,.20);--shadow:0 24px 62px rgba(31,54,96,.14);--side:320px;--top:59%;--radius:18px;
 }
 [data-theme="dark"]{color-scheme:dark;--bg:#030914;--panel:rgba(8,18,35,.86);--panel2:rgba(10,24,45,.82);--text:#edf6ff;--muted:#9fb2d2;--line:rgba(95,225,255,.22);--soft:rgba(60,139,255,.14);--brand:#1fe7ff;--brand2:#386bff;--brand3:#00f0c8;--glow:rgba(31,231,255,.32);--glow2:rgba(0,240,200,.22);--shadow:0 28px 80px rgba(0,0,0,.48)}
-*{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font:13px/1.35 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;overflow:hidden} body:before{content:"";position:fixed;inset:0;pointer-events:none;background:radial-gradient(circle at 8% 6%,rgba(31,231,255,.20),transparent 28%),radial-gradient(circle at 88% 12%,rgba(0,240,200,.16),transparent 30%),radial-gradient(circle at 55% 105%,rgba(56,107,255,.18),transparent 36%),linear-gradient(135deg,rgba(3,9,20,.98),rgba(7,15,31,.94));z-index:-2} [data-theme="light"] body:before{background:radial-gradient(circle at 8% 6%,rgba(31,200,255,.18),transparent 28%),radial-gradient(circle at 88% 12%,rgba(0,224,198,.12),transparent 30%),linear-gradient(135deg,#f5f9ff,#eaf2ff)} button,input,select,textarea{font:inherit;color:inherit} button{border:0;background:transparent;cursor:pointer}.app{height:100vh;display:flex;flex-direction:column;color:var(--text);background:linear-gradient(135deg,rgba(3,9,20,.94),rgba(4,12,26,.88))}.app[data-theme="light"]{background:linear-gradient(135deg,rgba(244,249,255,.88),rgba(230,240,255,.86))}
+*{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font:13px/1.35 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;overflow:hidden} body:before{content:"";position:fixed;inset:0;pointer-events:none;background:radial-gradient(circle at 8% 6%,rgba(31,231,255,.20),transparent 28%),radial-gradient(circle at 88% 12%,rgba(0,240,200,.16),transparent 30%),radial-gradient(circle at 55% 105%,rgba(56,107,255,.18),transparent 36%),linear-gradient(135deg,rgba(3,9,20,.98),rgba(7,15,31,.94));z-index:-2} body:has(.app[data-theme="light"]):before{background:radial-gradient(circle at 8% 6%,rgba(31,200,255,.18),transparent 28%),radial-gradient(circle at 88% 12%,rgba(0,224,198,.12),transparent 30%),linear-gradient(135deg,#f5f9ff,#eaf2ff)} button,input,select,textarea{font:inherit;color:inherit} button{border:0;background:transparent;cursor:pointer}.app{height:100vh;display:flex;flex-direction:column;color:var(--text);background:linear-gradient(135deg,rgba(3,9,20,.94),rgba(4,12,26,.88))}.app[data-theme="light"]{background:linear-gradient(135deg,rgba(244,249,255,.88),rgba(230,240,255,.86))}
 .topbar{height:58px;display:flex;align-items:center;gap:9px;padding:9px 12px;border-bottom:1px solid var(--line);background:linear-gradient(90deg,rgba(7,16,31,.94),rgba(11,25,48,.88));box-shadow:0 10px 34px rgba(0,0,0,.26),0 1px 0 rgba(255,255,255,.04) inset;backdrop-filter:blur(18px);z-index:10}.app[data-theme="light"] .topbar{background:rgba(255,255,255,.84);box-shadow:0 12px 34px rgba(31,54,96,.12)}.logo{width:34px;height:34px;border-radius:12px;background:linear-gradient(135deg,var(--brand),var(--brand2));display:grid;place-items:center;color:#fff;font-weight:950;box-shadow:0 0 24px var(--glow)}.title{min-width:190px}.title b{display:block;line-height:1}.title span{font-size:11px;color:var(--muted)}.spacer{flex:1}.btn{height:32px;border:1px solid var(--line);border-radius:11px;background:linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.025));padding:0 10px;font-weight:850;display:inline-flex;align-items:center;gap:6px;box-shadow:0 8px 20px rgba(0,0,0,.12),0 1px 0 rgba(255,255,255,.05) inset;white-space:nowrap;transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease,background .16s ease}.btn:hover{transform:translateY(-1px);border-color:rgba(31,231,255,.55);box-shadow:0 12px 28px rgba(0,0,0,.18),0 0 20px var(--glow)}.btn.primary{background:linear-gradient(135deg,var(--brand2),var(--brand),var(--brand3));border-color:rgba(31,231,255,.72);color:#fff;text-shadow:0 1px 8px rgba(0,0,0,.25)}.btn.small{height:27px;padding:0 8px;font-size:12px}.btn.ghost{box-shadow:none;background:transparent}.btn.danger{color:var(--bad);border-color:rgba(255,85,112,.45);background:rgba(255,85,112,.08)}.pill{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:999px;border:1px solid var(--line);background:linear-gradient(180deg,var(--soft),rgba(255,255,255,.03));color:var(--muted);font-size:11px;font-weight:850}.hint{color:var(--muted);font-size:12px}
 .appNotice{display:none;align-items:center;gap:10px;min-height:38px;padding:8px 14px;border-bottom:1px solid var(--line);background:rgba(31,200,255,.10);color:var(--text);font-weight:750}.appNotice.show{display:flex}.appNotice[data-kind="success"]{background:rgba(20,200,139,.12)}.appNotice[data-kind="error"]{background:rgba(255,85,112,.12)}.appNotice .spacer{min-width:8px}.layout{height:calc(100vh - 58px);display:grid;grid-template-columns:minmax(0,1fr) 9px var(--side);grid-template-rows:minmax(120px,var(--top)) 9px minmax(120px,1fr);padding:12px;gap:0}.app:has(.appNotice.show) .layout{height:calc(100vh - 96px)}.panel{position:relative;background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow),0 0 0 1px rgba(255,255,255,.03) inset;min-width:0;min-height:0;overflow:hidden;backdrop-filter:blur(18px)}.panel:before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:linear-gradient(135deg,rgba(31,231,255,.16),transparent 28%,rgba(0,240,200,.10));opacity:.72}.analytics{grid-column:1;grid-row:1;display:flex;flex-direction:column}.reader{grid-column:1;grid-row:3;display:flex;flex-direction:column}.files{grid-column:3;grid-row:1/4;display:flex;flex-direction:column}.splitY{grid-column:1;grid-row:2;cursor:row-resize;display:grid;place-items:center}.splitX{grid-column:2;grid-row:1/4;cursor:col-resize;display:grid;place-items:center}.splitDot{width:42px;height:5px;border-radius:999px;background:linear-gradient(90deg,var(--brand),var(--brand3));box-shadow:0 0 18px var(--glow)}.splitX .splitDot{width:5px;height:42px}.panelHead{position:relative;min-height:43px;display:flex;align-items:center;gap:8px;padding:9px 11px;border-bottom:1px solid var(--line);background:linear-gradient(90deg,rgba(31,231,255,.09),rgba(10,24,45,.12),rgba(0,240,200,.06));flex:0 0 auto}.panelHead h2{font-size:13px;margin:0;font-weight:950;letter-spacing:.01em}.panelHead h2:before{content:"";display:inline-block;width:8px;height:8px;margin-right:7px;border-radius:3px;background:linear-gradient(135deg,var(--brand),var(--brand3));box-shadow:0 0 13px var(--glow);vertical-align:1px}.content{position:relative;padding:11px;overflow:auto;min-height:0}.hidden{display:none!important}.files .panelHead{align-items:flex-start;flex-wrap:wrap;row-gap:6px}.files #filesPanelTitle{flex:0 1 auto}.files #storageStat{display:block;flex:1 1 100%;order:3;padding-left:15px;white-space:normal;overflow-wrap:anywhere;line-height:1.25}.files .panelHead>.spacer{flex:1 1 auto;min-width:0}.files #uploadFilesBtn,.files #connectFolderBtn{flex:0 0 auto}.files .panelTitleGroup{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1 1 150px}.files .panelTitleGroup .hint{white-space:normal;overflow-wrap:anywhere;line-height:1.25}.files .panelActions{display:flex;gap:8px;align-items:center;justify-content:flex-end;flex:0 1 auto;flex-wrap:wrap;margin-left:auto}.files .panelActions .btn{flex:0 0 auto}@media(max-width:1180px){.files .panelHead{align-items:stretch}.files .panelActions{width:100%;justify-content:flex-start;margin-left:0}.files .panelHead>.spacer{display:none}.files #uploadFilesBtn,.files #connectFolderBtn{order:2}.files #storageStat{order:4;padding-left:0}}
 .guide{display:flex;align-items:center;gap:8px;justify-content:space-between;padding:9px 11px;margin-bottom:9px;border:1px solid rgba(31,231,255,.22);border-radius:15px;background:linear-gradient(90deg,rgba(31,231,255,.12),rgba(0,240,200,.06));color:var(--muted);font-size:12px;box-shadow:0 0 24px rgba(31,231,255,.08) inset}.guide b{color:var(--text)}.productHero{text-align:left;padding:10px 4px 4px;color:var(--text)}.productHero h1{font-size:30px;line-height:1.05;margin:0 0 8px;font-weight:950}.productHero p{max-width:760px;margin:0 0 12px;color:var(--muted);font-size:14px}.productActions{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}.btn[disabled]{opacity:.58;cursor:not-allowed;transform:none!important}.workflowSteps{display:grid;grid-template-columns:repeat(4,minmax(120px,1fr));gap:8px;margin:12px 0}.workflowStep,.infoBlock{border:1px solid var(--line);border-radius:14px;background:linear-gradient(180deg,var(--panel2),rgba(31,231,255,.04));padding:10px;box-shadow:0 12px 30px rgba(0,0,0,.08)}.workflowStep span{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:8px;background:linear-gradient(135deg,var(--brand2),var(--brand));color:#fff;font-weight:950;margin-bottom:7px}.workflowStep b,.infoBlock b{display:block;margin-bottom:4px}.workflowStep small,.infoBlock li{color:var(--muted)}.productInfoGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.infoBlock ul{margin:6px 0 0 17px;padding:0}.infoBlock li{margin:3px 0}.toolbar{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-bottom:9px}.select,input,textarea{border:1px solid var(--line);background:linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.025));border-radius:11px;height:33px;padding:0 9px;outline:none;box-shadow:0 1px 0 rgba(255,255,255,.04) inset}.select:focus,input:focus,textarea:focus{border-color:rgba(31,231,255,.58);box-shadow:0 0 0 3px rgba(31,231,255,.12)}.select{min-width:160px}.cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin-bottom:9px}.stat{border:1px solid var(--line);background:linear-gradient(180deg,var(--panel2),rgba(31,231,255,.04));border-radius:15px;padding:9px;min-width:0;box-shadow:0 12px 30px rgba(0,0,0,.10)}.stat .label{font-size:11px;color:var(--muted);font-weight:850}.stat .val{font-size:19px;font-weight:950;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.stat .sub{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:10px}.widget{position:relative;border:1px solid var(--line);border-radius:17px;background:linear-gradient(180deg,rgba(13,30,55,.74),rgba(7,17,33,.66));min-height:250px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 18px 42px rgba(0,0,0,.20),0 0 0 1px rgba(255,255,255,.025) inset;transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease}.app[data-theme="light"] .widget{background:linear-gradient(180deg,rgba(255,255,255,.92),rgba(240,247,255,.86));box-shadow:0 18px 42px rgba(31,54,96,.11)}.widget:hover{transform:translateY(-2px);border-color:rgba(31,231,255,.42);box-shadow:0 22px 52px rgba(0,0,0,.28),0 0 24px var(--glow)}.widgetHead{height:38px;display:flex;align-items:center;gap:7px;padding:8px 9px;border-bottom:1px solid var(--line);background:linear-gradient(90deg,rgba(31,231,255,.10),rgba(255,255,255,.025))}.widgetHead b{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}.widgetBody{padding:9px;flex:1;min-height:0;overflow:auto;color:var(--text)}.badge{display:inline-flex;align-items:center;border:1px solid rgba(31,231,255,.28);border-radius:999px;padding:2px 7px;background:rgba(31,231,255,.10);color:var(--brand);font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.04em}.widget.compactWidget{min-height:145px}.widget.compactWidget .widgetBody{padding:8px 10px;overflow:visible}.widget.chartAuto{min-height:unset}.widget.chartAuto .widgetBody{overflow:visible}.svgChart{width:100%;height:auto;display:block;filter:drop-shadow(0 0 8px rgba(31,231,255,.10))}.empty{color:var(--muted);text-align:center;padding:26px 10px}.miniTable{width:100%;border-collapse:collapse;font-size:12px;color:var(--text)}.miniTable th,.miniTable td{padding:7px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}.miniTable th{font-size:11px;color:var(--muted);font-weight:950}.miniTable tr:hover td,.miniTable tr:hover th{background:rgba(31,231,255,.055)}.num{text-align:right;font-variant-numeric:tabular-nums}.clientRow{background:rgba(20,160,111,.08)}
@@ -208,44 +208,802 @@
 *::-webkit-scrollbar-thumb{background:#cfd8ea;border-radius:999px;border:2px solid transparent;background-clip:content-box}
 [data-theme="dark"] *::-webkit-scrollbar-thumb{background:#2a395c;border-radius:999px;border:2px solid transparent;background-clip:content-box}
 
+/* Workspace redesign direction */
+:root{
+  --mrs-bg:#050b16;
+  --mrs-surface:#07111f;
+  --mrs-surface-2:#0b1728;
+  --mrs-surface-3:#101d31;
+  --mrs-border:rgba(121,145,185,.18);
+  --mrs-border-strong:rgba(121,145,185,.28);
+  --mrs-text:#eef5ff;
+  --mrs-muted:#8fa2bd;
+  --mrs-muted-2:#63728a;
+  --mrs-primary:#2563ff;
+  --mrs-primary-hover:#3b78ff;
+  --mrs-primary-soft:rgba(37,99,255,.16);
+  --mrs-green:#39c980;
+  --mrs-yellow:#f5b84b;
+  --mrs-red:#f05d5d;
+  --mrs-blue-file:#2f7cff;
+  --mrs-radius-sm:8px;
+  --mrs-radius-md:12px;
+  --mrs-radius-lg:16px;
+  --mrs-shadow-panel:0 18px 50px rgba(0,0,0,.28);
+}
+.workspaceTopbar{
+  min-height:56px;
+  max-height:64px;
+  height:auto;
+  padding:12px 16px;
+  gap:10px;
+  background:linear-gradient(180deg,rgba(7,17,31,.98),rgba(5,11,22,.96));
+  border-bottom:1px solid var(--mrs-border);
+  overflow:visible;
+}
+.workspaceLogo,.workspaceTitle{
+  display:none;
+}
+.workspaceSearchBox{
+  position:relative;
+  flex:0 1 280px;
+  width:clamp(220px,24vw,280px);
+}
+.searchIcon{
+  position:absolute;
+  left:11px;
+  top:50%;
+  width:13px;
+  height:13px;
+  transform:translateY(-50%);
+  border:2px solid var(--mrs-muted);
+  border-radius:999px;
+  pointer-events:none;
+}
+.searchIcon:after{
+  content:"";
+  position:absolute;
+  width:6px;
+  height:2px;
+  right:-5px;
+  bottom:-3px;
+  border-radius:999px;
+  background:var(--mrs-muted);
+  transform:rotate(45deg);
+}
+.workspaceSearch{
+  width:100%;
+  margin:0;
+  height:36px;
+  padding-left:33px;
+  border-color:var(--mrs-border-strong);
+  background:var(--mrs-surface-2);
+}
+.workspaceCompany{
+  width:100%;
+  min-width:0!important;
+  height:36px;
+  background:var(--mrs-surface-2);
+}
+.workspaceTopbar .btn{
+  min-height:36px;
+  border-radius:var(--mrs-radius-md);
+  border-color:var(--mrs-border);
+  background:var(--mrs-surface-2);
+  box-shadow:none;
+}
+.workspaceTopbar .btn.primary{
+  background:var(--mrs-primary);
+  border-color:rgba(91,130,255,.72);
+  color:#fff;
+}
+.workspaceTopbar .btn.primary:hover{
+  background:var(--mrs-primary-hover);
+}
+.workspaceTopbar .btn.secondary{
+  color:var(--mrs-text);
+  background:var(--mrs-surface-2);
+}
+.workspaceMobileMore{
+  display:none;
+}
+.topbarAdvanced,.workspaceMenu,.workspaceMobileMore{
+  position:relative;
+  flex:0 0 auto;
+}
+.topbarAdvanced summary,.workspaceMenu summary,.workspaceMobileMore summary{
+  list-style:none;
+}
+.topbarAdvanced summary::-webkit-details-marker,.workspaceMenu summary::-webkit-details-marker,.workspaceMobileMore summary::-webkit-details-marker{
+  display:none;
+}
+.advancedMenu,.workspaceMenuPanel{
+  position:absolute;
+  right:0;
+  top:calc(100% + 8px);
+  z-index:60;
+  display:grid;
+  gap:6px;
+  min-width:190px;
+  padding:8px;
+  border:1px solid var(--mrs-border-strong);
+  border-radius:var(--mrs-radius-md);
+  background:var(--mrs-surface);
+  box-shadow:var(--mrs-shadow-panel);
+}
+.advancedMenu .btn,.workspaceMenuPanel .btn{
+  justify-content:flex-start;
+  width:100%;
+}
+.workspaceUserPill{
+  width:36px;
+  height:36px;
+  justify-content:center;
+  padding:0;
+  border-radius:999px;
+  background:var(--mrs-primary-soft);
+  border-color:rgba(91,130,255,.42);
+  color:var(--mrs-text);
+  font-size:12px;
+}
+.workspaceLayout{
+  height:calc(100vh - 64px);
+  display:grid;
+  grid-template-columns:minmax(260px,1fr) 12px minmax(260px,var(--workspace-side,360px));
+  grid-template-rows:minmax(220px,var(--workspace-top,46%)) 12px minmax(260px,1fr);
+  gap:0;
+  padding:12px;
+}
+.workspaceLayout .splitX,.workspaceLayout .splitY{
+  display:grid;
+  place-items:center;
+  border-radius:999px;
+  touch-action:none;
+  user-select:none;
+  opacity:.72;
+  transition:opacity .16s ease,background .16s ease;
+}
+.workspaceLayout .splitX{
+  grid-column:2;
+  grid-row:1/4;
+  cursor:col-resize;
+}
+.workspaceLayout .splitY{
+  grid-column:1;
+  grid-row:2;
+  cursor:row-resize;
+}
+.workspaceLayout .splitX:hover,.workspaceLayout .splitY:hover,
+.workspaceResizing .workspaceLayout .splitX,.workspaceResizing .workspaceLayout .splitY{
+  opacity:1;
+  background:rgba(91,130,255,.10);
+}
+.workspaceLayout .splitDot{
+  background:var(--mrs-border-strong);
+  box-shadow:none;
+}
+.workspaceLayout .splitX:hover .splitDot,.workspaceLayout .splitY:hover .splitDot,
+.workspaceResizing .workspaceLayout .splitDot{
+  background:var(--mrs-primary);
+}
+.workspaceLayout [data-workspace-slot="side"]{
+  grid-column:3;
+  grid-row:1/4;
+}
+.workspaceLayout [data-workspace-slot="bottom"]{
+  grid-column:1;
+  grid-row:3;
+}
+.workspaceLayout [data-workspace-slot="top"]{
+  grid-column:1;
+  grid-row:1;
+}
+.workspaceLayout .panelHead[data-workspace-handle]{
+  cursor:grab;
+}
+.workspaceLayout .panelHead[data-workspace-handle]:active{
+  cursor:grabbing;
+}
+.workspaceLayout .workspacePanelDragging{
+  opacity:.58;
+}
+.workspaceLayout .workspacePanelDropTarget{
+  border-color:rgba(91,130,255,.72);
+  box-shadow:0 0 0 1px rgba(91,130,255,.48),var(--mrs-shadow-panel);
+}
+.workspaceLayout .panel{
+  border-radius:var(--mrs-radius-lg);
+  border-color:var(--mrs-border);
+  background:linear-gradient(180deg,var(--mrs-surface),var(--mrs-surface-2));
+  box-shadow:var(--mrs-shadow-panel);
+}
+.materialsHeader{
+  align-items:center!important;
+}
+.materialsHeader #filesPanelTitle{
+  font-size:15px;
+}
+.materialsHeader #storageStat{
+  order:0;
+  flex:0 1 auto;
+  padding-left:0;
+}
+.materialsSection{
+  border:1px solid var(--mrs-border);
+  border-radius:var(--mrs-radius-md);
+  background:linear-gradient(180deg,var(--mrs-surface-2),rgba(11,23,40,.72));
+  padding:10px;
+  margin-bottom:10px;
+}
+.materialsSectionHeader{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  margin-bottom:7px;
+}
+.materialsSectionHeader h3{
+  margin:0;
+  font-size:11px;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  color:var(--muted);
+}
+.folderList,.fileList{
+  display:grid;
+  gap:2px;
+}
+.materialsFolderRow,.materialsFileRow{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  min-height:38px;
+  min-width:0;
+  border-radius:10px;
+  padding:7px;
+}
+.materialsFolderRow .itemName,.materialsFileRow .itemName{
+  min-width:0;
+  line-height:1.25;
+}
+.materialsFileName{
+  display:block;
+  overflow:hidden;
+  white-space:nowrap;
+  text-overflow:ellipsis;
+  color:var(--mrs-text);
+}
+.materialsFileRow .itemMeta{
+  display:block;
+  overflow:hidden;
+  white-space:nowrap;
+  text-overflow:ellipsis;
+  margin-top:2px;
+  color:var(--mrs-muted);
+}
+.materialsFileRow .btn{
+  flex:0 0 auto;
+}
+.materialsFolderRow:hover,.materialsFileRow:hover{
+  background:rgba(37,99,255,.10);
+}
+.materialsIcon{
+  width:28px;
+  height:28px;
+  border-radius:var(--mrs-radius-sm);
+  display:grid;
+  place-items:center;
+  flex:0 0 auto;
+  color:#fff;
+  background:var(--mrs-primary);
+  font-size:10px;
+  font-weight:950;
+  line-height:1;
+  letter-spacing:0;
+  text-align:center;
+  overflow:hidden;
+}
+.materialsIcon.pdf{background:var(--mrs-red)}
+.materialsIcon.ppt{background:var(--mrs-yellow)}
+.materialsIcon.sheet{background:var(--mrs-green)}
+.materialsIcon.doc{background:var(--mrs-blue-file)}
+.materialsIcon.image{background:#8b5cf6}
+.materialsIcon.code{background:#6366f1}
+.materialsIcon.video{background:var(--mrs-blue-file)}
+.materialsIcon.unknown{background:var(--mrs-muted-2)}
+.materialsDropNote{
+  display:block;
+  margin-top:6px;
+  color:var(--muted);
+}
+.iconButton{
+  width:28px;
+  height:28px;
+  border:1px solid var(--mrs-border);
+  border-radius:var(--mrs-radius-sm);
+  background:var(--mrs-surface-3);
+  color:var(--mrs-text);
+  display:inline-grid;
+  place-items:center;
+  font-weight:950;
+}
+.materialsDropZone{
+  display:grid;
+  justify-items:center;
+  gap:4px;
+  border-color:rgba(91,130,255,.46);
+  background:linear-gradient(180deg,rgba(37,99,255,.12),rgba(11,23,40,.68));
+}
+.materialsDropZone .dropIcon{
+  width:32px;
+  height:32px;
+  display:grid;
+  place-items:center;
+  border-radius:999px;
+  background:var(--mrs-primary-soft);
+  color:var(--mrs-text);
+  font-weight:950;
+  text-transform:uppercase;
+  font-size:10px;
+}
+.materialsDropZone strong{
+  color:var(--mrs-text);
+}
+.materialsDropZone span{
+  color:var(--mrs-muted);
+  font-size:12px;
+}
+.firstRunHero{
+  padding:18px 8px 8px;
+}
+.firstRunHero p{
+  max-width:640px;
+}
+.firstRunActions{
+  margin-bottom:8px;
+}
+.firstRunLocal{
+  margin:2px 0 14px;
+}
+.firstRunSteps{
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  margin:14px 0 12px;
+}
+.firstRunStep{
+  min-height:82px;
+}
+.firstRunStep b{
+  font-size:13px;
+}
+.firstReportReadiness{
+  margin-top:10px;
+  background:linear-gradient(180deg,rgba(37,99,255,.13),rgba(11,23,40,.72));
+}
+.firstReportReadinessDetails{
+  margin-top:12px;
+}
+.firstReportReadinessBody{
+  padding-top:8px;
+}
+.firstReportChecklist>summary{
+  cursor:pointer;
+  list-style:none;
+  margin-bottom:0;
+}
+.firstReportChecklist>summary::-webkit-details-marker{
+  display:none;
+}
+.firstReportChecklist[open]>summary{
+  margin-bottom:7px;
+}
+.qualityChecklistGroup{
+  border-top:1px solid var(--mrs-border);
+  padding-top:8px;
+  margin-top:8px;
+}
+.qualityChecklistGroup .materialsSectionHeader{
+  margin-bottom:4px;
+}
+.drop{
+  border-color:rgba(91,130,255,.46);
+  background:linear-gradient(180deg,rgba(37,99,255,.12),rgba(11,23,40,.68));
+}
+.simpleDashboard{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+.simpleDashboardHeader{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+}
+.simpleDashboardHeader h2{
+  margin:2px 0 4px;
+  font-size:20px;
+  line-height:1.2;
+}
+.simpleDashboardActions,.simpleExportActions{
+  display:flex;
+  gap:7px;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+}
+.simpleSummaryCards{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(135px,1fr));
+  gap:8px;
+}
+.simpleStat{
+  border:1px solid var(--mrs-border);
+  border-radius:var(--mrs-radius-sm);
+  background:var(--mrs-surface-2);
+  padding:9px;
+  min-width:0;
+}
+.simpleStat span,.simpleStat small{
+  display:block;
+  color:var(--mrs-muted);
+  font-size:11px;
+}
+.simpleStat b{
+  display:block;
+  margin:2px 0;
+  font-size:18px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.simpleDashboardSplit{
+  display:grid;
+  grid-template-columns:minmax(0,2.3fr) minmax(230px,.9fr);
+  gap:10px;
+  align-items:start;
+}
+.simpleChartsPanel,.simpleInsightsPanel{
+  min-width:0;
+}
+.autoChartGrid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
+  gap:9px;
+}
+.autoChartCard{
+  display:flex;
+  flex-direction:column;
+  min-height:205px;
+  border:1px solid var(--mrs-border);
+  border-radius:var(--mrs-radius-md);
+  background:var(--mrs-surface-2);
+  color:var(--mrs-text);
+  padding:0;
+  text-align:left;
+  overflow:hidden;
+  cursor:pointer;
+}
+.autoChartCard:hover{
+  border-color:rgba(91,130,255,.55);
+  background:var(--mrs-surface-3);
+}
+.autoChartCard .widgetBody{
+  min-height:150px;
+}
+.autoInsightList{
+  display:grid;
+  gap:8px;
+  margin:0;
+  padding:0;
+  list-style:none;
+}
+.autoInsightList li{
+  border:1px solid var(--mrs-border);
+  border-radius:var(--mrs-radius-sm);
+  background:var(--mrs-surface-2);
+  padding:9px 10px;
+  color:var(--mrs-text);
+  line-height:1.35;
+}
+.simpleEmptyDrop{
+  cursor:pointer;
+}
+.simpleTableShell{
+  display:flex;
+  flex-direction:column;
+  gap:9px;
+  min-height:0;
+}
+.simpleTableTop,.simpleTableControls,.simpleFilterBar,.simpleColumnTypes{
+  display:flex;
+  align-items:center;
+  gap:7px;
+  flex-wrap:wrap;
+}
+.simpleTableControls #simpleTableSearch{
+  flex:1 1 240px;
+  min-width:160px;
+}
+.simpleSort,.simpleFilter{
+  display:flex;
+  align-items:center;
+  gap:5px;
+  color:var(--mrs-muted);
+  font-size:11px;
+  font-weight:850;
+}
+.simpleFilter select{
+  min-width:145px;
+}
+.simpleColumnPicker{
+  position:relative;
+}
+.simpleColumnPicker>summary{
+  list-style:none;
+  cursor:pointer;
+}
+.simpleColumnPicker>summary::-webkit-details-marker{
+  display:none;
+}
+.simpleColumnPicker .checks{
+  position:absolute;
+  right:0;
+  z-index:5;
+  width:min(560px,80vw);
+  max-height:320px;
+  overflow:auto;
+  margin-top:6px;
+  padding:8px;
+  border:1px solid var(--mrs-border);
+  border-radius:var(--mrs-radius-md);
+  background:var(--mrs-surface);
+  box-shadow:var(--mrs-shadow-panel);
+}
+.simpleColumnCheck small{
+  color:var(--mrs-muted);
+}
+.columnTypeBadge{
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  border:1px solid var(--mrs-border);
+  border-radius:999px;
+  background:var(--mrs-surface-2);
+  color:var(--mrs-muted);
+  padding:3px 7px;
+  font-size:11px;
+}
+.columnTypeBadge b{
+  color:var(--mrs-text);
+  font-size:10px;
+}
+.simpleContentGrid{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(260px,340px);
+  gap:10px;
+  min-height:0;
+}
+.simpleTableWrap{
+  overflow:auto;
+  min-height:230px;
+  max-height:52vh;
+  border:1px solid var(--mrs-border);
+  border-radius:var(--mrs-radius-md);
+  background:var(--mrs-surface-2);
+}
+.simplePreviewTable th,.simplePreviewTable td{
+  white-space:nowrap;
+}
+.tableSortButton{
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  width:100%;
+  border:0;
+  background:transparent;
+  color:inherit;
+  font:inherit;
+  text-align:left;
+  cursor:pointer;
+}
+.tableSortButton small{
+  color:var(--mrs-muted);
+  font-size:10px;
+}
+.simplePreviewTable tr.selected td{
+  background:rgba(34,197,94,.12);
+}
+.simpleRowDetails{
+  min-width:0;
+  border:1px solid var(--mrs-border);
+  border-radius:var(--mrs-radius-md);
+  background:var(--mrs-surface-2);
+  padding:9px;
+  max-height:52vh;
+  overflow:auto;
+}
+.rowDetailsGrid{
+  display:grid;
+  gap:8px;
+}
+.rowDetailGroup{
+  border-top:1px solid var(--mrs-border);
+  padding-top:8px;
+}
+.rowDetailGroup:first-child{
+  border-top:0;
+  padding-top:0;
+}
+.rowDetailGroup h4{
+  margin:0 0 6px;
+  font-size:12px;
+}
+.rowDetail{
+  display:grid;
+  grid-template-columns:minmax(90px,.38fr) minmax(0,1fr);
+  gap:8px;
+  padding:4px 0;
+}
+.rowDetail span{
+  color:var(--mrs-muted);
+  font-size:11px;
+}
+.rowDetail b{
+  font-size:12px;
+  font-weight:750;
+  word-break:break-word;
+}
+.simpleFileTree{
+  display:grid;
+  gap:9px;
+}
+.simpleTreeGroup{
+  border:1px solid var(--mrs-border);
+  border-radius:var(--mrs-radius-md);
+  background:var(--mrs-surface-2);
+  overflow:hidden;
+}
+.simpleTreeGroup>summary{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  min-height:34px;
+  padding:8px 10px;
+  cursor:pointer;
+  list-style:none;
+  font-weight:900;
+}
+.simpleTreeGroup>summary::-webkit-details-marker{
+  display:none;
+}
+.simpleTreeGroup>summary b{
+  color:var(--mrs-muted);
+  font-size:10px;
+}
+.simpleTreeItems{
+  display:grid;
+  gap:2px;
+  padding:0 8px 8px;
+}
+.simpleTreeItem{
+  min-height:40px;
+}
+.simpleTreeItem .btn{
+  flex:0 0 auto;
+}
+.simpleTreeItem .simpleTreeAction,
+.simpleTreeItem .simpleDeleteBtn{
+  position:relative;
+  z-index:1;
+}
+.simpleTreeItem .simpleTreeAction{
+  margin-left:auto;
+}
+.simpleTreeItem .simpleDeleteBtn{
+  width:28px;
+  min-width:28px;
+  height:28px;
+  padding:0;
+  margin-left:4px;
+  display:inline-grid;
+  place-items:center;
+  border-radius:999px;
+  font-size:18px;
+  line-height:1;
+  color:var(--mrs-red);
+}
+.simpleTreeItem .itemName{
+  min-width:0;
+  flex:1 1 auto;
+}
+.simpleTreeMore{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  min-height:34px;
+  padding:6px 2px 0;
+  color:var(--mrs-muted);
+  font-size:11px;
+}
+.simpleAdvancedList{
+  display:grid;
+  gap:5px;
+  padding:0 10px 10px;
+}
+.simpleAdvancedList span{
+  color:var(--mrs-muted);
+  font-size:12px;
+}
+.simpleChartLarge{
+  min-height:360px;
+  margin-bottom:10px;
+}
+@media(max-width:1180px){
+  .workspaceTopbar{align-items:stretch;flex-wrap:wrap;max-height:none}
+  .workspaceSearchBox{order:1;flex:1 1 260px;width:auto}
+  .workspaceTopbar .spacer{display:none}
+  .workspaceLayout{grid-template-columns:minmax(260px,1fr) 12px minmax(260px,var(--workspace-side,320px))}
+  .simpleDashboardSplit,.simpleContentGrid{grid-template-columns:1fr}
+}
+@media(max-width:920px){
+  .workspaceTopbar{position:sticky;top:0;z-index:30}
+  .workspaceSearchBox{order:1;flex:1 1 calc(100% - 132px);width:auto}
+  .workspacePrimary{order:2;flex:0 0 auto}
+  .workspaceSecondary,.topbarAdvanced{display:none}
+  .workspaceMobileMore{display:block;order:3;flex:0 0 auto}
+  .workspaceUserPill{order:4}
+  .workspaceMenu{order:5;flex:0 0 auto}
+  .workspaceLayout{display:grid;grid-template-columns:1fr;grid-template-rows:auto;min-height:auto;height:auto;padding:8px;gap:8px}
+  .workspaceLayout .splitX,.workspaceLayout .splitY{display:none}
+  .workspaceLayout .materialsPanel,.workspaceLayout .reader,.workspaceLayout .analytics{grid-column:1;grid-row:auto;display:flex;min-height:320px}
+  .advancedMenu,.workspaceMenuPanel{left:0;right:auto}
+}
+@media(max-width:560px){
+  .workspaceSearchBox{flex:1 1 100%}
+  .workspacePrimary,.workspaceMobileMore,.workspaceMenu{flex:1 1 calc(50% - 8px);justify-content:center}
+}
+
 </style>
 </head>
 <body>
 <div class="app" id="app" data-theme="dark" data-access="admin">
-  <header class="topbar">
-    <div class="logo">M</div>
-    <div class="title"><b id="reportTitle">Marketing Report Studio</b><span id="reportSubtitle">Завантажте матеріали -> перевірте докази -> експортуйте звіт для клієнта</span></div>
-    <input class="select adminOnly" id="companyNameInput" placeholder="Назва компанії" style="min-width:240px" />
+  <header class="topbar workspaceTopbar">
+    <div class="logo workspaceLogo">M</div>
+    <div class="title workspaceTitle"><b id="reportTitle">Marketing Report Studio</b><span id="reportSubtitle">Upload tables and research files. The app will structure them, visualize the data, and prepare a clean report.</span></div>
+    <div class="workspaceSearchBox"><span class="searchIcon" aria-hidden="true"></span><input id="search" class="search select workspaceSearch" placeholder="Search project files..." /></div>
+    <button class="btn primary adminOnly workspacePrimary" id="pasteBtn" aria-label="Add data" title="Add a table, files, or a folder">Add data</button>
+    <button class="btn secondary adminOnly workspaceSecondary" id="saveClientHtmlBtn">Export report</button>
+    <button class="btn secondary adminOnly workspaceSecondary" id="saveDiskBtn" title="Save the current project as an HTML file">Save</button>
+    <button class="btn secondary workspaceSecondary" id="unlockAdminBtn" title="Local browser editing mode. Files are not uploaded.">Admin</button>
+    <button class="btn secondary workspaceSecondary hidden" id="clientReportBtn">Client Report</button>
+    <details class="workspaceMobileMore"><summary class="btn secondary" id="workspaceMoreBtn">More</summary><div class="workspaceMenuPanel" aria-label="Workspace actions"><button class="btn adminOnly" data-topbar-proxy="saveClientHtmlBtn">Export report</button><button class="btn adminOnly" data-topbar-proxy="saveDiskBtn">Save</button><button class="btn" data-topbar-proxy="unlockAdminBtn">Admin</button><button class="btn hidden" data-topbar-proxy="clientReportBtn">Client Report</button><button class="btn adminOnly hidden" data-topbar-proxy="saveHtmlBtn">Save admin</button><button class="btn adminOnly hidden" data-topbar-proxy="saveClientPackageBtn">Client package</button><button class="btn adminOnly hidden" data-topbar-proxy="exportJsonBtn">CI JSON</button><button class="btn adminOnly hidden" data-topbar-proxy="internalAuditPackageBtn">Audit</button></div></details>
     <div class="spacer"></div>
-    <button class="btn primary adminOnly" id="pasteBtn" aria-label="Завантажити матеріали" title="Додати таблицю, файли або папку"><span class="hideMob">Завантажити матеріали</span></button>
-    <button class="btn adminOnly" id="exportJsonBtn" title="Експорт у єдиній CI OS структурі"><span class="hideMob">CI JSON</span></button>
-    <button class="btn primary adminOnly" id="saveDiskBtn" title="Зберегти поточний проєкт у HTML-файл на диск">Зберегти на диск</button><button class="btn primary adminOnly" id="saveHtmlBtn">Зберегти адмін</button><button class="btn primary adminOnly" id="saveClientHtmlBtn">Для клієнта</button><button class="btn adminOnly" id="saveClientPackageBtn">Пакет для клієнта</button><button class="btn adminOnly" id="internalAuditPackageBtn" title="Лише для аналітиків. Не для клієнтів.">Внутрішній аудит</button><button class="btn adminOnly hidden" id="membersBtn">Користувачі</button><button class="btn small cloudStatus" id="cloudStatus" data-state="local" title="Стан спільного збереження">Локально</button><span class="rolePill" id="rolePill">Адмін</span><button class="btn ghost" id="unlockAdminBtn" title="Перемкнути режим редагування">🔒</button>
-    <button class="btn ghost" id="themeBtn" title="Тема">◐</button>
-    <button class="btn ghost" id="langBtn" title="Мова">EN</button>
+    <span class="rolePill workspaceUserPill" id="rolePill">AD</span>
+    <details class="workspaceMenu"><summary class="btn ghost" id="workspaceMenuBtn" aria-label="Workspace menu">Menu</summary><div class="workspaceMenuPanel" aria-label="Account and workspace controls"><input class="select adminOnly workspaceCompany" id="companyNameInput" placeholder="Company name" /><button class="btn small cloudStatus" id="cloudStatus" data-state="local" title="Shared save status">Local</button><button class="btn ghost" id="themeBtn" title="Theme">Theme</button><button class="btn ghost" id="langBtn" title="Language">EN</button><button class="btn adminOnly hidden" id="saveHtmlBtn">Save admin</button><button class="btn adminOnly hidden" id="saveClientPackageBtn">Client package</button><button class="btn adminOnly hidden" id="exportJsonBtn" title="Export to unified CI OS structure">CI JSON</button><button class="btn adminOnly hidden" id="internalAuditPackageBtn" title="For analysts only. Not for clients.">Audit</button><button class="btn adminOnly hidden" id="membersBtn">Users</button></div></details>
   </header>
   <div class="appNotice" id="appNotice" role="status" aria-live="polite"><span id="appNoticeText"></span><div class="spacer"></div><button class="btn small ghost" id="appNoticeClose" aria-label="Закрити повідомлення">✕</button></div>
-  <main class="layout" id="layout">
-    <section class="panel analytics">
-      <div class="panelHead"><h2 id="analyticsPanelTitle">Графіки</h2><span class="hint" id="analyticsHint">клік по графіку відкриває таблицю-джерело</span><div class="spacer"></div></div>
+  <main class="layout workspaceLayout" id="layout">
+    <section class="panel analytics" data-workspace-panel="analytics" data-workspace-slot="top">
+      <div class="panelHead" data-workspace-handle><h2 id="analyticsPanelTitle">Summary + Charts</h2><span class="hint" id="analyticsHint">Auto cards, charts, and quick insights</span><div class="spacer"></div></div>
       <div class="content" id="analyticsContent"></div>
     </section>
     <div class="splitY" id="splitY"><div class="splitDot"></div></div>
-    <section class="panel reader">
-      <div class="panelHead"><h2 id="readerPanelTitle">Робоча область</h2><div class="readerTabs" id="readerTabs"></div><div class="spacer"></div><button class="btn small" id="clearReaderBtn">Очистити</button></div>
+    <section class="panel reader" data-workspace-panel="reader" data-workspace-slot="bottom">
+      <div class="panelHead" data-workspace-handle><h2 id="readerPanelTitle">Table / File Content</h2><div class="readerTabs" id="readerTabs"></div><div class="spacer"></div><button class="btn small" id="clearReaderBtn">Clear</button></div>
       <div class="content readerBody" id="readerContent"></div>
     </section>
     <div class="splitX" id="splitX"><div class="splitDot"></div></div>
-    <aside class="panel files">
-        <div class="panelHead"><h2 id="filesPanelTitle">Матеріали</h2><span class="hint" id="storageStat"></span><div class="spacer"></div><button class="btn small adminOnly" id="uploadFilesBtn" aria-label="Завантажити файли" title="Вибрати один або кілька файлів з диска">Завантажити файли</button><button class="btn small adminOnly" id="connectFolderBtn">Підключити папку</button></div>
+    <aside class="panel files materialsPanel" data-workspace-panel="files" data-workspace-slot="side">
+        <div class="panelHead materialsHeader" data-workspace-handle><h2 id="filesPanelTitle">Project files</h2><span class="hint" id="storageStat"></span><div class="spacer"></div><button class="btn secondary small adminOnly" id="uploadFilesBtn" aria-label="Upload files" title="Choose one or more files from disk">Upload files</button><button class="btn secondary small adminOnly" id="connectFolderBtn">Connect folder</button></div>
       <div class="content">
-        <input id="search" class="search select" placeholder="Пошук таблиць, файлів, графіків" />
         <div id="sideList"></div>
-        <div id="dropZone" class="drop adminOnly">Перетягни сюди Excel/CSV/JSON або файли<br><small>.xlsx, .csv, .json, .md, .pdf, зображення...</small></div>
+        <div id="materialsDropZone" class="drop adminOnly materialsDropZone"><div class="dropIcon">cloud</div><strong>Drag and drop files here</strong><span>or click to browse</span><small>Supports .pdf, .pptx, .xlsx, .csv, .docx, .md, .txt, .json, images, video</small></div>
       </div>
     </aside>
   </main>
 </div>
-<input type="file" id="fileInput" class="hiddenInput" multiple accept=".xlsx,.csv,.tsv,.json,.txt,.md,.html,.pdf,.png,.jpg,.jpeg,.webp,.docx" />
+<input type="file" id="fileInput" class="hiddenInput" multiple accept=".xlsx,.csv,.tsv,.json,.txt,.md,.html,.pdf,.pptx,.png,.jpg,.jpeg,.webp,.gif,.bmp,.svg,.docx,.mp4,.mov,.webm" />
 <div class="modalBackdrop" id="modalBackdrop" role="dialog" aria-modal="true" aria-labelledby="modalTitle"><div class="modal"><div class="modalHead"><b id="modalTitle"></b><button class="btn small ghost" id="modalClose" aria-label="Закрити діалог">✕</button></div><div class="modalBody" id="modalBody"></div><div class="modalFoot" id="modalFoot"></div></div></div>
 <div class="toast" id="toast"></div>
 <script type="application/json" id="reportData">
@@ -274,6 +1032,15 @@
   "files": [],
   "charts": [],
   "tables": [],
+  "materialFolders": [
+    {"id":"market-research","name":"01. Market Research","system":true,"createdAt":null,"updatedAt":null},
+    {"id":"competitor-intelligence","name":"02. Competitor Intelligence","system":true,"createdAt":null,"updatedAt":null},
+    {"id":"customer-insights","name":"03. Customer Insights","system":true,"createdAt":null,"updatedAt":null},
+    {"id":"product-positioning","name":"04. Product & Positioning","system":true,"createdAt":null,"updatedAt":null},
+    {"id":"campaign-performance","name":"05. Campaign Performance","system":true,"createdAt":null,"updatedAt":null},
+    {"id":"sales-enablement","name":"06. Sales Enablement","system":true,"createdAt":null,"updatedAt":null},
+    {"id":"legal-compliance","name":"07. Legal & Compliance","system":true,"createdAt":null,"updatedAt":null}
+  ],
   "competitorProfiles": {
     "items": [],
     "updatedAt": null
@@ -337,7 +1104,10 @@
   }
 }
 </script>
-<script src="vendor/jszip-3.10.1.min.js"></script>
+<script src="src/core/dom.js"></script>
+<script src="src/core/i18n.js"></script>
+<script src="src/features/materials.js"></script>
+<script src="src/features/export.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

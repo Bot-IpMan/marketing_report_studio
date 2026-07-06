@@ -1,18 +1,21 @@
 # Cloudflare Deployment
 
-This project is deployed as a browser-only static application through a
-Cloudflare Worker with Static Assets.
+This project is deployed as a browser-only static application through
+Cloudflare Pages connected to GitHub.
 
-## GitHub / Workers Builds
+## GitHub / Cloudflare Pages
 
-Connect the GitHub repository in Cloudflare Workers Builds and use:
+Connect the GitHub repository in Cloudflare Pages and use:
 
 ```text
 Build command: npm run build
-Deploy command: npx wrangler deploy
+Build output directory: dist
 ```
 
-The production output directory is `dist/`, configured in `wrangler.toml`.
+Every push to the production branch should trigger a Pages build. The
+`wrangler.toml` Worker/static-assets configuration remains in the repository for
+compatibility with Worker-style deployments and local Cloudflare checks, but
+GitHub-backed Pages does not require a separate `wrangler deploy` step.
 
 ## Required Resources
 
@@ -24,9 +27,9 @@ None. Do not add:
 - Cloudflare Access JWT variables;
 - application API tokens or secrets.
 
-The Worker routes `/api` and `/api/*` only to return `404 API_DISABLED`. A
-Cloudflare Pages fallback handler does the same if the repository is deployed
-through Pages by mistake.
+The Pages fallback handler routes `/api` and `/api/*` only to return `404
+API_DISABLED`. The Worker-compatible route does the same if the repository is
+served through a Worker/static-assets deployment.
 
 ## Security Headers
 
@@ -68,7 +71,10 @@ either case. If Access is enabled, protect the entire hostname, not only
    Settings > Variables and Secrets.
 5. Production and preview branches use the same browser-only build.
 6. Logs do not intentionally capture request bodies or report contents.
-7. Bot/indexing settings match the intended privacy level.
+7. Cloudflare Web Analytics is disabled for this hostname. Do not inject the
+   `static.cloudflareinsights.com` beacon unless the product privacy model and
+   CSP are intentionally changed.
+8. Bot/indexing settings match the intended privacy level.
 
 Do not enable HSTS preload or `includeSubDomains` without reviewing every
 subdomain first. The application sends a host-only HSTS header.

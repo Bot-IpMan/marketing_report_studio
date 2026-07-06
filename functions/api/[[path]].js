@@ -169,14 +169,6 @@ const AI_OUTPUT_SCHEMAS = {
 };
 
 export async function onRequest(context = {}) {
-  const request = context.request || new Request('https://example.com/api');
-  const env = context.env || {};
-  const path = Array.isArray(context.params?.path)
-    ? context.params.path.join('/')
-    : String(context.params?.path || '');
-
-  if (path === 'ai/status') return handleAiStatus(env);
-  if (path === 'ai/preview') return handleAiPreview(request, env);
   return apiDisabled();
 }
 

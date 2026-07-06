@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
+    "e2e": "node tests/e2e-smoke.mjs",
     "test": "node tests/api-smoke.mjs && node tests/worker-smoke.mjs && node tests/config-and-ui-smoke.mjs && node tests/ui-smoke.mjs",
-    "check": "npm run test && npm run build"
+    "check": "npm run test && npm run e2e && npm run build"
   }
 }

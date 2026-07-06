@@ -1,5 +1,23 @@
 (function(){
 'use strict';
+const DEFAULT_MATERIAL_FOLDERS = [
+  {id:'market-research',name:'01. Market Research',match:/market|research|analysis|industry|landscape/i},
+  {id:'competitor-intelligence',name:'02. Competitor Intelligence',match:/competitor|competitive|pricing|positioning|feature/i},
+  {id:'customer-insights',name:'03. Customer Insights',match:/customer|persona|interview|survey|feedback|review/i},
+  {id:'product-positioning',name:'04. Product & Positioning',match:/product|positioning|message|website|landing|brand/i},
+  {id:'campaign-performance',name:'05. Campaign Performance',match:/campaign|performance|analytics|traffic|seo|ads|social/i},
+  {id:'sales-enablement',name:'06. Sales Enablement',match:/sales|enablement|deck|pitch|proposal|case/i},
+  {id:'legal-compliance',name:'07. Legal & Compliance',match:/legal|compliance|policy|privacy|terms|risk/i},
+];
+function createDefaultMaterialFolders(){
+  return DEFAULT_MATERIAL_FOLDERS.map(folder=>({
+    id:folder.id,
+    name:folder.name,
+    system:true,
+    createdAt:null,
+    updatedAt:null
+  }));
+}
 const DEFAULT = {
   meta:{title:'Ринкова конкурентна розвідка', companyName:'', updatedAt:new Date().toISOString(), lang:'uk'},
   datasets:[],
@@ -7,6 +25,7 @@ const DEFAULT = {
   files:[],
   charts:[],
   tables:[],
+  materialFolders:createDefaultMaterialFolders(),
   competitorProfiles:{items:[], updatedAt:null},
   pricingFeatureMatrix:null,
   materialsInventory:{items:[], updatedAt:null},
@@ -58,6 +77,8 @@ const ONBOARDING_VERSION = 1;
 const ONBOARDING_STEPS = ['welcome','workspaceBasics','rolesAndAccess','exportSafety','aiPolicy','reviewPolicy','versionRetention','restorePolicy','demoReport','finalChecklist'];
 const FIRST_REPORT_FLOW_VERSION = 1;
 const FIRST_REPORT_STEPS = ['createReport','addClientBasics','addCompetitors','uploadMaterials','reviewMaterialsInventory','buildSourceRegistry','addEvidence','reviewEvidence','buildDraft','runQualityChecklist','exportClientReport'];
+const CLIENT_EXPORT_STEP_STATUSES = ['not_started','ready','blocked','completed','completed_with_warnings'];
+const MATERIAL_FILE_SORT_OPTIONS = ['newest','oldest','name','type','size'];
 const AI_PROVIDER_MODES = ['disabled','dry_run','real_provider','unknown'];
 const AI_INPUT_REF_TYPES = ['section','source','evidence_card','material','draft_block','recommendation','checklist_item','unknown'];
 const AI_OUTPUT_REF_TYPES = ['ai_suggestion','evidence_card','draft_block','checklist_item','source_coverage_gap','unknown'];
@@ -94,7 +115,7 @@ const REPORT_SECTION_DEFINITIONS = [
 const REPORT_STORAGE_KEY = `marketing_report_studio_v8:${location.pathname}:report`;
 const LANG_STORAGE_KEY = `marketing_report_studio_v8:${location.pathname}:lang`;
 const LOCALSTORAGE_MAX_BYTES = 4 * 1024 * 1024;
-const MAX_IMPORT_FILES = 100;
+const MAX_IMPORT_FILES = 500;
 const MAX_IMPORT_FILE_BYTES = 40 * 1024 * 1024;
 const MAX_TEXT_IMPORT_BYTES = 20 * 1024 * 1024;
 const MAX_ARCHIVE_ENTRIES = 2000;
@@ -105,34 +126,49 @@ const MAX_SHEET_COLUMNS = 10000;
 const MAX_SHEET_CELLS = 1000000;
 const PERSIST_DEBOUNCE_MS = 500;
 const SIDE_SEARCH_RENDER_DEBOUNCE_MS = 120;
+const SIMPLE_TREE_DEFAULT_LIMIT = 120;
+const SIMPLE_TREE_INCREMENT = 120;
+const WORKSPACE_PANEL_KEYS = ['analytics','reader','files'];
+const WORKSPACE_SLOT_KEYS = ['top','bottom','side'];
+const DEFAULT_WORKSPACE_LAYOUT = {top:'analytics', bottom:'reader', side:'files', sidePx:360, topPct:46};
 const CLOUD_PERSIST_DEBOUNCE_MS = 1400;
 const CLOUD_RETRY_DELAYS_MS = [3000, 10000, 30000, 60000];
+const JSZIP_VENDOR_SRC = 'vendor/jszip-3.10.1.min.js';
 const BROWSER_ONLY_MODE = true;
 const HOSTED_MODE = location.protocol==='https:' || location.protocol==='http:';
+const MRS_DOM = (typeof window!=='undefined' && window.MRSDom) || {};
+const MRS_I18N = (typeof window!=='undefined' && window.MRSI18n) || {};
+const MRS_MATERIALS = (typeof window!=='undefined' && window.MRSMaterials) || {};
+const MRS_EXPORT = (typeof window!=='undefined' && window.MRSExport) || {};
 let persistTimer = null;
 let sideSearchRenderTimer = null;
+let jszipLoadPromise = null;
 let localStorageDisabledBySize = false;
 let REPORT = normalizeReport(loadReport() || DEFAULT);
-const state = {activeDataset: REPORT.datasets[0]?.id || null, activeFile:null, openTabs:[], theme:'dark', access:((HOSTED_MODE&&!BROWSER_ONLY_MODE)||REPORT.meta?.clientLocked)?'viewer':(REPORT.meta?.accessMode || 'admin'), activeCompany:null, compareA:null, compareB:null, compareOnly:false, openFolders:{}, showCompare:false, fsOpen:{}, fsRoots:[], fsPollTimer:null, analyticsSite:'all', analyticsResearch:'all', materialType:'all', reviewFilter:'all', competitorFilter:'all', matrixFilter:'all', aiStatus:null, aiStatusLoaded:false, aiSectionId:'', aiQueueType:'all', aiQueueStatus:'all', aiAuditFilter:'all', versionDiffFilter:'all', sidePanelView:'materials', lastVizFsSync:0, widgetSnapshots:{}, lang:(REPORT.meta?.lang || getSavedLang() || 'uk')};
+const state = {activeDataset: REPORT.datasets[0]?.id || null, activeFile:null, openTabs:[], theme:'dark', access:((HOSTED_MODE&&!BROWSER_ONLY_MODE)||REPORT.meta?.clientLocked)?'viewer':(REPORT.meta?.accessMode || 'admin'), activeCompany:null, compareA:null, compareB:null, compareOnly:false, openFolders:{}, showCompare:false, fsOpen:{}, fsRoots:[], fsPollTimer:null, analyticsSite:'all', analyticsResearch:'all', materialType:'all', reviewFilter:'all', competitorFilter:'all', matrixFilter:'all', fileSort:'newest', aiStatus:null, aiStatusLoaded:false, aiSectionId:'', aiQueueType:'all', aiQueueStatus:'all', aiAuditFilter:'all', versionDiffFilter:'all', sidePanelView:'materials', lastVizFsSync:0, widgetSnapshots:{}, lang:(REPORT.meta?.lang || getSavedLang() || 'uk')};
 const cloudSync = {enabled:HOSTED_MODE&&!BROWSER_ONLY_MODE, ready:false, localFallback:BROWSER_ONLY_MODE, saving:false, dirty:false, conflict:false, suppress:false, saveTimer:null, retryCount:0, reportId:null, version:null, role:null, user:null, workspace:null};
 let VERSION_DIFF_BASELINE = null;
 let VERSION_DIFF_BASELINE_REPORT = null;
-const $ = id => document.getElementById(id);
+const $ = MRS_DOM.byId || (id => document.getElementById(id));
 const app = $('app'), analytics = $('analyticsContent'), reader = $('readerContent'), readerTabs = $('readerTabs'), sideList = $('sideList'), search = $('search');
 const UI_TEXT = {
   uk: {
     appTitle: 'Marketing Report Studio',
     reportTitlePrefix: 'Marketing Report Studio',
     reportTitleDefaultCompany: 'ваша компанія',
-    reportSubtitle: 'Завантажте матеріали -> перевірте докази -> експортуйте звіт для клієнта',
+    reportSubtitle: 'Завантажте таблиці та файли. Додаток структурує їх, покаже графіки й підготує чистий звіт.',
     companyName: 'Назва компанії',
-    pasteCsv: 'Завантажити матеріали',
+    pasteCsv: 'Додати дані',
     pasteTitle: 'Додати таблицю, файли або папку',
     exportCiJson: 'CI JSON',
     exportCiJsonTitle: 'Експорт у єдиній CI OS структурі',
     saveDisk: 'Зберегти на диск',
     saveAdmin: 'Зберегти адмін',
     saveClient: 'Для клієнта',
+    topbarClientExport: 'Експорт звіту',
+    topbarSave: 'Зберегти',
+    topbarAdvanced: 'Додатково',
+    topbarMore: 'Ще',
     saveClientPackage: 'Пакет для клієнта',
     internalAuditPackage: 'Внутрішній аудит',
     internalAuditPackageTitle: 'Лише для аналітиків. Не для клієнтів.',
@@ -172,11 +208,21 @@ const UI_TEXT = {
     firstReportAddClient: 'Додати клієнта',
     firstReportTitleEmpty: 'Створіть перший marketing intelligence звіт',
     firstReportTitleContinue: 'Продовжуйте звіт',
+    firstReportHeroSubtitle: 'Завантажте дослідницькі файли, нотатки про конкурентів, скриншоти, таблиці та контекст клієнта.',
     firstReportSubtitleEmpty: 'Почніть із клієнта, конкурентів і дослідницьких матеріалів. Потім перетворіть їх на розділи з доказами та готовий клієнтський експорт.',
     firstReportSubtitleContinue: 'Рухайтесь від матеріалів до джерел, доказів, чернетки, чекліста та клієнтського експорту.',
     firstReportSampleData: 'Ви переглядаєте демонстраційні дані.',
     firstReportLocalOnly: 'Локальний guide: зміни застосовуються до цього файлу звіту або сесії браузера.',
+    firstReportLocalOnlySimple: 'Local-only: файли залишаються в цьому браузері, доки ви їх не експортуєте.',
     firstReportProgress: 'Прогрес {percent}% - наступний крок: {step}',
+    reportReadiness: 'Готовність звіту',
+    viewChecklist: 'Переглянути чекліст',
+    viewReportReadiness: 'Переглянути готовність звіту',
+    firstReportCompleted: 'Завершено',
+    firstReportCompletedWithWarnings: 'Завершено з попередженнями',
+    firstReportInProgress: 'У процесі',
+    firstReportNotStarted: 'Не розпочато',
+    firstReportSkipped: 'Пропущено',
     firstReportOpenDemo: 'Відкрити демо-звіт',
     firstReportSkipStep: 'Пропустити крок',
     firstReportHideGuide: 'Сховати guide',
@@ -205,6 +251,11 @@ const UI_TEXT = {
     workflowClientCharts: 'Графіки та візуальні інсайти',
     workflowClientSources: 'Висновки з посиланням на джерела',
     workflowClientReport: 'Інтерактивний клієнтський звіт',
+    analyticsCharts: 'Графіки',
+    analyticsTables: 'Таблиці',
+    analyticsAllSites: 'Всі сайти',
+    analyticsComparison: 'Порівняння',
+    analyticsUnknownSite: 'Невідомий сайт',
     all: 'Усі',
     totalCount: '{count} всього',
     sourceSingular: 'джерело',
@@ -334,18 +385,19 @@ const UI_TEXT = {
     sourcesEvidenceTitle: 'Джерела й докази',
     admin: 'Адмін',
     viewer: 'Перегляд',
-    unlockAdmin: 'Увімкнути режим адміністратора',
+    unlockAdmin: 'Локальний режим редагування у браузері. Файли не завантажуються.',
     theme: 'Тема',
-    analytics: 'Report workspace',
-    analyticsHint: 'Матеріали -> структура -> перевірка -> експорт',
-    reader: 'Робоча область',
+    analytics: 'Summary + Charts',
+    analyticsHint: 'Auto cards, charts, and quick insights',
+    reader: 'Table / File Content',
     clear: 'Очистити',
-    dataFiles: 'Матеріали',
+    dataFiles: 'Project files',
     connectFolder: 'Підключити папку',
     uploadFiles: 'Завантажити файли',
-    searchPlaceholder: 'Пошук таблиць, файлів, графіків',
-    dropZone: 'Перетягни сюди Excel/CSV/JSON або файли',
-    dropZoneSmall: '.xlsx, .csv, .json, .md, .pdf, зображення...',
+    searchPlaceholder: 'Пошук файлів проекту...',
+    dropZone: 'Перетягни файли сюди',
+    dropZoneBrowse: 'або натисни, щоб вибрати',
+    dropZoneSmall: '.pdf, .pptx, .xlsx, .csv, .docx, .md, .txt, .json, зображення, відео',
     newChart: 'Новий графік',
     newTable: 'Нова табличка',
     pastedData: 'Вставлені дані',
@@ -356,7 +408,7 @@ const UI_TEXT = {
     storageStat: '{datasets} табл. · {files} файлів · {folders} папок',
     langCode: 'EN',
     switchLanguage: 'English',
-    emptyReader: 'Клікни на таблицю, графік або файл справа.',
+    emptyReader: 'Виберіть таблицю, графік або файл у Project files.',
     viewOnly: 'Цей звіт відкрито для перегляду. Редагування вимкнено.',
     savingHtml: 'Зберігаю HTML-файл на диск...',
     saveDiskTitle: 'Зберегти поточний проєкт у HTML-файл на диск',
@@ -372,15 +424,19 @@ const UI_TEXT = {
     appTitle: 'Marketing Report Studio',
     reportTitlePrefix: 'Marketing Report Studio',
     reportTitleDefaultCompany: 'your company',
-    reportSubtitle: 'Upload materials -> review evidence -> export client report',
+    reportSubtitle: 'Upload tables and research files. The app will structure them, visualize the data, and prepare a clean report.',
     companyName: 'Company name',
-    pasteCsv: 'Upload materials',
+    pasteCsv: 'Add data',
     pasteTitle: 'Add a table, files, or a folder',
     exportCiJson: 'CI JSON',
     exportCiJsonTitle: 'Export to unified CI OS structure',
     saveDisk: 'Save to disk',
     saveAdmin: 'Save admin',
     saveClient: 'For client',
+    topbarClientExport: 'Export report',
+    topbarSave: 'Save',
+    topbarAdvanced: 'Advanced',
+    topbarMore: 'More',
     saveClientPackage: 'Client package',
     internalAuditPackage: 'Export internal audit package',
     internalAuditPackageTitle: 'For analysts only. Not for clients.',
@@ -420,11 +476,21 @@ const UI_TEXT = {
     firstReportAddClient: 'Add client',
     firstReportTitleEmpty: 'Build your first marketing intelligence report',
     firstReportTitleContinue: 'Continue your report',
+    firstReportHeroSubtitle: 'Upload research files, competitor notes, screenshots, spreadsheets, and client context.',
     firstReportSubtitleEmpty: 'Start with a client, competitors, and research materials. Then turn them into evidence-backed sections and a client-ready export.',
     firstReportSubtitleContinue: 'Keep moving from materials to sources, evidence, draft, checklist, and client export.',
     firstReportSampleData: 'You are viewing sample data.',
     firstReportLocalOnly: 'Local-only guide: changes apply to this report file/browser session.',
+    firstReportLocalOnlySimple: 'Local-only: files stay in this browser unless you export them.',
     firstReportProgress: 'Progress {percent}% - next: {step}',
+    reportReadiness: 'Report readiness',
+    viewChecklist: 'View checklist',
+    viewReportReadiness: 'View report readiness',
+    firstReportCompleted: 'Completed',
+    firstReportCompletedWithWarnings: 'Completed with warnings',
+    firstReportInProgress: 'In progress',
+    firstReportNotStarted: 'Not started',
+    firstReportSkipped: 'Skipped',
     firstReportOpenDemo: 'Open demo report',
     firstReportSkipStep: 'Skip step',
     firstReportHideGuide: 'Hide guide',
@@ -453,6 +519,11 @@ const UI_TEXT = {
     workflowClientCharts: 'Charts and visual insights',
     workflowClientSources: 'Source-backed findings',
     workflowClientReport: 'Client-facing interactive report',
+    analyticsCharts: 'Charts',
+    analyticsTables: 'Tables',
+    analyticsAllSites: 'All sites',
+    analyticsComparison: 'Comparison',
+    analyticsUnknownSite: 'Unknown site',
     all: 'All',
     totalCount: '{count} total',
     sourceSingular: 'source',
@@ -582,18 +653,19 @@ const UI_TEXT = {
     sourcesEvidenceTitle: 'Sources and Evidence',
     admin: 'Admin',
     viewer: 'View',
-    unlockAdmin: 'Enable admin mode',
+    unlockAdmin: 'Local browser editing mode. Files are not uploaded.',
     theme: 'Theme',
-    analytics: 'Report workspace',
-    analyticsHint: 'Upload materials -> Structure -> Review -> Export',
-    reader: 'Workspace',
+    analytics: 'Summary + Charts',
+    analyticsHint: 'Auto cards, charts, and quick insights',
+    reader: 'Table / File Content',
     clear: 'Clear',
-    dataFiles: 'Materials',
+    dataFiles: 'Project files',
     connectFolder: 'Connect folder',
     uploadFiles: 'Upload files',
-    searchPlaceholder: 'Search tables, files, charts',
-    dropZone: 'Drag Excel/CSV/JSON or files here',
-    dropZoneSmall: '.xlsx, .csv, .json, .md, .pdf, images...',
+    searchPlaceholder: 'Search project files...',
+    dropZone: 'Drag and drop files here',
+    dropZoneBrowse: 'or click to browse',
+    dropZoneSmall: '.pdf, .pptx, .xlsx, .csv, .docx, .md, .txt, .json, images, video',
     newChart: 'New chart',
     newTable: 'New table',
     pastedData: 'Pasted data',
@@ -604,7 +676,7 @@ const UI_TEXT = {
     storageStat: '{datasets} tables · {files} files · {folders} folders',
     langCode: 'UA',
     switchLanguage: 'Українська',
-    emptyReader: 'Click a table, chart, or file on the right.',
+    emptyReader: 'Select a table, chart, or file from Project files.',
     viewOnly: 'This report is open in view-only mode. Editing is disabled.',
     savingHtml: 'Saving HTML file to disk...',
     saveDiskTitle: 'Save the current project as an HTML file',
@@ -1266,6 +1338,7 @@ function translationPairsForLang(lang){
 }
 function uiLocale(){return state.lang==='en'?'en-US':'uk-UA';}
 function formatText(template, values={}){
+  if(MRS_I18N.formatText) return MRS_I18N.formatText(template, values);
   return String(template||'').replace(/\{(\w+)\}/g, (_, key)=>String(values[key] ?? ''));
 }
 function getSavedLang(){
@@ -1290,6 +1363,7 @@ function translateText(value){
 }
 function t(key, values={}){
   const lang=state.lang==='en'?'en':'uk';
+  if(MRS_I18N.translateKey) return MRS_I18N.translateKey({key, values, lang, dictionaries:UI_TEXT, fallbackLang:'uk', translateText});
   const template=UI_TEXT[lang]?.[key] ?? UI_TEXT.uk?.[key] ?? key;
   return translateText(formatText(template, values));
 }
@@ -1364,15 +1438,19 @@ function applyLanguage(){
   $('pasteBtn') && ($('pasteBtn').innerHTML=`<span class="hideMob">${t('pasteCsv')}</span>`, $('pasteBtn').setAttribute('aria-label',t('pasteCsv')), $('pasteBtn').title=t('pasteTitle'));
   $('exportJsonBtn') && ($('exportJsonBtn').innerHTML=`<span class="hideMob">${t('exportCiJson')}</span>`);
   $('exportJsonBtn') && ($('exportJsonBtn').title=t('exportCiJsonTitle'));
-  $('saveDiskBtn') && ($('saveDiskBtn').textContent=t('saveDisk'), $('saveDiskBtn').title=t('saveDiskTitle'));
+  $('saveDiskBtn') && ($('saveDiskBtn').textContent=t('topbarSave'), $('saveDiskBtn').title=t('saveDiskTitle'));
   $('saveHtmlBtn') && ($('saveHtmlBtn').textContent=t('saveAdmin'));
-  $('saveClientHtmlBtn') && ($('saveClientHtmlBtn').textContent=t('saveClient'));
+  $('saveClientHtmlBtn') && ($('saveClientHtmlBtn').textContent=t('topbarClientExport'));
   $('saveClientPackageBtn') && ($('saveClientPackageBtn').textContent=t('saveClientPackage'));
   $('internalAuditPackageBtn') && ($('internalAuditPackageBtn').textContent=t('internalAuditPackage'), $('internalAuditPackageBtn').title=t('internalAuditPackageTitle'));
   $('membersBtn') && ($('membersBtn').textContent=t('members'));
   $('cloudStatus') && ($('cloudStatus').title=t('cloudStatusTitle'), $('cloudStatus').textContent=$('cloudStatus').dataset.state==='local'?t('cloudLocal'):$('cloudStatus').textContent);
-  $('unlockAdminBtn') && ($('unlockAdminBtn').title=t('unlockAdmin'));
-  $('themeBtn') && ($('themeBtn').title=t('theme'));
+  $('unlockAdminBtn') && ($('unlockAdminBtn').textContent=isAdmin()?t('admin'):t('edit'), $('unlockAdminBtn').title=t('unlockAdmin'));
+  $('clientReportBtn') && ($('clientReportBtn').textContent=t('clientReport'));
+  document.querySelector('.topbarAdvanced>summary') && (document.querySelector('.topbarAdvanced>summary').textContent=t('topbarAdvanced'));
+  $('workspaceMoreBtn') && ($('workspaceMoreBtn').textContent=t('topbarMore'));
+  $('workspaceMenuBtn') && ($('workspaceMenuBtn').textContent='Menu');
+  $('themeBtn') && ($('themeBtn').textContent=t('theme'), $('themeBtn').title=t('theme'));
   $('langBtn') && ($('langBtn').textContent=t('langCode'));
   $('langBtn') && ($('langBtn').title=t('switchLanguage'));
   $('appNoticeClose') && ($('appNoticeClose').setAttribute('aria-label',t('closeNotice')));
@@ -1385,15 +1463,15 @@ function applyLanguage(){
   $('connectFolderBtn') && ($('connectFolderBtn').textContent=t('connectFolder'), $('connectFolderBtn').title=t('connectFolderTitle'));
   $('uploadFilesBtn') && ($('uploadFilesBtn').textContent=t('uploadFiles'), $('uploadFilesBtn').title=t('uploadFilesTitle'), $('uploadFilesBtn').setAttribute('aria-label',t('uploadFiles')));
   $('search').placeholder=t('searchPlaceholder');
-  const drop=$('dropZone');
-  if(drop) drop.innerHTML = `${t('dropZone')}<br><small>${t('dropZoneSmall')}</small>`;
+  const drop=$('materialsDropZone')||$('dropZone');
+  if(drop) drop.innerHTML = `<div class="dropIcon">cloud</div><strong>${t('dropZone')}</strong><span>${t('dropZoneBrowse')}</span><small>${t('dropZoneSmall')}</small>`;
   const headTitle=$('reportTitle');
   if(headTitle) headTitle.textContent = t('reportTitlePrefix');
   document.title=t('reportTitlePrefix');
   const rp=$('rolePill');
   if(rp) rp.textContent=isAdmin()?t('admin'):t('viewer');
   const stat=$('storageStat');
-  if(stat) stat.textContent=t('storageStat', {datasets:REPORT.datasets.length, files:REPORT.files.length, folders:(REPORT.companies||[]).length});
+  if(stat) stat.textContent=t('storageStat', {datasets:REPORT.datasets.length, files:REPORT.files.length, folders:normalizeMaterialFolders(REPORT).length});
 }
 function rerenderActiveReader(){
   const tab=state.openTabs?.[0];
@@ -1412,7 +1490,7 @@ function clone(x){return JSON.parse(JSON.stringify(x));}
 function uid(prefix){return prefix + '-' + Math.random().toString(36).slice(2,8) + Date.now().toString(36).slice(-4)}
 function hashString(s){let h=2166136261; s=String(s||''); for(let i=0;i<s.length;i++){h^=s.charCodeAt(i); h=Math.imul(h,16777619);} return (h>>>0).toString(36);}
 function stableId(prefix,...parts){return `${prefix}-${hashString(parts.join('|'))}`;}
-function esc(s){return String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));}
+function esc(s){return MRS_DOM.escapeHtml ? MRS_DOM.escapeHtml(s) : String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));}
 function normText(s){return String(s||'').toLowerCase().replace(/[^a-z0-9а-яіїєґ]+/gi,'').trim();}
 function normalizeNumberString(v){
   let s=String(v??'').trim().replace(/\s/g,'');
@@ -1450,7 +1528,47 @@ function enrichVideoMetricsRow(r){
   return r;
 }
 function fmt(n){n=num(n); return Math.abs(n)>=1000 ? Math.round(n).toLocaleString(uiLocale()) : n.toLocaleString(uiLocale(),{maximumFractionDigits:2});}
-function bytes(n){n=num(n); if(n>1024*1024) return (n/1024/1024).toFixed(1)+' MB'; if(n>1024) return (n/1024).toFixed(1)+' KB'; return Math.round(n)+' B';}
+function bytes(n){return MRS_DOM.formatBytes ? MRS_DOM.formatBytes(n) : (n=>{n=num(n); if(n>1024*1024) return (n/1024/1024).toFixed(1)+' MB'; if(n>1024) return (n/1024).toFixed(1)+' KB'; return Math.round(n)+' B';})(n);}
+function getJSZipCtor(){
+  if(typeof window!=='undefined' && window.JSZip) return window.JSZip;
+  if(typeof JSZip!=='undefined') return JSZip;
+  return null;
+}
+function ensureJSZip(){
+  const loaded=getJSZipCtor();
+  if(loaded) return Promise.resolve(loaded);
+  if(jszipLoadPromise) return jszipLoadPromise;
+  jszipLoadPromise=new Promise((resolve,reject)=>{
+    if(typeof document==='undefined'){
+      reject(new Error('JSZip is unavailable.'));
+      return;
+    }
+    const finish=()=>{
+      const Zip=getJSZipCtor();
+      if(Zip) resolve(Zip);
+      else reject(new Error('JSZip failed to load.'));
+    };
+    const fail=()=>{
+      jszipLoadPromise=null;
+      reject(new Error('JSZip failed to load.'));
+    };
+    const existing=document.querySelector(`script[data-lazy-vendor="jszip"],script[src="${JSZIP_VENDOR_SRC}"]`);
+    if(existing){
+      existing.addEventListener('load',finish,{once:true});
+      existing.addEventListener('error',fail,{once:true});
+      if(getJSZipCtor()) finish();
+      return;
+    }
+    const script=document.createElement('script');
+    script.src=JSZIP_VENDOR_SRC;
+    script.defer=true;
+    script.dataset.lazyVendor='jszip';
+    script.onload=finish;
+    script.onerror=fail;
+    document.head.appendChild(script);
+  });
+  return jszipLoadPromise;
+}
 function assertSafeImportFile(file){
   if(!file) throw new Error('Файл не вибрано.');
   const size=Number(file.size||0);
@@ -2555,6 +2673,61 @@ function loadDemoReport(){
 function createDefaultMaterialsInventory(){
   return {items:[], updatedAt:null};
 }
+function normalizeMaterialFolder(folder, fallback={}){
+  const input=folder&&typeof folder==='object'?folder:{};
+  const name=String(input.name||fallback.name||'Untitled folder').trim()||'Untitled folder';
+  const id=String(input.id||fallback.id||slugify(name)||uid('material-folder'));
+  return {
+    id,
+    name,
+    system:Boolean(input.system ?? fallback.system ?? false),
+    createdAt:input.createdAt||fallback.createdAt||null,
+    updatedAt:input.updatedAt||fallback.updatedAt||null
+  };
+}
+function normalizeMaterialFolders(reportData){
+  const report=reportData&&typeof reportData==='object'?reportData:{};
+  const defaults=createDefaultMaterialFolders();
+  const existing=Array.isArray(report.materialFolders)?report.materialFolders:[];
+  const byId=new Map();
+  const byName=new Set();
+  for(const folder of defaults){
+    const normalized=normalizeMaterialFolder(folder,{system:true});
+    byId.set(normalized.id,normalized);
+    byName.add(normalized.name.toLowerCase());
+  }
+  for(const folder of existing){
+    const normalized=normalizeMaterialFolder(folder);
+    const keyName=normalized.name.toLowerCase();
+    if(byId.has(normalized.id)){
+      byId.set(normalized.id,{...byId.get(normalized.id),...normalized,system:true});
+      continue;
+    }
+    if(byName.has(keyName)) continue;
+    byId.set(normalized.id,normalized);
+    byName.add(keyName);
+  }
+  report.materialFolders=[...byId.values()];
+  return report.materialFolders;
+}
+function addMaterialFolder(reportData, name){
+  const report=reportData&&typeof reportData==='object'?reportData:REPORT;
+  const clean=String(name||'').trim();
+  if(!clean) return null;
+  const folders=normalizeMaterialFolders(report);
+  const existing=folders.find(folder=>folder.name.toLowerCase()===clean.toLowerCase());
+  if(existing) return existing;
+  const baseId=slugify(clean)||'custom-folder';
+  let id=baseId;
+  let index=2;
+  while(folders.some(folder=>folder.id===id)){
+    id=`${baseId}-${index++}`;
+  }
+  const folder={id,name:clean,system:false,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
+  folders.push(folder);
+  report.materialFolders=folders;
+  return folder;
+}
 function getMaterialType(material){
   const ext=String(material?.extension||material?.ext||material?.name||'').split('.').pop().toLowerCase();
   const mime=String(material?.mimeType||material?.type||'').toLowerCase();
@@ -2580,6 +2753,7 @@ function normalizeMaterialItem(item){
   out.sizeLabel=String(out.sizeLabel||bytes(out.size||0));
   out.linkedCompanyId=String(out.linkedCompanyId||out.companyId||'');
   out.linkedSectionId=String(out.linkedSectionId||'');
+  out.materialFolderId=String(out.materialFolderId||out.folderId||'');
   out.createdAt=String(out.createdAt||'');
   out.updatedAt=String(out.updatedAt||out.createdAt||'');
   out.status=MATERIAL_STATUS.includes(String(out.status))?String(out.status):(out.linkedCompanyId||out.linkedSectionId?'linked':'available');
@@ -3535,9 +3709,9 @@ function injectPackagePrintCss(html, css){
   return String(html||'').replace('</head>', `${style}\n</head>`);
 }
 async function buildClientPackageZip(reportData, reportHtml, zipEntries=[]){
-  if(typeof JSZip==='undefined') throw new Error('JSZip is unavailable. Client package ZIP cannot be created.');
+  const Zip=await ensureJSZip();
   const report=sanitizeClientExportData(reportData);
-  const zip=new JSZip();
+  const zip=new Zip();
   const printCss=buildPrintCss();
   const assetEntries=Array.isArray(zipEntries)?zipEntries:[];
   zip.file('report.html', injectPackagePrintCss(reportHtml,printCss));
@@ -3656,9 +3830,9 @@ function buildInternalReadmeText(reportData){
   ].join('\n');
 }
 async function buildInternalAuditPackage(reportData, options={}){
-  if(typeof JSZip==='undefined') throw new Error('JSZip is unavailable. Internal audit package ZIP cannot be created.');
+  const Zip=await ensureJSZip();
   const report=normalizeReport(clone(reportData||{}));
-  const zip=new JSZip();
+  const zip=new Zip();
   const files={
     'manifest.json':buildInternalAuditManifest(report),
     'internal-report-audit.json':buildInternalReportAuditJson(report),
@@ -4292,6 +4466,25 @@ function firstReportStepDetected(reportData,stepId){
   if(stepId==='exportClientReport') return Boolean(r.meta?.clientExportedAt || r.meta?.clientPackageExportedAt);
   return false;
 }
+function firstReportStepCompletedWithWarnings(reportData,stepId){
+  if(stepId!=='exportClientReport') return false;
+  const meta=reportData?.meta||{};
+  if(!(meta.clientExportedAt || meta.clientPackageExportedAt)) return false;
+  if(Number(meta.clientExportWarningCount||0)>0) return true;
+  return runReportQualityChecklist(reportData).warnings.length>0;
+}
+function getClientExportStepStatus(reportData, flow=normalizeFirstReportFlowState(reportData)){
+  const report=reportData||{};
+  const meta=report.meta||{};
+  const checklist=runReportQualityChecklist(report);
+  if(MRS_EXPORT.getClientExportStepStatus) return MRS_EXPORT.getClientExportStepStatus(report, flow, checklist);
+  const exported=Boolean(meta.clientExportedAt || meta.clientPackageExportedAt);
+  const manual=flow.completedStepIds?.includes('exportClientReport');
+  if(checklist.blockers.length) return 'blocked';
+  if(exported && (Number(meta.clientExportWarningCount||0)>0 || checklist.warnings.length>0)) return 'completed_with_warnings';
+  if(exported || manual) return 'completed';
+  return checklist.status==='ready' || checklist.status==='needs_review' ? 'ready' : 'not_started';
+}
 function getFirstReportProgress(reportData=REPORT){
   const flow=normalizeFirstReportFlowState(reportData);
   const steps=FIRST_REPORT_STEPS.map(stepId=>{
@@ -4299,7 +4492,10 @@ function getFirstReportProgress(reportData=REPORT){
     const skipped=flow.skippedStepIds.includes(stepId);
     const manual=flow.completedStepIds.includes(stepId);
     const warnings=getFirstReportStepWarnings(reportData,stepId);
-    const status=(detected||manual)?'completed':(skipped?'skipped':(warnings.some(w=>/^Blocked:/i.test(w))?'blocked':(flow.currentStepId===stepId?'in_progress':'not_started')));
+    const completedWithWarnings=stepId==='exportClientReport'?false:firstReportStepCompletedWithWarnings(reportData,stepId);
+    const status=stepId==='exportClientReport'
+      ? getClientExportStepStatus(reportData,flow)
+      : (completedWithWarnings?'completed_with_warnings':((detected||manual)?'completed':(skipped?'skipped':(warnings.some(w=>/^Blocked:/i.test(w))?'blocked':(flow.currentStepId===stepId?'in_progress':'not_started')))));
     return {stepId,label:firstReportStepLabel(stepId),status,warnings};
   });
   const completed=steps.filter(step=>step.status==='completed').length;
@@ -4313,6 +4509,27 @@ function markFirstReportStepComplete(reportData,stepId){
   flow.updatedAt=new Date().toISOString();
   if(flow.completedStepIds.length>=FIRST_REPORT_STEPS.length){flow.completed=true; flow.completedAt=flow.updatedAt;}
   return flow;
+}
+function markClientExportStepAfterExport(reportData,quality){
+  const report=reportData&&typeof reportData==='object'?reportData:REPORT;
+  report.meta=report.meta||{};
+  const warnings=Array.isArray(quality?.warnings)?quality.warnings:[];
+  if(warnings.length){
+    report.meta.clientExportReadinessStatus='completed_with_warnings';
+    report.meta.clientExportWarningCount=warnings.length;
+    report.meta.clientExportWarningMessage=String(warnings[0]?.message||'');
+    const flow=normalizeFirstReportFlowState(report);
+    flow.completedStepIds=(flow.completedStepIds||[]).filter(id=>id!=='exportClientReport');
+    flow.currentStepId='exportClientReport';
+    flow.completed=false;
+    delete flow.completedAt;
+    flow.updatedAt=new Date().toISOString();
+    return flow;
+  }
+  report.meta.clientExportReadinessStatus='completed';
+  delete report.meta.clientExportWarningCount;
+  delete report.meta.clientExportWarningMessage;
+  return markFirstReportStepComplete(report,'exportClientReport');
 }
 function getNextRecommendedFirstReportStep(reportData=REPORT){
   const flow=normalizeFirstReportFlowState(reportData);
@@ -4333,6 +4550,7 @@ function getFirstReportStepWarnings(reportData=REPORT,stepId){
   if(stepId==='exportClientReport'){
     const checklist=runReportQualityChecklist(r);
     if(checklist.blockers?.length) warnings.push(`${checklist.blockers.length} quality blocker(s) must be resolved before client export.`);
+    if(Number(r.meta?.clientExportWarningCount||0)>0) warnings.push(`${Number(r.meta.clientExportWarningCount)} quality warning(s) were present in the last client export.`);
   }
   if(r.meta?.isDemoReport) warnings.push('You are viewing sample data.');
   return warnings;
@@ -4637,6 +4855,173 @@ function runReportQualityChecklist(reportData){
     warnings,
     passed
   };
+}
+function getSimpleExportDataset(reportData){
+  const report=reportData||{};
+  const datasets=(report.datasets||[]).filter(ds=>Array.isArray(ds.rows)&&ds.rows.length);
+  const activeId=state?.activeDataset || report.meta?.activeDataset || '';
+  return datasets.find(ds=>String(ds.id)===String(activeId)) || datasets[0] || null;
+}
+function runSimpleDashboardExportChecklist(reportData){
+  const report=reportData||{};
+  const ds=getSimpleExportDataset(report);
+  const files=Array.isArray(report.files)?report.files:[];
+  const items=[];
+  if(ds){
+    const analysis=analyzeTable(ds);
+    items.push(checklistItem('simple_content','passed',`Table "${ds.name||'Untitled table'}" has ${fmt(analysis.rows.length)} rows and ${fmt(analysis.columns.length)} columns.`));
+    const charts=autoChartConfigsForTable(ds,analysis);
+    if(charts.length) items.push(checklistItem('simple_charts','passed',`${charts.length} auto chart(s) can be exported.`));
+    else items.push(checklistItem('simple_charts','warning','No category/numeric column pair was found for auto charts.'));
+  }else if(files.length){
+    items.push(checklistItem('simple_content','warning','No table is active; export will include the file manifest only.'));
+  }else{
+    items.push(checklistItem('simple_content','blocker','Upload at least one table or file before exporting a report.'));
+  }
+  items.push(checklistItem('client_safety','passed','Simple export is a static client-locked report with no editor controls.'));
+  const blockers=items.filter(item=>item.severity==='blocker');
+  const warnings=items.filter(item=>item.severity==='warning');
+  const passed=items.filter(item=>item.severity==='passed');
+  return {
+    status:blockers.length?'not_ready':(warnings.length?'needs_review':'ready'),
+    completenessScore:ds?100:(files.length?50:0),
+    evidenceScore:0,
+    sourceCoverageScore:files.length?100:0,
+    clientSafetyStatus:'ready',
+    items,
+    blockers,
+    warnings,
+    passed
+  };
+}
+function simpleDashboardFileManifest(reportData){
+  return (reportData.files||[]).map(file=>{
+    const linkedRows=(reportData.datasets||[])
+      .filter(ds=>String(ds.sourceFileId||'')===String(file.id||''))
+      .reduce((sum,ds)=>sum+(ds.rows?.length||0),0);
+    return {
+      id:file.id,
+      name:file.name||'Untitled file',
+      path:file.path||file.name||'',
+      type:file.type||mimeFromExt(file.ext||''),
+      ext:file.ext||extFromName(file.name||''),
+      kind:fileKind(file),
+      size:Number(file.size||0),
+      isData:Boolean(file.isData),
+      rows:linkedRows
+    };
+  });
+}
+function buildSimpleDashboardExportData(reportData){
+  const report=reportData||{};
+  const ds=getSimpleExportDataset(report);
+  const analysis=ds?analyzeTable(ds):null;
+  const columnsOut=analysis?analysis.columns.map(col=>col.name):[];
+  const previewRows=ds?(ds.rows||[]).slice(0,50):[];
+  const chartConfigs=ds?autoChartConfigsForTable(ds,analysis).slice(0,6):[];
+  return {
+    exportVersion:1,
+    clientLocked:true,
+    generatedAt:new Date().toISOString(),
+    title:report.meta?.title||'Marketing Report Studio',
+    companyName:report.meta?.companyName||'',
+    dataset:ds?{
+      id:ds.id,
+      name:ds.name||'Table',
+      sourceFileId:ds.sourceFileId||'',
+      rowCount:analysis.rows.length,
+      columnCount:analysis.columns.length,
+      columns:columnsOut,
+      previewRows
+    }:null,
+    summaryCards:analysis?tableSummaryCards(analysis).map(([label,value,sub])=>({label,value,sub})):[],
+    insights:analysis?simpleInsightsForTable(analysis):[],
+    charts:chartConfigs.map(ch=>({
+      id:ch.id,
+      title:ch.title,
+      type:ch.type,
+      x:ch.x,
+      y:ch.y,
+      agg:ch.agg,
+      svg:renderChart(ch)
+    })),
+    files:simpleDashboardFileManifest(report)
+  };
+}
+function renderSimpleDashboardExportHtml(reportData){
+  const data=buildSimpleDashboardExportData(reportData);
+  const ds=data.dataset;
+  const date=new Date(data.generatedAt).toLocaleString(uiLocale());
+  const cards=data.summaryCards.map(card=>`<div class="card"><span>${esc(card.label)}</span><b>${esc(card.value)}</b><small>${esc(card.sub||'')}</small></div>`).join('');
+  const charts=data.charts.map(ch=>`<section class="chart"><h3>${esc(ch.title)}</h3><div>${ch.svg}</div></section>`).join('');
+  const insights=data.insights.map(item=>`<li>${esc(item)}</li>`).join('');
+  const table=ds?`<section class="section"><h2>Table Preview</h2><p>${esc(ds.name)} - ${fmt(ds.rowCount)} rows - ${fmt(ds.columnCount)} columns. Showing first ${fmt(ds.previewRows.length)} rows.</p><div class="tableWrap"><table><thead><tr>${ds.columns.map(col=>`<th>${esc(col)}</th>`).join('')}</tr></thead><tbody>${ds.previewRows.map(row=>`<tr>${ds.columns.map(col=>`<td>${esc(cellDisplay(row?.[col],''))}</td>`).join('')}</tr>`).join('')}</tbody></table></div></section>`:'';
+  const files=data.files.map(file=>`<tr><td>${esc(file.name)}</td><td>${esc(file.kind)}</td><td>${esc(file.ext||'file')}</td><td>${esc(bytes(file.size||0))}</td><td>${esc(file.rows?fmt(file.rows):'')}</td></tr>`).join('');
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>${esc(data.title)} - Client Report</title>
+<style>
+:root{--bg:#f7f9fc;--panel:#fff;--panel2:#f1f5fb;--text:#152033;--muted:#65748b;--line:#d7e0ee;--brand:#2563ff;--brand2:#16a3c7;--brand3:#14b88a;--soft:#eaf1ff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 Arial,sans-serif}main{max-width:1120px;margin:0 auto;padding:28px 18px 48px}.hero{border-bottom:1px solid var(--line);padding-bottom:18px;margin-bottom:18px}.kicker{color:var(--muted);font-weight:700;text-transform:uppercase;font-size:12px;letter-spacing:.08em}h1{margin:4px 0 6px;font-size:32px;line-height:1.1}h2{font-size:18px;margin:0 0 10px}h3{font-size:14px;margin:0 0 8px}.meta{color:var(--muted)}.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:16px 0}.card,.chart,.section{border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:12px}.card span,.card small{display:block;color:var(--muted);font-size:12px}.card b{display:block;font-size:22px;margin:2px 0}.charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:12px}.svgChart{width:100%;height:auto}.tableWrap{overflow:auto;border:1px solid var(--line);border-radius:8px}table{width:100%;border-collapse:collapse;font-size:12px;background:var(--panel)}th,td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;white-space:nowrap}th{background:var(--panel2);font-weight:700}.num{text-align:right}ul{margin:0;padding-left:18px}.section{margin-top:14px}.empty{color:var(--muted);padding:12px}@media print{body{background:#fff}main{padding:0}.chart,.card,.section{break-inside:avoid}}
+</style>
+</head>
+<body data-client-locked="true">
+<main>
+  <section class="hero"><div class="kicker">Client Report</div><h1>${esc(data.title)}</h1><div class="meta">${esc(data.companyName||'Simple dashboard export')} - ${esc(date)}</div></section>
+  ${ds?`<section class="section"><h2>${esc(ds.name)}</h2><div class="cards">${cards}</div>${insights?`<h3>Quick insights</h3><ul>${insights}</ul>`:''}</section>`:'<section class="section"><h2>File Manifest</h2><p class="meta">No table was active for this export.</p></section>'}
+  ${data.charts.length?`<section class="section"><h2>Auto Charts</h2><div class="charts">${charts}</div></section>`:''}
+  ${table}
+  <section class="section"><h2>Project Files</h2><div class="tableWrap"><table><thead><tr><th>Name</th><th>Kind</th><th>Ext</th><th>Size</th><th>Rows</th></tr></thead><tbody>${files||'<tr><td colspan="5">No files in this project.</td></tr>'}</tbody></table></div></section>
+</main>
+</body>
+</html>`;
+}
+function sanitizeSimpleDashboardExportData(reportData){
+  const data=buildSimpleDashboardExportData(reportData);
+  return {
+    meta:{
+      title:data.title,
+      companyName:data.companyName,
+      accessMode:'viewer',
+      clientLocked:true,
+      clientExportVersion:'simple-dashboard-v1',
+      clientExportedAt:data.generatedAt
+    },
+    simpleDashboard:data,
+    datasets:(reportData.datasets||[]).map(ds=>({
+      id:ds.id,
+      name:ds.name,
+      sourceFileId:ds.sourceFileId||'',
+      createdAt:ds.createdAt||'',
+      columns:ds.columns||[],
+      rows:ds.rows||[]
+    })),
+    files:data.files
+  };
+}
+async function buildSimpleClientPackageZip(reportData, reportHtml){
+  const Zip=await ensureJSZip();
+  const zip=new Zip();
+  const data=sanitizeSimpleDashboardExportData(reportData);
+  const exportedAt=new Date().toISOString();
+  zip.file('report.html', reportHtml);
+  zip.file('report-data.json', JSON.stringify(data,null,2));
+  zip.file('file-manifest.json', JSON.stringify(data.files,null,2));
+  zip.file('README.txt', [
+    `${data.meta.title} - Simple Client Report`,
+    '',
+    'Open report.html in a browser to view the static client report.',
+    'The export is clientLocked and does not include editor controls, Advanced / Labs, AI prompts, audit logs, or governance settings.',
+    '',
+    `Exported at: ${exportedAt}`,
+    ''
+  ].join('\n'));
+  zip.file('manifest.json', JSON.stringify({packageType:'simple_dashboard_client_package',packageVersion:1,exportedAt,reportTitle:data.meta.title,clientLocked:true},null,2));
+  return zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}});
 }
 function canExportClientReport(reportData){
   const policy=getEffectiveGovernancePolicy(reportData).exportPolicy;
@@ -6329,7 +6714,7 @@ function addSelectedEvidenceCandidates(reportData, candidateIds){
   if(added) cards.updatedAt=new Date().toISOString();
   return {added, errors:[]};
 }
-function normalizeReport(r){r=clone(r); r.meta=r.meta||{}; r.datasets=Array.isArray(r.datasets)?r.datasets:[]; r.files=Array.isArray(r.files)?r.files:[]; r.charts=Array.isArray(r.charts)?r.charts:[]; r.tables=Array.isArray(r.tables)?r.tables:[]; r.companies=Array.isArray(r.companies)?r.companies:[]; normalizeReportSchema(r); normalizeMaterialsInventory(r); normalizeSourceRegistry(r); normalizeEvidenceCards(r); normalizeCompetitorProfiles(r); normalizePricingFeatureMatrix(r); normalizeAiAssistanceState(r); normalizeAiReviewQueue(r); normalizeAiAuditLog(r); normalizeVersionRetentionPolicy(r); normalizeGovernanceSettings(r); normalizeOnboardingState(r); normalizeFirstReportFlowState(r); r.ci=normalizeCiModel(r.ci); stripLiveMarkdownDerived(r); for(const ds of r.datasets){ds.id=ds.id||uid('ds'); ds.name=ds.name||'Таблиця'; ds.rows=Array.isArray(ds.rows)?ds.rows:[]; ds.columns=inferColumns(ds.rows);} syncCompaniesFromRows(r); for(const f of r.files){f.id=f.id||uid('file'); f.folder=f.folder||'Загальні'; f.path=f.path||((f.companyId?((company(f.companyId,r)?.folder||'company')+'/'):'')+f.name);} collectMaterialsFromCurrentState(r); buildSourcesFromMaterials(r); normalizeCompetitorProfiles(r); normalizePricingFeatureMatrix(r); return r;}
+function normalizeReport(r){r=clone(r); r.meta=r.meta||{}; r.datasets=Array.isArray(r.datasets)?r.datasets:[]; r.files=Array.isArray(r.files)?r.files:[]; r.charts=Array.isArray(r.charts)?r.charts:[]; r.tables=Array.isArray(r.tables)?r.tables:[]; r.companies=Array.isArray(r.companies)?r.companies:[]; normalizeReportSchema(r); normalizeMaterialFolders(r); normalizeMaterialsInventory(r); normalizeSourceRegistry(r); normalizeEvidenceCards(r); normalizeCompetitorProfiles(r); normalizePricingFeatureMatrix(r); normalizeAiAssistanceState(r); normalizeAiReviewQueue(r); normalizeAiAuditLog(r); normalizeVersionRetentionPolicy(r); normalizeGovernanceSettings(r); normalizeOnboardingState(r); normalizeFirstReportFlowState(r); r.ci=normalizeCiModel(r.ci); stripLiveMarkdownDerived(r); for(const ds of r.datasets){ds.id=ds.id||uid('ds'); ds.name=ds.name||'Таблиця'; ds.rows=Array.isArray(ds.rows)?ds.rows:[]; ds.columns=inferColumns(ds.rows);} syncCompaniesFromRows(r); for(const f of r.files){f.id=f.id||uid('file'); f.folder=f.folder||'Загальні'; f.path=f.path||((f.companyId?((company(f.companyId,r)?.folder||'company')+'/'):'')+f.name);} collectMaterialsFromCurrentState(r); buildSourcesFromMaterials(r); normalizeCompetitorProfiles(r); normalizePricingFeatureMatrix(r); return r;}
 function isGenericLiveMarkdownArtifact(x){return String(x?.sourceKind||'')==='markdown-live';}
 function isLiveMarkdownArtifact(x){return ['markdown-live','markdown-fs-video'].includes(String(x?.sourceKind||''));}
 function stripLiveMarkdownDerived(r){
@@ -6440,8 +6825,97 @@ function stripLegacyTrueSavageDemoPack(r){
   return r;
 }
 REPORT=stripLegacyTrueSavageDemoPack(REPORT);
-function inferColumns(rows){const names=[]; for(const row of rows.slice(0,100)){Object.keys(row||{}).forEach(k=>{if(!String(k).startsWith('_')&&!names.includes(k)) names.push(k)})} return names.map(name=>{let seen=0, numeric=0; for(const r of rows.slice(0,80)){const v=r?.[name]; if(v!==''&&v!==null&&v!==undefined){seen++; if(isNum(v)) numeric++;}} return {name, type: seen && numeric/seen>=0.75 ? 'number':'text'};});}
-function initState(){REPORT.meta=REPORT.meta||{}; REPORT.meta.title=REPORT.meta.title||'Marketing Report Studio'; REPORT.meta.companyName=String(REPORT.meta.companyName||'').trim(); state.lang=REPORT.meta.lang || getSavedLang() || state.lang || 'uk'; REPORT.meta.lang=state.lang; const useCloudAccess=HOSTED_MODE&&!BROWSER_ONLY_MODE&&!cloudSync.localFallback; state.access=REPORT.meta.clientLocked?'viewer':(useCloudAccess?(cloudCanWrite()?'admin':'viewer'):(REPORT.meta.accessMode||state.access||'admin')); REPORT.meta.accessMode=state.access; app.dataset.access=state.access; const firstClient=(REPORT.companies||[]).find(c=>c.type==='client') || (REPORT.companies||[])[0]; state.activeCompany=REPORT.meta.activeCompany || firstClient?.id || null; state.compareA=REPORT.meta.compareA || firstClient?.id || (REPORT.companies||[])[0]?.id || null; state.compareB=REPORT.meta.compareB || (REPORT.companies||[]).find(c=>c.id!==state.compareA)?.id || null; state.openFolders=REPORT.meta.openFolders||{}; state.showCompare=!!REPORT.meta.showCompare; state.analyticsSite=REPORT.meta.analyticsSite||'all'; state.analyticsResearch=REPORT.meta.analyticsResearch||'all'; state.activeDataset=REPORT.meta.activeDataset || state.activeDataset || REPORT.datasets[0]?.id || null; applyLanguage();}
+function inferColumns(rows){const names=[]; for(const row of (rows||[]).slice(0,200)){Object.keys(row||{}).forEach(k=>{if(!String(k).startsWith('_')&&!names.includes(k)) names.push(k)})} return names.map(name=>({name, type:classifyColumnType(name,(rows||[]).map(row=>row?.[name]))}));}
+function compactColumnName(name){return String(name||'').toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'');}
+function nonEmptyValues(values, limit=240){return (values||[]).filter(v=>v!==''&&v!==null&&v!==undefined).slice(0,limit);}
+function looksLikeDomainValue(value){
+  const text=String(value||'').trim();
+  if(!text || /\s/.test(text) || text.length>180) return false;
+  return /^(?:https?:\/\/)?(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+(?::\d+)?(?:\/.*)?$/i.test(text);
+}
+function looksLikeUrlValue(value){return /^https?:\/\//i.test(String(value||'').trim()) || /^[a-z0-9-]+(?:\.[a-z0-9-]+)+(?:\/[^\s]*)$/i.test(String(value||'').trim());}
+function looksLikeDateValue(value){
+  const text=String(value||'').trim();
+  if(!text || text.length<6 || text.length>40) return false;
+  if(!/^\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|^\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}/.test(text)) return false;
+  const d=new Date(text);
+  return Number.isFinite(d.getTime());
+}
+function classifyColumnType(name, values){
+  const key=compactColumnName(name);
+  const sample=nonEmptyValues(values);
+  if(!sample.length) return 'unknown';
+  const distinct=new Set(sample.map(v=>String(v).trim()).filter(Boolean));
+  const numeric=sample.filter(isNum).length/sample.length;
+  const boolish=sample.filter(v=>/^(true|false|yes|no|y|n|0|1)$/i.test(String(v).trim())).length/sample.length;
+  const dateish=sample.filter(looksLikeDateValue).length/sample.length;
+  const urlish=sample.filter(looksLikeUrlValue).length/sample.length;
+  const domainish=sample.filter(looksLikeDomainValue).length/sample.length;
+  const jsonish=sample.filter(v=>{try{const parsed=JSON.parse(String(v)); return parsed&&typeof parsed==='object';}catch(e){return false;}}).length/sample.length;
+  if(/(^|_)domain($|_)|host|hostname/.test(key) && domainish>=0.6) return 'domain';
+  if(/url|link|href|source_site|website|site/.test(key) && (urlish>=0.45||domainish>=0.6)) return 'url';
+  if(jsonish>=0.75) return 'json';
+  if(boolish>=0.9) return 'boolean';
+  if(numeric>=0.85 && !/(^|_)(id|task_id|row_id)($|_)/.test(key)) return 'number';
+  if(/date|time|created|updated|run_at|run_date/.test(key) && dateish>=0.55) return 'date';
+  if(dateish>=0.85) return 'date';
+  if(domainish>=0.8) return /domain|host/.test(key)?'domain':'url';
+  if(/status|priority|threat|state|stage|scanned|active|verified|verification/.test(key) && distinct.size<=24) return 'status';
+  const avgLen=sample.reduce((sum,v)=>sum+String(v).length,0)/sample.length;
+  if(distinct.size<=Math.max(8,Math.min(60,Math.ceil(sample.length*0.35))) && avgLen<=90) return 'category';
+  return 'text';
+}
+function clampWorkspaceNumber(value,min,max,fallback){
+  const n=Number(value);
+  if(!Number.isFinite(n)) return fallback;
+  return Math.min(max,Math.max(min,n));
+}
+function normalizeWorkspaceLayout(value){
+  const source=value&&typeof value==='object'?value:{};
+  const result={sidePx:clampWorkspaceNumber(source.sidePx,240,640,DEFAULT_WORKSPACE_LAYOUT.sidePx),topPct:clampWorkspaceNumber(source.topPct,22,78,DEFAULT_WORKSPACE_LAYOUT.topPct)};
+  const used=new Set();
+  for(const slot of WORKSPACE_SLOT_KEYS){
+    const candidate=String(source[slot]||DEFAULT_WORKSPACE_LAYOUT[slot]||'');
+    if(WORKSPACE_PANEL_KEYS.includes(candidate) && !used.has(candidate)){
+      result[slot]=candidate;
+      used.add(candidate);
+    }
+  }
+  const remaining=WORKSPACE_PANEL_KEYS.filter(key=>!used.has(key));
+  for(const slot of WORKSPACE_SLOT_KEYS){
+    if(!result[slot]) result[slot]=remaining.shift()||DEFAULT_WORKSPACE_LAYOUT[slot];
+  }
+  return result;
+}
+function getWorkspaceLayout(){
+  REPORT.meta=REPORT.meta||{};
+  REPORT.meta.workspaceLayout=normalizeWorkspaceLayout(REPORT.meta.workspaceLayout);
+  return REPORT.meta.workspaceLayout;
+}
+function applyWorkspaceLayout(){
+  const prefs=getWorkspaceLayout();
+  document.documentElement.style.setProperty('--workspace-side',`${prefs.sidePx}px`);
+  document.documentElement.style.setProperty('--workspace-top',`${prefs.topPct}%`);
+  document.documentElement.style.setProperty('--side',`${prefs.sidePx}px`);
+  document.documentElement.style.setProperty('--top',`${prefs.topPct}%`);
+  for(const slot of WORKSPACE_SLOT_KEYS){
+    const panel=document.querySelector(`[data-workspace-panel="${prefs[slot]}"]`);
+    if(panel) panel.dataset.workspaceSlot=slot;
+  }
+}
+function moveWorkspacePanel(sourceKey,targetKey){
+  if(!sourceKey || !targetKey || sourceKey===targetKey) return;
+  const prefs=getWorkspaceLayout();
+  const sourceSlot=WORKSPACE_SLOT_KEYS.find(slot=>prefs[slot]===sourceKey);
+  const targetSlot=WORKSPACE_SLOT_KEYS.find(slot=>prefs[slot]===targetKey);
+  if(!sourceSlot || !targetSlot) return;
+  prefs[sourceSlot]=targetKey;
+  prefs[targetSlot]=sourceKey;
+  REPORT.meta.workspaceLayout=normalizeWorkspaceLayout(prefs);
+  applyWorkspaceLayout();
+  schedulePersist();
+}
+function initState(){REPORT.meta=REPORT.meta||{}; REPORT.meta.title=REPORT.meta.title||'Marketing Report Studio'; REPORT.meta.companyName=String(REPORT.meta.companyName||'').trim(); state.lang=REPORT.meta.lang || getSavedLang() || state.lang || 'uk'; REPORT.meta.lang=state.lang; const useCloudAccess=HOSTED_MODE&&!BROWSER_ONLY_MODE&&!cloudSync.localFallback; state.access=REPORT.meta.clientLocked?'viewer':(useCloudAccess?(cloudCanWrite()?'admin':'viewer'):(REPORT.meta.accessMode||state.access||'admin')); REPORT.meta.accessMode=state.access; app.dataset.access=state.access; const firstClient=(REPORT.companies||[]).find(c=>c.type==='client') || (REPORT.companies||[])[0]; state.activeCompany=REPORT.meta.activeCompany || firstClient?.id || null; state.compareA=REPORT.meta.compareA || firstClient?.id || (REPORT.companies||[])[0]?.id || null; state.compareB=REPORT.meta.compareB || (REPORT.companies||[]).find(c=>c.id!==state.compareA)?.id || null; state.openFolders=REPORT.meta.openFolders||{}; state.showCompare=!!REPORT.meta.showCompare; state.analyticsSite=REPORT.meta.analyticsSite||'all'; state.analyticsResearch=REPORT.meta.analyticsResearch||'all'; state.activeDataset=REPORT.meta.activeDataset || state.activeDataset || REPORT.datasets[0]?.id || null; applyWorkspaceLayout(); applyLanguage();}
 function renderReportTitle(){
   const titleEl=$('reportTitle');
   if(titleEl) titleEl.textContent=t('reportTitlePrefix');
@@ -6518,70 +6992,228 @@ function refresh(){
   renderSide();
   renderReaderTabs();
   applyLanguage();
-  const co=(REPORT.companies||[]).length;
-  $('storageStat').textContent = t('storageStat', {datasets:REPORT.datasets.length, files:REPORT.files.length, folders:co});
+  const folderCount=normalizeMaterialFolders(REPORT).length;
+  $('storageStat').textContent = t('storageStat', {datasets:REPORT.datasets.length, files:REPORT.files.length, folders:folderCount});
   const rp=$('rolePill');
-  if(rp) rp.textContent=isAdmin()?t('admin'):t('viewer');
+  if(rp){
+    const label=isAdmin()?t('admin'):t('viewer');
+    rp.textContent=isAdmin()?'AD':'VW';
+    rp.title=label;
+    rp.setAttribute('aria-label',label);
+  }
   const unlock=$('unlockAdminBtn');
   if(unlock) unlock.classList.toggle('hidden',isClientLocked());
   const members=$('membersBtn');
   if(members) members.classList.toggle('hidden',cloudSync.role!=='owner');
 }
 
+function getActiveTableDataset(){
+  const active=dataset(state.activeDataset);
+  if(active && Array.isArray(active.rows) && active.rows.length) return active;
+  return (REPORT.datasets||[]).find(d=>Array.isArray(d.rows)&&d.rows.length) || null;
+}
+function findColumnName(cols, patterns){
+  const names=(cols||[]).map(c=>typeof c==='string'?c:c.name).filter(Boolean);
+  for(const pattern of patterns){
+    const exact=names.find(name=>compactColumnName(name)===compactColumnName(pattern));
+    if(exact) return exact;
+  }
+  for(const pattern of patterns){
+    const rx=pattern instanceof RegExp ? pattern : new RegExp(String(pattern).replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'i');
+    const found=names.find(name=>rx.test(name));
+    if(found) return found;
+  }
+  return '';
+}
+function countByColumn(rows, col){
+  const out=new Map();
+  if(!col) return out;
+  for(const row of rows||[]){
+    const label=String(row?.[col]??'').trim() || 'Blank';
+    out.set(label,(out.get(label)||0)+1);
+  }
+  return out;
+}
+function sumColumn(rows, col){return (rows||[]).reduce((sum,row)=>sum+num(row?.[col]),0);}
+function distinctCount(rows, col){return col?new Set((rows||[]).map(row=>String(row?.[col]??'').trim()).filter(Boolean)).size:0;}
+function formatCompactNumber(value){
+  const n=num(value);
+  if(Math.abs(n)>=1000000) return n.toLocaleString(uiLocale(),{maximumFractionDigits:1});
+  if(Math.abs(n)>=1000) return Math.round(n).toLocaleString(uiLocale());
+  return n.toLocaleString(uiLocale(),{maximumFractionDigits:2});
+}
+function analyzeTable(ds){
+  const rows=Array.isArray(ds?.rows)?ds.rows:[];
+  const inferred=inferColumns(rows);
+  const cols=inferred.length?inferred:columns(ds);
+  const names=cols.map(c=>c.name);
+  const companyCol=findColumnName(names,['company','company_name','brand','name','competitor']);
+  const segmentCol=findColumnName(names,['segment']);
+  const priorityCol=findColumnName(names,['priority']);
+  const threatCol=findColumnName(names,['seo_threat_level','threat_level']);
+  const trafficCol=findColumnName(names,['seo_total_estimated_traffic','total_estimated_traffic','traffic']);
+  const threatScoreCol=findColumnName(names,['seo_threat_score','threat_score']);
+  const numericCols=cols.filter(c=>c.type==='number');
+  const categoryCols=cols.filter(c=>['category','status','boolean'].includes(c.type));
+  return {
+    ds, rows, columns:cols, names, companyCol, segmentCol, priorityCol, threatCol, trafficCol, threatScoreCol,
+    numericCols, categoryCols,
+    priorityCounts:countByColumn(rows,priorityCol),
+    threatCounts:countByColumn(rows,threatCol),
+    segmentCounts:countByColumn(rows,segmentCol),
+    totalTraffic:trafficCol?sumColumn(rows,trafficCol):0
+  };
+}
+function tableSummaryCards(analysis){
+  const cards=[
+    ['Rows',fmt(analysis.rows.length),'Detected records'],
+    ['Columns',fmt(analysis.columns.length),'Detected fields'],
+    ['Numeric columns',fmt(analysis.numericCols.length),'Ready for sums/top lists'],
+    ['Category/status columns',fmt(analysis.categoryCols.length),'Ready for filters']
+  ];
+  if(analysis.companyCol) cards.push(['Companies',fmt(distinctCount(analysis.rows,analysis.companyCol)),analysis.companyCol]);
+  if(analysis.segmentCol) cards.push(['Segments',fmt(distinctCount(analysis.rows,analysis.segmentCol)),analysis.segmentCol]);
+  for(const [label,count] of [...analysis.priorityCounts.entries()].sort((a,b)=>String(a[0]).localeCompare(String(b[0])))){
+    if(label!=='Blank') cards.push([`Priority ${label}`,fmt(count),analysis.priorityCol]);
+  }
+  for(const [label,count] of [...analysis.threatCounts.entries()].sort((a,b)=>String(a[0]).localeCompare(String(b[0])))){
+    if(label!=='Blank') cards.push([`SEO ${label} threat`,fmt(count),analysis.threatCol]);
+  }
+  if(analysis.trafficCol) cards.push(['Total estimated traffic',formatCompactNumber(analysis.totalTraffic),analysis.trafficCol]);
+  return cards;
+}
+function autoChartConfigsForTable(ds, analysis=analyzeTable(ds)){
+  const charts=[];
+  const add=(key,title,type,x,y,agg='sum',top=10)=>{
+    if(!x || (agg!=='count'&&!y)) return;
+    charts.push({id:`auto:${ds.id}:${key}`,autoKey:key,title,type,datasetId:ds.id,x,y,agg,sort:type==='line'?'none':'desc',top,sourceFileId:ds.sourceFileId||''});
+  };
+  add('rows-by-segment','Rows by segment','bar',analysis.segmentCol,'__count','count',12);
+  add('priority-distribution','Priority distribution','bar',analysis.priorityCol,'__count','count',12);
+  add('seo-threat-level-distribution','SEO threat level distribution','bar',analysis.threatCol,'__count','count',12);
+  add('top-estimated-traffic','Top 10 by estimated traffic','bar',analysis.companyCol||analysis.names[0],analysis.trafficCol,'sum',10);
+  add('top-threat-score','Top 10 by threat score','bar',analysis.companyCol||analysis.names[0],analysis.threatScoreCol,'sum',10);
+  add('traffic-by-segment','Traffic by segment','bar',analysis.segmentCol,analysis.trafficCol,'sum',12);
+  return charts;
+}
+function simpleInsightsForTable(analysis){
+  const out=[];
+  const high=[...analysis.threatCounts.entries()].find(([k])=>/^high$/i.test(String(k||'')));
+  const medium=[...analysis.threatCounts.entries()].find(([k])=>/^medium$/i.test(String(k||'')));
+  if(high) out.push(`${fmt(high[1])} rows have high SEO threat level.`);
+  if(medium) out.push(`${fmt(medium[1])} rows have medium SEO threat level.`);
+  if(analysis.trafficCol){
+    const company=analysis.companyCol||analysis.names[0];
+    const top=[...(analysis.rows||[])].filter(row=>isNum(row?.[analysis.trafficCol])).sort((a,b)=>num(b?.[analysis.trafficCol])-num(a?.[analysis.trafficCol]))[0];
+    if(top) out.push(`${String(top?.[company]||'Top row')} has the highest estimated SEO traffic in this table.`);
+  }
+  if(analysis.segmentCol && analysis.segmentCounts.size){
+    const top=[...analysis.segmentCounts.entries()].sort((a,b)=>b[1]-a[1])[0];
+    if(top) out.push(`Segment "${top[0]}" has the most rows: ${fmt(top[1])}.`);
+  }
+  if(!out.length) out.push('Upload or select a table to generate rule-based insights from detected columns.');
+  return out.slice(0,5);
+}
+function renderSimpleEmptyState(){
+  return `<div class="simpleEmpty" data-simple-empty>
+    <div class="productHero firstRunHero">
+      <h1>Marketing Report Studio</h1>
+      <p>Upload tables and research files. The app will structure them, visualize the data, and prepare a clean report.</p>
+      <div class="productActions firstRunActions">
+        <button class="btn primary adminOnly" data-open-add="1">Upload files</button>
+        <button class="btn adminOnly" data-first-report-paste="1">Paste table</button>
+        <button class="btn" data-open-demo="1">Open demo</button>
+        <button class="btn" data-simple-export="client-html">Export report</button>
+      </div>
+      <div class="drop simpleEmptyDrop adminOnly" data-open-add="1">Drop CSV, XLSX, JSON, PDFs, notes, or screenshots here.</div>
+    </div>
+  </div>`;
+}
+function renderSimpleDashboard(ds){
+  const analysis=analyzeTable(ds);
+  const cards=tableSummaryCards(analysis);
+  const charts=autoChartConfigsForTable(ds,analysis);
+  const insights=simpleInsightsForTable(analysis);
+  const source=fileRec(ds.sourceFileId);
+  analytics.innerHTML=`<div class="simpleDashboard" data-simple-dashboard>
+    <div class="simpleDashboardHeader">
+      <div>
+        <div class="tiny">Active table</div>
+        <h2>${esc(ds.name||'Table')}</h2>
+        <div class="hint">${esc(source?.name||'Uploaded or pasted data')} - ${fmt(analysis.rows.length)} rows - ${fmt(analysis.columns.length)} columns</div>
+      </div>
+      <div class="simpleDashboardActions">
+        <button class="btn small adminOnly" data-open-add="1">Upload files</button>
+        <button class="btn small adminOnly" data-first-report-paste="1">Paste table</button>
+        <button class="btn small primary" data-simple-export="client-html">Export report</button>
+      </div>
+    </div>
+    <div class="simpleSummaryCards">${cards.map(([label,value,sub])=>`<div class="simpleStat"><span>${esc(label)}</span><b>${esc(value)}</b><small>${esc(sub||'')}</small></div>`).join('')}</div>
+    <div class="simpleDashboardSplit">
+      <section class="simpleChartsPanel">
+        <div class="zoneHead"><b>Auto charts</b><span class="tiny">${charts.length}</span></div>
+        <div class="autoChartGrid">${charts.map(ch=>`<button class="autoChartCard" data-simple-open-chart="${esc(ch.id)}" title="${esc(ch.title)}"><div class="widgetHead"><b>${esc(ch.title)}</b><span class="badge">${esc(ch.type)}</span></div><div class="widgetBody">${renderChart(ch)}</div></button>`).join('')||'<div class="empty">No matching chart columns detected.</div>'}</div>
+      </section>
+      <section class="simpleInsightsPanel">
+        <div class="zoneHead"><b>Quick insights</b><span class="tiny">rule-based</span></div>
+        <ul class="autoInsightList">${insights.map(item=>`<li>${esc(item)}</li>`).join('')}</ul>
+      </section>
+    </div>
+  </div>`;
+}
+function simpleChartById(id){
+  const parts=String(id||'').split(':');
+  if(parts[0]!=='auto') return null;
+  const dsId=parts[1], key=parts.slice(2).join(':');
+  const ds=dataset(dsId);
+  if(!ds) return null;
+  return autoChartConfigsForTable(ds).find(ch=>ch.autoKey===key) || null;
+}
+function openSimpleChartView(chartId){
+  const ch=simpleChartById(chartId);
+  if(!ch) return;
+  const ds=dataset(ch.datasetId);
+  addTab('chart:'+ch.id,ch.title,'chart',ch.id);
+  state.activeFile='chart:'+ch.id;
+  const rows=prepSeries(ch).map(item=>({label:item.label,value:item.value}));
+  reader.innerHTML=`<div class="previewToolbar"><b>${esc(ch.title)}</b><span class="pill">Auto chart</span><span class="pill">${esc(ds?.name||'Table')}</span><button class="btn small" id="chartOpenSource">Open table</button></div><div class="widget simpleChartLarge"><div class="widgetBody">${renderChart(ch)}</div></div><div class="simpleTableWrap"><table class="previewTable"><thead><tr><th>${esc(ch.x)}</th><th>${esc(ch.agg==='count'?'Rows':ch.y)}</th></tr></thead><tbody>${rows.map(row=>`<tr><td>${esc(row.label)}</td><td class="num">${esc(fmt(row.value))}</td></tr>`).join('')}</tbody></table></div>`;
+  $('chartOpenSource')?.addEventListener('click',()=>openDataset(ch.datasetId,ch.sourceFileId));
+  renderReaderTabs();
+  renderSide();
+}
+
 function renderAnalytics(){
   state.widgetSnapshots={};
-  if(!(REPORT.datasets||[]).length && !(REPORT.charts||[]).length && !(REPORT.tables||[]).length){
-    analytics.innerHTML=renderFirstReportEmptyState()+`
-      <div class="productHero">
-        <div class="workflowSteps" aria-label="Product workflow">
-          <div class="workflowStep"><span>1</span><b>${esc(t('workflowUploadMaterialsTitle'))}</b><small>${esc(t('workflowUploadMaterialsBody'))}</small></div>
-          <div class="workflowStep"><span>2</span><b>${esc(t('workflowStructureTitle'))}</b><small>${esc(t('workflowStructureBody'))}</small></div>
-          <div class="workflowStep"><span>3</span><b>${esc(t('workflowReviewEvidenceTitle'))}</b><small>${esc(t('workflowReviewEvidenceBody'))}</small></div>
-          <div class="workflowStep"><span>4</span><b>${esc(t('workflowExportReportTitle'))}</b><small>${esc(t('workflowExportReportBody'))}</small></div>
-        </div>
-        <div class="productInfoGrid">
-          <div class="infoBlock">
-            <b>${esc(t('workflowBestFor'))}</b>
-            <ul>
-              <li>${esc(t('workflowBestForAgencies'))}</li>
-              <li>${esc(t('workflowBestForCiTeams'))}</li>
-              <li>${esc(t('workflowBestForConsultants'))}</li>
-              <li>${esc(t('workflowBestForFounders'))}</li>
-              <li>${esc(t('workflowBestForResearchTeams'))}</li>
-            </ul>
-          </div>
-          <div class="infoBlock">
-            <b>${esc(t('workflowClientReceives'))}</b>
-            <ul>
-              <li>${esc(t('workflowClientSummary'))}</li>
-              <li>${esc(t('workflowClientComparison'))}</li>
-              <li>${esc(t('workflowClientPricing'))}</li>
-              <li>${esc(t('workflowClientCharts'))}</li>
-              <li>${esc(t('workflowClientSources'))}</li>
-              <li>${esc(t('workflowClientReport'))}</li>
-            </ul>
-          </div>
-        </div>
-      </div>`;
+  const simpleDs=getActiveTableDataset();
+  if(simpleDs){
+    if(state.activeDataset!==simpleDs.id) state.activeDataset=simpleDs.id;
+    renderSimpleDashboard(simpleDs);
     return;
   }
-  analytics.innerHTML = translateText(`
+  analytics.innerHTML=renderSimpleEmptyState();
+  return;
+  if(!(REPORT.datasets||[]).length && !(REPORT.charts||[]).length && !(REPORT.tables||[]).length){
+    analytics.innerHTML=renderFirstReportEmptyState();
+    return;
+  }
+  analytics.innerHTML = `
     <div class="zoneBoard">
       <section class="zoneSection">
-        <div class="zoneHead"><b>Графіки</b><span class="tiny" id="zoneChartsStat"></span></div>
+        <div class="zoneHead"><b>${esc(t('analyticsCharts'))}</b><span class="tiny" id="zoneChartsStat"></span></div>
         <div class="grid zoneCharts" id="widgetGridCharts"></div>
       </section>
       <section class="zoneSection">
-        <div class="zoneHead"><b>Таблиці</b><span class="tiny" id="zoneTablesStat"></span></div>
+        <div class="zoneHead"><b>${esc(t('analyticsTables'))}</b><span class="tiny" id="zoneTablesStat"></span></div>
         <div class="grid zoneTables" id="widgetGridTables"></div>
       </section>
-    </div>`);
+    </div>`;
   const allCharts = REPORT.charts || [];
   const allTables = REPORT.tables || [];
   const charts = allCharts;
   const tables = allTables;
   const chartsGrid = $('widgetGridCharts');
   const tablesGrid = $('widgetGridTables');
+  const unknownSiteLabel=t('analyticsUnknownSite');
   const videoCatalog=[];
   const rootNameById=new Map((state.fsRoots||[]).map(r=>[String(r.id||''), String(r.name||'')]));
   const vizDatasets=(REPORT.datasets||[]).filter(d=>{
@@ -6613,7 +7245,7 @@ function renderAnalytics(){
       const key=String(r.video_label||'').trim();
       if(!key) continue;
       const rowAuthor=String(r.author||'').trim();
-      const author=rowAuthor||String(rootName||'').trim()||'Невідомий сайт';
+      const author=rowAuthor||String(rootName||'').trim()||unknownSiteLabel;
       videoCatalog.push({
         key,
         title:String(r.full_title||r.video_label||key).trim(),
@@ -6694,16 +7326,16 @@ function renderAnalytics(){
   if(!validKeys.has(state.analyticsResearch)) state.analyticsResearch='all';
   const bySite=new Map();
   for(const it of allVideoItems){
-    const a=String(it.author||'Невідомий сайт').trim()||'Невідомий сайт';
+    const a=String(it.author||unknownSiteLabel).trim()||unknownSiteLabel;
     if(!bySite.has(a)) bySite.set(a,[]);
     bySite.get(a).push(it);
   }
   const authorHtml=[
-    `<button class="btn small ${state.analyticsSite==='all'?'primary':''}" data-site="all">Всі сайти</button>`,
+    `<button class="btn small ${state.analyticsSite==='all'?'primary':''}" data-site="all">${esc(t('analyticsAllSites'))}</button>`,
     ...authors.map(a=>`<button class="btn small ${state.analyticsSite===a?'primary':''}" data-site="${esc(a)}">${esc(short(a,28))}</button>`)
   ].join('');
   const modeButtons=[
-    `<button class="btn small ${state.analyticsResearch==='all'?'primary':''}" data-mode="all">Порівняння</button>`
+    `<button class="btn small ${state.analyticsResearch==='all'?'primary':''}" data-mode="all">${esc(t('analyticsComparison'))}</button>`
   ];
   const showResearchButtons = state.analyticsSite!=='all';
   if(showResearchButtons){
@@ -6721,7 +7353,7 @@ function renderAnalytics(){
         const author=canonicalSiteName(String(r.author||r._sourceRootName||'').trim());
         const title=String(r.full_title||r.video_label||'').trim();
         if(!title) continue;
-        const authorKey=author || 'Невідомий сайт';
+        const authorKey=author || unknownSiteLabel;
         const k=`${normSite(authorKey)}::${normText(title)}`;
         if(!k) continue;
         const prev=bySiteVideo.get(k);
@@ -7500,14 +8132,22 @@ function renderChecklistItems(items){
       <div class="itemName">${esc(item.message)}<div class="itemMeta">${esc(item.category)} - ${esc(item.severity)}</div></div>
     </div>`).join('');
 }
+function renderChecklistGroup(title, items, emptyText){
+  const rows=items.length?renderChecklistItems(items):`<div class="itemMeta">${esc(emptyText)}</div>`;
+  return `<section class="qualityChecklistGroup">
+    <div class="materialsSectionHeader"><h3>${esc(title)}</h3><span class="pill">${items.length}</span></div>
+    ${rows}
+  </section>`;
+}
 function renderReportQualityChecklist(){
   const result=mergeCoveragePreviewWithQualityChecklist(REPORT,latestAiSourceCoveragePreview(REPORT));
-  const priority=[...result.blockers,...result.warnings,...result.passed];
   return `<div class="materialsInventory">
     <div class="materialsHead"><b>${esc(t('exportReadinessTitle'))}</b><span class="pill">${esc(readinessLabel(result.status))}</span></div>
     <div class="itemMeta">${esc(t('completenessLabel'))} ${result.completenessScore}% - ${esc(t('evidenceLabel'))} ${result.evidenceScore}% - ${esc(t('sourcePlural'))} ${result.sourceCoverageScore}% - ${esc(t('clientSafetyLabel'))} ${esc(readinessLabel(result.clientSafetyStatus))}</div>
     <div class="itemMeta">${esc(t('blockersCount',{count:result.blockers.length}))} - ${esc(t('warningsCount',{count:result.warnings.length}))} - ${esc(t('passedCount',{count:result.passed.length}))}</div>
-    ${renderChecklistItems(priority)}
+    ${renderChecklistGroup('Blockers',result.blockers,'No blockers.')}
+    ${renderChecklistGroup('Warnings',result.warnings,'No warnings.')}
+    ${renderChecklistGroup('Passed',result.passed,'No passed checks yet.')}
   </div>`;
 }
 function getCurrentVersionDiff(){
@@ -7725,11 +8365,26 @@ function maybeOpenOnboardingWizard(){
   setTimeout(()=>{if(!$('modalBackdrop')?.classList.contains('open')) openOnboardingWizard(stateObj.currentStepId||'welcome');},350);
 }
 function firstReportStatusClass(status){
+  if(status==='ready') return 'good';
   if(status==='completed') return 'good';
+  if(status==='needs_review') return 'warn';
+  if(status==='completed_with_warnings') return 'warn';
   if(status==='blocked') return 'warn';
   if(status==='skipped') return 'muted';
   if(status==='in_progress') return 'primary';
   return '';
+}
+function firstReportStatusLabel(status){
+  return ({
+    completed:t('firstReportCompleted'),
+    completed_with_warnings:t('firstReportCompletedWithWarnings'),
+    blocked:t('blocked'),
+    skipped:t('firstReportSkipped'),
+    in_progress:t('firstReportInProgress'),
+    not_started:t('firstReportNotStarted'),
+    needs_review:t('needsReview'),
+    ready:t('ready')
+  })[status]||String(status||'').replace(/_/g,' ');
 }
 function firstReportActionLabel(stepId){
   return ({
@@ -7755,10 +8410,22 @@ function renderGuidedFirstReportPanel({hero=false}={}){
   const rows=progress.steps.map(step=>{
     const warn=step.warnings?.[0]||'';
     return `<div class="materialRow">
-      <div class="itemName">${esc(step.label)}<div class="itemMeta ${step.status==='blocked'?'warn':''}">${esc(step.status)}${warn?' - '+esc(warn):''}</div></div>
-      <span class="pill ${firstReportStatusClass(step.status)}">${esc(step.status)}</span>
+      <div class="itemName">${esc(step.label)}<div class="itemMeta ${step.status==='blocked'||step.status==='completed_with_warnings'?'warn':''}">${esc(firstReportStatusLabel(step.status))}${warn?' - '+esc(warn):''}</div></div>
+      <span class="pill ${firstReportStatusClass(step.status)}">${esc(firstReportStatusLabel(step.status))}</span>
     </div>`;
   }).join('');
+  const blockers=progress.steps.filter(step=>step.status==='blocked').length;
+  const warningCount=progress.steps.filter(step=>step.status==='completed_with_warnings'||step.warnings?.length).length;
+  const readinessStatus=blockers?'blocked':(warningCount?'needs_review':(progress.percent>=100?'ready':'in_progress'));
+  const readinessMeta=[
+    t('firstReportProgress',{percent:progress.percent,step:firstReportStepLabel(next)}),
+    blockers?t('blockersCount',{count:blockers}):'',
+    warningCount?t('warningsCount',{count:warningCount}):''
+  ].filter(Boolean).join(' - ');
+  const readiness=`<section class="materialsSection firstReportReadiness">
+    <div class="materialsSectionHeader"><h3>${esc(t('reportReadiness'))}</h3><span class="pill ${firstReportStatusClass(readinessStatus)}">${esc(firstReportStatusLabel(readinessStatus))}</span></div>
+    <div class="itemMeta">${esc(readinessMeta)}</div>
+  </section>`;
   const title=progress.isEmpty?t('firstReportTitleEmpty'):t('firstReportTitleContinue');
   const subtitle=progress.isEmpty?t('firstReportSubtitleEmpty'):t('firstReportSubtitleContinue');
   const demo=REPORT.meta?.isDemoReport?`<div class="empty">${esc(t('firstReportSampleData'))}</div>`:'';
@@ -7770,25 +8437,57 @@ function renderGuidedFirstReportPanel({hero=false}={}){
     <div class="materialsHead"><b>${esc(title)}</b><span class="pill">${progress.completed}/${progress.total}</span></div>
     <div class="itemMeta">${esc(subtitle)}</div>
     ${demo}${localLabel}
-    <div class="itemMeta">${esc(t('firstReportProgress',{percent:progress.percent,step:firstReportStepLabel(next)}))}</div>
+    ${readiness}
     <div class="materialFilters">${primary}${secondary}</div>
     ${extra}
-    ${rows}
+    <details class="materialsSection firstReportChecklist">
+      <summary class="materialsSectionHeader"><h3>${esc(t('viewChecklist'))}</h3><span class="pill">${progress.completed}/${progress.total}</span></summary>
+      ${rows}
+    </details>
   </div>`;
 }
+function renderFirstReportReadinessDetails(progress){
+  const rows=progress.steps.map(step=>{
+    const warn=step.warnings?.[0]||'';
+    return `<div class="materialRow">
+      <div class="itemName">${esc(step.label)}<div class="itemMeta ${step.status==='blocked'||step.status==='completed_with_warnings'?'warn':''}">${esc(firstReportStatusLabel(step.status))}${warn?' - '+esc(warn):''}</div></div>
+      <span class="pill ${firstReportStatusClass(step.status)}">${esc(firstReportStatusLabel(step.status))}</span>
+    </div>`;
+  }).join('');
+  const blockers=progress.steps.filter(step=>step.status==='blocked').length;
+  const warningCount=progress.steps.filter(step=>step.status==='completed_with_warnings'||step.warnings?.length).length;
+  const readinessMeta=[
+    t('firstReportProgress',{percent:progress.percent,step:firstReportStepLabel(progress.nextStepId)}),
+    blockers?t('blockersCount',{count:blockers}):'',
+    warningCount?t('warningsCount',{count:warningCount}):''
+  ].filter(Boolean).join(' - ');
+  return `<details class="materialsSection firstReportChecklist firstReportReadinessDetails">
+    <summary class="materialsSectionHeader"><h3>${esc(t('viewReportReadiness'))}</h3><span class="pill">${progress.completed}/${progress.total}</span></summary>
+    <div class="firstReportReadinessBody">
+      <div class="itemMeta">${esc(readinessMeta)}</div>
+      ${rows}
+    </div>
+  </details>`;
+}
 function renderFirstReportEmptyState(){
-  return `<div class="productHero">
+  const flow=normalizeFirstReportFlowState(REPORT);
+  const progress=getFirstReportProgress(REPORT);
+  const readiness=flow.enabled&&!flow.dismissed?renderFirstReportReadinessDetails(progress):'';
+  return `<div class="productHero firstRunHero">
     <h1>${esc(t('firstReportTitleEmpty'))}</h1>
-    <p>${esc(t('firstReportSubtitleEmpty'))}</p>
-    <div class="productActions">
-      ${isAdmin()?`<button class="btn primary adminOnly" data-first-report-action="createReport">${esc(t('firstReportStartGuided'))}</button>`:''}
-      ${isAdmin()?`<button class="btn adminOnly" data-first-report-upload="1">${esc(t('firstReportUploadMaterials'))}</button>`:''}
+    <p>${esc(t('firstReportHeroSubtitle'))}</p>
+    <div class="productActions firstRunActions">
+      ${isAdmin()?`<button class="btn primary adminOnly" data-first-report-upload="1">${esc(t('firstReportUploadMaterials'))}</button>`:''}
       ${isAdmin()?`<button class="btn adminOnly" data-open-demo>${esc(t('firstReportOpenDemo'))}</button>`:''}
+      ${isAdmin()?`<button class="btn adminOnly" data-first-report-paste="1">${esc(t('firstReportPasteTable'))}</button>`:''}
     </div>
-    <div class="productActions">
-      ${isAdmin()?`<button class="btn small adminOnly" data-first-report-paste="1">${esc(t('firstReportImportSpreadsheet'))}</button><button class="btn small adminOnly" data-first-report-paste="1">${esc(t('firstReportPasteTable'))}</button><button class="btn small adminOnly" data-first-report-folder="1">${esc(t('firstReportConnectLocalFolder'))}</button>`:''}
+    <div class="itemMeta firstRunLocal">${esc(t('firstReportLocalOnlySimple'))}</div>
+    <div class="workflowSteps firstRunSteps" aria-label="First report workflow">
+      <div class="workflowStep firstRunStep"><span>1</span><b>${esc(t('workflowUploadMaterialsTitle'))}</b></div>
+      <div class="workflowStep firstRunStep"><span>2</span><b>${esc(t('workflowReviewEvidenceTitle'))}</b></div>
+      <div class="workflowStep firstRunStep"><span>3</span><b>${esc(t('firstReportExportClientReport'))}</b></div>
     </div>
-    ${renderGuidedFirstReportPanel({hero:true})}
+    ${readiness}
   </div>`;
 }
 function applyFirstReportBasicsFromModal(){
@@ -8098,6 +8797,25 @@ function renderClientExportV2(){
     </div>`;
   return true;
 }
+function openClientReportWorkspace(){
+  const data=buildClientExportDataV2(REPORT);
+  readerTabs.innerHTML='';
+  state.openTabs=[];
+  state.activeFile=null;
+  reader.innerHTML=`
+    <div class="clientReportV2">
+      <div class="heroBlock">
+        <div class="kicker">${esc(t('clientReport'))}</div>
+        <h1>${esc(data.title||REPORT.meta?.title||'Marketing Report Studio')}</h1>
+        <p>${esc(t('evidenceBackedReport'))}</p>
+        <div class="heroActions"><span class="pill">Workspace preview</span><span class="pill">${esc(new Date(data.generatedAt||Date.now()).toLocaleDateString(uiLocale()))}</span></div>
+      </div>
+      ${renderClientReportSectionsV2(REPORT)}
+      ${renderClientSourcesSection(REPORT)}
+    </div>`;
+  state.sidePanelView='report';
+  renderSide();
+}
 function scheduleSideSearchRender(){
   if(sideSearchRenderTimer) clearTimeout(sideSearchRenderTimer);
   sideSearchRenderTimer=setTimeout(()=>{
@@ -8141,38 +8859,241 @@ function renderSideFileTree(match){
   }
   return html;
 }
+function materialFolderForFile(file, folders=normalizeMaterialFolders(REPORT)){
+  const explicit=String(file?.materialFolderId||file?.folderId||'');
+  if(explicit){
+    const exact=folders.find(folder=>folder.id===explicit);
+    if(exact) return exact;
+  }
+  const text=`${file?.name||''} ${file?.path||''} ${file?.folder||''} ${file?.ext||''}`;
+  return folders.find(folder=>{
+    const defaultFolder=DEFAULT_MATERIAL_FOLDERS.find(item=>item.id===folder.id);
+    if(defaultFolder?.match?.test(text)) return true;
+    const folderName=String(folder.name||'').replace(/^\d+\.\s*/,'').toLowerCase();
+    return folderName && text.toLowerCase().includes(folderName);
+  })||folders[0]||createDefaultMaterialFolders()[0];
+}
+function materialFileExtension(file){
+  if(MRS_MATERIALS.fileExtension) return MRS_MATERIALS.fileExtension(file);
+  return String(file?.ext||extFromName(file?.name)||'').toLowerCase();
+}
+function materialFileTypeLabel(file){
+  if(MRS_MATERIALS.fileTypeLabel) return MRS_MATERIALS.fileTypeLabel(file);
+  return (materialFileExtension(file)||'file').toUpperCase();
+}
+function materialFileIconClass(file){
+  if(MRS_MATERIALS.fileIconClass) return MRS_MATERIALS.fileIconClass(file);
+  const ext=materialFileExtension(file);
+  if(ext==='pdf') return 'pdf';
+  if(['ppt','pptx'].includes(ext)) return 'ppt';
+  if(['xlsx','csv','tsv'].includes(ext)) return 'sheet';
+  if(['docx','txt','md'].includes(ext)) return 'doc';
+  if(['png','jpg','jpeg','webp','gif','bmp','svg'].includes(ext)) return 'image';
+  if(['mp4','mov','webm','avi','mkv'].includes(ext)) return 'video';
+  if(['json','html','xml'].includes(ext)) return 'code';
+  return 'unknown';
+}
+function materialFileDate(file){
+  if(MRS_MATERIALS.fileDate) return MRS_MATERIALS.fileDate(file, uiLocale());
+  const raw=file?.lastModified||file?.createdAt||file?.updatedAt||'';
+  const date=raw?new Date(raw):null;
+  return date && Number.isFinite(date.getTime()) ? date.toLocaleDateString(uiLocale()) : '';
+}
+function materialFileMetaParts(file){
+  if(MRS_MATERIALS.fileMetaParts) return MRS_MATERIALS.fileMetaParts(file, {formatBytes:bytes, locale:uiLocale()});
+  const parts=[materialFileTypeLabel(file)];
+  if(Number(file?.size)>0) parts.push(bytes(file.size));
+  const date=materialFileDate(file);
+  if(date) parts.push(date);
+  return parts;
+}
+function materialFileMetaHtml(file){
+  return materialFileMetaParts(file).map(esc).join(' &middot; ');
+}
+function sortedMaterialFiles(files){
+  const sort=MATERIAL_FILE_SORT_OPTIONS.includes(state.fileSort)?state.fileSort:'newest';
+  if(MRS_MATERIALS.sortFiles) return MRS_MATERIALS.sortFiles(files, sort, {toNumber:num});
+  const list=[...(files||[])];
+  const time=file=>new Date(file?.createdAt||file?.updatedAt||file?.lastModified||0).getTime()||0;
+  const name=file=>String(file?.name||'').toLowerCase();
+  const type=file=>String(file?.ext||extFromName(file?.name)||'').toLowerCase();
+  if(sort==='oldest') return list.sort((a,b)=>time(a)-time(b)||name(a).localeCompare(name(b)));
+  if(sort==='name') return list.sort((a,b)=>name(a).localeCompare(name(b)));
+  if(sort==='type') return list.sort((a,b)=>type(a).localeCompare(type(b))||name(a).localeCompare(name(b)));
+  if(sort==='size') return list.sort((a,b)=>num(b?.size)-num(a?.size)||name(a).localeCompare(name(b)));
+  return list.sort((a,b)=>time(b)-time(a)||name(a).localeCompare(name(b)));
+}
+function renderMaterialsWorkspace(match, datasetItems){
+  const folders=normalizeMaterialFolders(REPORT);
+  const files=(REPORT.files||[]).filter(file=>match(file.name)||match(file.path)||match(file.folder));
+  const counts=new Map(folders.map(folder=>[folder.id,0]));
+  for(const file of REPORT.files||[]){
+    const folder=materialFolderForFile(file, folders);
+    counts.set(folder.id,(counts.get(folder.id)||0)+1);
+  }
+  const folderRows=folders.map(folder=>`
+    <div class="materialsFolderRow">
+      <div class="materialsIcon">F</div>
+      <div class="itemName">${esc(folder.name)}<div class="itemMeta">${counts.get(folder.id)||0} file${counts.get(folder.id)===1?'':'s'}</div></div>
+    </div>`).join('');
+  const fileRows=sortedMaterialFiles(files).slice(0,80).map(file=>{
+    const fileName=file.name||'Untitled file';
+    return `<div class="item materialsFileRow ${('file:'+file.id)===state.activeFile?'active':''}" data-type="emb-file" data-id="${esc(file.id)}" title="${esc(fileName)}">
+      <div class="materialsIcon ${esc(materialFileIconClass(file))}">${esc(fileIcon(file))}</div>
+      <div class="itemName"><span class="materialsFileName" title="${esc(fileName)}">${esc(fileName)}</span><div class="itemMeta">${materialFileMetaHtml(file)}</div></div>
+      <button class="btn small ghost adminOnly" data-act="delete" data-target="emb-file" data-id="${esc(file.id)}" title="Delete file">×</button>
+    </div>`;
+  }).join('');
+  const sortOptions=[
+    ['newest','Newest First'],
+    ['oldest','Oldest First'],
+    ['name','Name'],
+    ['type','Type'],
+    ['size','Size'],
+  ].map(([value,label])=>`<option value="${value}" ${state.fileSort===value?'selected':''}>${label}</option>`).join('');
+  return `
+    <section class="materialsSection">
+      <div class="materialsSectionHeader"><h3>Folders</h3><button class="iconButton adminOnly" id="addFolderBtn" type="button" title="Add materials folder" aria-label="Add materials folder">+</button></div>
+      <div id="folderList" class="folderList">${folderRows}</div>
+    </section>
+    <section class="materialsSection">
+      <div class="materialsSectionHeader"><h3>Files</h3><select class="select" id="fileSortSelect" data-file-sort>${sortOptions}</select></div>
+      <div id="fileList" class="fileList">${fileRows||'<div class="empty">Upload research files, spreadsheets, notes, screenshots, or client context.</div>'}</div>
+      <small class="materialsDropNote">Supports pdf, pptx, xlsx, csv, docx, md, txt, json, images, video.</small>
+    </section>
+    <section class="materialsSection">
+      <div class="materialsSectionHeader"><h3>Data Tables</h3><span class="pill">${(REPORT.datasets||[]).length}</span></div>
+      ${datasetItems||'<div class="empty">Tables will appear after CSV, XLSX, JSON, or Markdown imports.</div>'}
+    </section>`;
+}
+function fileKind(file){
+  const ext=materialFileExtension(file);
+  if(['csv','tsv','xlsx'].includes(ext) || file?.isData) return 'table';
+  if(['png','jpg','jpeg','webp','gif','bmp','svg'].includes(ext)) return 'image';
+  if(['md','txt','html','pdf','docx','ppt','pptx','json'].includes(ext)) return 'document';
+  return 'file';
+}
+function simpleTreeMeta(parts){return parts.filter(Boolean).map(esc).join(' - ');}
+function simpleFileMeta(file){
+  const ds=(REPORT.datasets||[]).filter(d=>String(d.sourceFileId||'')===String(file?.id||''));
+  const parts=[materialFileTypeLabel(file)];
+  if(Number(file?.size)>0) parts.push(bytes(file.size));
+  if(ds.length) parts.push(`${ds.reduce((sum,d)=>sum+(d.rows?.length||0),0)} rows`);
+  return simpleTreeMeta(parts);
+}
+function renderSimpleTreeGroup(title, count, body, opts={}){
+  const open=opts.open===false?'':' open';
+  return `<details class="simpleTreeGroup"${open}><summary><span>${esc(title)}</span><b>${esc(fmt(count||0))}</b></summary><div class="simpleTreeItems">${body||`<div class="empty">${esc(opts.empty||'None yet.')}</div>`}</div></details>`;
+}
+function simpleTreeLimit(key,total){
+  state.simpleTreeLimits=state.simpleTreeLimits||{};
+  const current=Number(state.simpleTreeLimits[key]||SIMPLE_TREE_DEFAULT_LIMIT);
+  const safe=Number.isFinite(current)&&current>0?current:SIMPLE_TREE_DEFAULT_LIMIT;
+  return Math.min(total, safe);
+}
+function renderSimpleTreeRows(key, items, renderItem, opts={}){
+  const list=Array.isArray(items)?items:[];
+  const limit=opts.limitAll?list.length:simpleTreeLimit(key,list.length);
+  const rows=list.slice(0,limit).map(renderItem).join('');
+  const status=list.length>limit
+    ? `<div class="simpleTreeMore"><span>Showing ${esc(fmt(limit))} of ${esc(fmt(list.length))}</span><button class="btn small" data-simple-show-more="${esc(key)}">Show more</button></div>`
+    : (list.length>SIMPLE_TREE_DEFAULT_LIMIT?`<div class="simpleTreeMore"><span>Showing all ${esc(fmt(list.length))}</span></div>`:'');
+  return rows+status;
+}
+function renderSimpleProjectTree(){
+  const q=search.value.trim().toLowerCase();
+  const match=s=>!q || String(s||'').toLowerCase().includes(q);
+  const files=(REPORT.files||[]).filter(file=>match(file.name)||match(file.path)||match(file.folder));
+  const tables=(REPORT.datasets||[]).filter(ds=>match(ds.name));
+  const documents=files.filter(file=>fileKind(file)==='document');
+  const images=files.filter(file=>fileKind(file)==='image');
+  const activeDs=getActiveTableDataset();
+  const autoCharts=activeDs?autoChartConfigsForTable(activeDs):[];
+  const savedViews=(REPORT.meta?.simpleSavedViews||[]).filter(view=>match(view.name)||match(dataset(view.datasetId)?.name));
+  const deleteFileButton=file=>`<button class="btn small ghost danger adminOnly simpleDeleteBtn" data-act="delete" data-target="emb-file" data-id="${esc(file.id)}" title="Delete file and tables created from it" aria-label="Delete ${esc(file.name||'file')}">&times;</button>`;
+  const fileRows=renderSimpleTreeRows('files',files,file=>`<div class="item simpleTreeItem ${state.activeFile===`file:${file.id}`?'active':''}" data-type="emb-file" data-id="${esc(file.id)}"><div class="materialsIcon ${esc(materialFileIconClass(file))}">${esc(fileIcon(file))}</div><div class="itemName">${esc(file.name||'Untitled file')}<div class="itemMeta">${simpleFileMeta(file)}</div></div>${deleteFileButton(file)}</div>`);
+  const tableRows=renderSimpleTreeRows('tables',tables,ds=>`<div class="item simpleTreeItem ${state.activeDataset===ds.id?'active':''}" data-type="dataset" data-id="${esc(ds.id)}"><div class="materialsIcon sheet">TBL</div><div class="itemName">${esc(ds.name||'Table')}<div class="itemMeta">${fmt(ds.rows?.length||0)} rows - ${fmt(columns(ds).length)} columns</div></div><button class="btn small ghost adminOnly simpleTreeAction" data-act="export-dataset" data-id="${esc(ds.id)}" title="Export CSV">CSV</button><button class="btn small ghost danger adminOnly simpleDeleteBtn" data-act="delete-dataset" data-id="${esc(ds.id)}" title="Delete table" aria-label="Delete ${esc(ds.name||'table')}">&times;</button></div>`,{limitAll:true});
+  const docRows=renderSimpleTreeRows('documents',documents,file=>`<div class="item simpleTreeItem ${state.activeFile===`file:${file.id}`?'active':''}" data-type="emb-file" data-id="${esc(file.id)}"><div class="materialsIcon ${esc(materialFileIconClass(file))}">${esc(fileIcon(file))}</div><div class="itemName">${esc(file.name||'Document')}<div class="itemMeta">${simpleFileMeta(file)}</div></div>${deleteFileButton(file)}</div>`);
+  const imageRows=renderSimpleTreeRows('images',images,file=>`<div class="item simpleTreeItem ${state.activeFile===`file:${file.id}`?'active':''}" data-type="emb-file" data-id="${esc(file.id)}"><div class="materialsIcon image">${esc(fileIcon(file))}</div><div class="itemName">${esc(file.name||'Image')}<div class="itemMeta">${simpleFileMeta(file)}</div></div>${deleteFileButton(file)}</div>`);
+  const chartRows=autoCharts.map(ch=>`<div class="item simpleTreeItem ${state.activeFile===`chart:${ch.id}`?'active':''}" data-type="simple-chart" data-id="${esc(ch.id)}"><div class="materialsIcon code">CH</div><div class="itemName">${esc(ch.title)}<div class="itemMeta">${esc(ch.x)} - ${esc(ch.agg==='count'?'rows':ch.y)}</div></div></div>`).join('');
+  const viewRows=savedViews.map(view=>`<div class="item simpleTreeItem" data-type="simple-saved-view" data-id="${esc(view.id)}"><div class="materialsIcon doc">VIEW</div><div class="itemName">${esc(view.name)}<div class="itemMeta">${esc(dataset(view.datasetId)?.name||'Missing table')}</div></div></div>`).join('');
+  const exportRows=`<div class="simpleExportActions">
+    <button class="btn small primary" data-simple-export="client-html">Export clean HTML report</button>
+    <button class="btn small" data-simple-export="client-package">Export ZIP/client package</button>
+    <button class="btn small" data-simple-export="table-csv">Export current table CSV</button>
+    <button class="btn small danger adminOnly" data-simple-cleanup="demo">Remove demo files</button>
+  </div>`;
+  const advanced=`<details class="simpleTreeGroup advancedLabs"><summary><span>Advanced / Labs</span><b>collapsed</b></summary>
+    <div class="simpleAdvancedList">
+      <span>AI Assistance</span><span>AI Review Queue</span><span>AI Audit</span><span>Governance Settings</span><span>Version Retention</span><span>Safe Restore</span><span>Competitor Profile Builder</span><span>Pricing Matrix Builder</span><span>Messaging Builder</span><span>Evidence tools</span>
+    </div>
+  </details>`;
+  return `<div class="simpleFileTree" data-simple-file-tree>
+    ${renderSimpleTreeGroup('Uploaded files',files.length,fileRows,{empty:'Upload files to begin.'})}
+    ${renderSimpleTreeGroup('Tables',tables.length,tableRows,{empty:'CSV, XLSX, JSON, and Markdown tables appear here.'})}
+    ${renderSimpleTreeGroup('Documents',documents.length,docRows,{open:false,empty:'PDF, DOCX, Markdown, TXT, HTML, and JSON documents appear here.'})}
+    ${renderSimpleTreeGroup('Images',images.length,imageRows,{open:false,empty:'Screenshots and image files appear here.'})}
+    ${renderSimpleTreeGroup('Auto charts',autoCharts.length,chartRows,{empty:'Select a table with category/numeric columns.'})}
+    ${renderSimpleTreeGroup('Saved views',savedViews.length,viewRows,{open:false,empty:'Save a table view after filtering or hiding columns.'})}
+    ${renderSimpleTreeGroup('Exports',3,exportRows)}
+    ${advanced}
+  </div>`;
+}
 function renderSide(){
   if(sideSearchRenderTimer){
     clearTimeout(sideSearchRenderTimer);
     sideSearchRenderTimer=null;
   }
-  const q=search.value.trim().toLowerCase();
-  const match=s=>!q || String(s||'').toLowerCase().includes(q);
-  const renderDatasetItems=()=> (REPORT.datasets||[]).filter(d=>match(d.name)).map(d=>{
-    const imported=d.createdAt?new Date(d.createdAt).toLocaleDateString(uiLocale()):'';
-    return `<div class="item ${state.activeDataset===d.id?'active':''}" data-type="dataset" data-id="${esc(d.id)}"><div class="icon">▦</div><div class="itemName">${esc(d.name)}<div class="itemMeta">${d.rows?.length||0} рядків${imported?' · '+esc(imported):''}</div></div><button class="btn small ghost adminOnly" data-act="export-dataset" data-id="${esc(d.id)}" title="Експорт CSV">⇩</button><button class="btn small ghost danger adminOnly" data-act="delete-dataset" data-id="${esc(d.id)}" title="Видалити таблицю">×</button></div>`;
-  }).join('');
-  const renderChartItems=()=> (REPORT.charts||[]).filter(ch=>match(ch.title)).map(ch=>`<div class="item" data-type="chart" data-id="${esc(ch.id)}"><div class="icon">▥</div><div class="itemName">${esc(ch.title)}</div></div>`).join('');
-  const view=currentSidePanelView();
-  let html=renderSidePanelTabs(view);
-  if(view==='materials'){
-    const datasetItems=renderDatasetItems();
-    html += `${renderMaterialsInventory()}<div class="sectionTitle">Таблиці даних</div>${datasetItems||'<div class="empty">Таблиць ще немає.</div>'}${renderSideFileTree(match)}`;
-  }else if(view==='evidence'){
-    html += `${renderSourceRegistry()}${renderEvidenceCards()}${renderEvidenceReview()}`;
-  }else if(view==='report'){
-    const chartItems=renderChartItems();
-    html += `${renderGuidedFirstReportPanel()}${renderCompetitorProfiles()}${renderPricingFeatureMatrix()}${renderDraftBuilder()}${renderReportQualityChecklist()}<div class="sectionTitle">Графіки</div>${chartItems||'<div class="empty">Графіків ще немає.</div>'}`;
-  }else{
-    html += `${renderVersionDiffPanel()}${renderVersionRetentionPanel()}${renderWorkspaceGovernancePanel()}${renderAiAuditPanel()}${renderAiReviewQueue()}${renderAiAssistancePanel()}`;
+  sideList.innerHTML=renderSimpleProjectTree();
+}
+function handleSimpleExportAction(action){
+  if(action==='client-html'){saveClientHtml(); return;}
+  if(action==='client-package'){saveClientPackage(); return;}
+  if(action==='table-csv'){
+    const ds=getActiveTableDataset();
+    if(ds) exportDatasetCsv(ds.id);
+    else toast('Select a table first.');
+    return;
   }
-  sideList.innerHTML=translateText(html);
 }
 async function onSideListClick(e){
+  const simpleCleanup=e.target.closest('[data-simple-cleanup]');
+  if(simpleCleanup && sideList.contains(simpleCleanup)){
+    if(simpleCleanup.dataset.simpleCleanup==='demo') removeDemoProjectData();
+    e.stopPropagation();
+    return;
+  }
+  const simpleExport=e.target.closest('[data-simple-export]');
+  if(simpleExport && sideList.contains(simpleExport)){
+    handleSimpleExportAction(simpleExport.dataset.simpleExport);
+    e.stopPropagation();
+    return;
+  }
+  const simpleShowMore=e.target.closest('[data-simple-show-more]');
+  if(simpleShowMore && sideList.contains(simpleShowMore)){
+    const key=simpleShowMore.dataset.simpleShowMore||'files';
+    state.simpleTreeLimits=state.simpleTreeLimits||{};
+    state.simpleTreeLimits[key]=Number(state.simpleTreeLimits[key]||SIMPLE_TREE_DEFAULT_LIMIT)+SIMPLE_TREE_INCREMENT;
+    renderSide();
+    e.stopPropagation();
+    return;
+  }
   const sidePanel=e.target.closest('[data-side-panel]');
   if(sidePanel && sideList.contains(sidePanel)){
     state.sidePanelView=sidePanel.dataset.sidePanel||'materials';
     renderSide();
+    e.stopPropagation();
+    return;
+  }
+  const materialsAddFolder=e.target.closest('#addFolderBtn');
+  if(materialsAddFolder && sideList.contains(materialsAddFolder)){
+    if(!guardAdmin()) return;
+    const folder=addMaterialFolder(REPORT,promptI18n('New materials folder name'));
+    if(folder){
+      schedulePersist();
+      renderSide();
+      toast(`Materials folder added: ${folder.name}`);
+    }
     e.stopPropagation();
     return;
   }
@@ -8561,6 +9482,8 @@ async function onSideListClick(e){
   const type=it.dataset.type,id=it.dataset.id;
   if(type==='dataset'){openDataset(id); return;}
   if(type==='chart'){openChartView(id); return;}
+  if(type==='simple-chart'){openSimpleChartView(id); return;}
+  if(type==='simple-saved-view'){applySimpleSavedView(id); return;}
   if(type==='fs-root'){const k='root:'+id; state.fsOpen[k]=!Boolean(state.fsOpen[k]); renderSide(); return;}
   if(type==='fs-folder'){state.fsOpen[id]=!Boolean(state.fsOpen[id]); renderSide(); return;}
   if(type==='fs-file'){openFsFile(id); return;}
@@ -8570,6 +9493,48 @@ async function onSideListClick(e){
 function csvCell(value){const text=String(value??''); return /[",\r\n]/.test(text)?`"${text.replace(/"/g,'""')}"`:text;}
 function exportDatasetCsv(id){const ds=dataset(id); if(!ds) return; const cols=columns(ds).map(c=>c.name); const csv=[cols.map(csvCell).join(','),...(ds.rows||[]).map(row=>cols.map(c=>csvCell(row[c])).join(','))].join('\r\n'); const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'})); a.download=(ds.name||'dataset').replace(/[\\/:*?"<>|]+/g,'_')+'.csv'; a.click(); URL.revokeObjectURL(a.href);}
 function deleteDatasetById(id){if(!guardAdmin()) return; const ds=dataset(id); if(!ds||!confirmI18n(`Видалити таблицю "${ds.name}" та пов'язані графіки?`)) return; removeDatasetsByIds([id]); refresh(); showNotice(`Таблицю "${ds.name}" видалено.`,'success');}
+function isDemoId(value){return /^demo[-_]/i.test(String(value||'')) || /^demo/i.test(String(value||''));}
+function isDemoFile(file){return isDemoId(file?.id) || /\bdemo\b|sample/i.test(`${file?.name||''} ${file?.path||''} ${file?.folder||''}`);}
+function isDemoDataset(ds){return isDemoId(ds?.id) || /\bdemo\b|sample/i.test(`${ds?.name||''} ${ds?.sourceKind||''}`) || isDemoId(ds?.sourceFileId);}
+function removeDemoProjectData(){
+  if(!guardAdmin()) return;
+  const demoFiles=(REPORT.files||[]).filter(isDemoFile);
+  const demoFileIds=new Set(demoFiles.map(file=>file.id));
+  const demoDatasets=(REPORT.datasets||[]).filter(ds=>isDemoDataset(ds) || demoFileIds.has(String(ds.sourceFileId||'')));
+  const demoDatasetIds=new Set(demoDatasets.map(ds=>ds.id));
+  const demoCompanyIds=new Set((REPORT.companies||[]).filter(company=>isDemoId(company.id) || /\bdemo\b|sample/i.test(String(company.name||''))).map(company=>company.id));
+  const demoSourceIds=new Set((REPORT.sourceRegistry?.items||[]).filter(source=>isDemoId(source.id) || demoFileIds.has(String(source.materialId||'').replace(/^file:/,'')) || /\bdemo\b|sample/i.test(`${source.title||''} ${source.fileName||''} ${source.localPathLabel||''}`)).map(source=>source.id));
+  const total=demoFiles.length+demoDatasets.length+demoCompanyIds.size+demoSourceIds.size;
+  if(!total){toast('Демо-файлів не знайдено'); return;}
+  if(!confirmI18n(`Видалити демо-дані? Буде прибрано: ${demoFiles.length} файл(и), ${demoDatasets.length} таблиць, ${demoCompanyIds.size} компаній.`)) return;
+  REPORT.files=(REPORT.files||[]).filter(file=>!demoFileIds.has(file.id));
+  REPORT.datasets=(REPORT.datasets||[]).filter(ds=>!demoDatasetIds.has(ds.id));
+  REPORT.charts=(REPORT.charts||[]).filter(ch=>!demoDatasetIds.has(String(ch.datasetId||'')) && !demoFileIds.has(String(ch.sourceFileId||'')) && !isDemoId(ch.id));
+  REPORT.tables=(REPORT.tables||[]).filter(tb=>!demoDatasetIds.has(String(tb.datasetId||'')) && !demoFileIds.has(String(tb.sourceFileId||'')) && !isDemoId(tb.id));
+  REPORT.companies=(REPORT.companies||[]).filter(company=>!demoCompanyIds.has(company.id));
+  if(REPORT.sourceRegistry?.items) REPORT.sourceRegistry.items=REPORT.sourceRegistry.items.filter(source=>!demoSourceIds.has(source.id));
+  if(REPORT.evidenceCards?.items) REPORT.evidenceCards.items=REPORT.evidenceCards.items.filter(card=>!isDemoId(card.id) && !(card.sourceIds||[]).some(id=>demoSourceIds.has(id)) && !(card.materialIds||[]).some(id=>demoFileIds.has(String(id).replace(/^file:/,''))));
+  if(REPORT.competitorProfiles?.items) REPORT.competitorProfiles.items=REPORT.competitorProfiles.items.filter(profile=>!isDemoId(profile.id) && !demoCompanyIds.has(profile.id));
+  if(REPORT.pricingFeatureMatrix && (isDemoId(REPORT.pricingFeatureMatrix.id) || /\bdemo\b|sample/i.test(`${REPORT.pricingFeatureMatrix.title||''} ${REPORT.pricingFeatureMatrix.description||''}`))) REPORT.pricingFeatureMatrix=createDefaultPricingFeatureMatrix();
+  for(const section of (REPORT.reportSections||[])){
+    section.blocks=(section.blocks||[]).filter(block=>!isDemoId(block.id) && String(block.generatedBy||'')!=='demo_seed');
+    if(!section.blocks.length && section.status!=='empty') section.status='empty';
+  }
+  if(REPORT.meta){
+    delete REPORT.meta.isDemoReport;
+    delete REPORT.meta.demoLabel;
+    delete REPORT.meta.demoResetAt;
+    REPORT.meta.title=REPORT.meta.title==='Marketing Report Studio Demo Report'?'Marketing Report Studio':REPORT.meta.title;
+    if(demoDatasetIds.has(REPORT.meta.activeDataset)) REPORT.meta.activeDataset=(REPORT.datasets||[])[0]?.id||null;
+  }
+  if(demoDatasetIds.has(state.activeDataset)) state.activeDataset=(REPORT.datasets||[])[0]?.id||null;
+  if(state.activeFile && ((state.activeFile.startsWith('file:') && demoFileIds.has(state.activeFile.slice(5))) || (state.activeFile.startsWith('ds:') && demoDatasetIds.has(state.activeFile.slice(3))))) state.activeFile=null;
+  state.openTabs=(state.openTabs||[]).filter(tab=>!(tab.kind==='file'&&demoFileIds.has(tab.ref)) && !(tab.kind==='dataset'&&demoDatasetIds.has(tab.ref)));
+  refresh();
+  reader.innerHTML=`<div class="empty">${t('emptyReader')}</div>`;
+  renderReaderTabs();
+  showNotice(`Демо-дані видалено: ${demoFiles.length} файл(и), ${demoDatasets.length} таблиць.`,'success');
+}
 function removeDatasetsByIds(datasetIds){
   const dsSet=new Set(datasetIds||[]);
   if(!dsSet.size) return;
@@ -8998,12 +9963,13 @@ async function tryAutoReconnectFs(){
   }
 }
 function openCompany(id){const c=company(id); if(!c) return; state.activeCompany=id; addTab('company:'+id,c.name,'company',id); state.activeFile='company:'+id; const ds=dataset(state.activeDataset); const rows=companyRows(id, ds?.id); const cols=columns(ds).map(x=>x.name); const files=companyFiles(id); const previewRows=rows.slice(0,20); reader.innerHTML=translateText(`<div class="previewToolbar"><b>📁 ${esc(c.name)}</b><span class="pill">${esc(c.type||'competitor')}</span><span class="pill">${rows.length} рядків</span><span class="pill">${files.length} файлів</span><button class="btn small adminOnly" id="folderAddFile">+ файл у папку</button></div><div class="grid"><div class="widget"><div class="widgetHead"><b>Дані компанії</b></div><div class="widgetBody"><div style="overflow:auto"><table class="dataTable"><thead><tr>${cols.slice(0,8).map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${previewRows.map(r=>`<tr>${cols.slice(0,8).map(h=>`<td>${esc(r[h])}</td>`).join('')}</tr>`).join('')||'<tr><td>Даних поки немає</td></tr>'}</tbody></table></div></div></div><div class="widget"><div class="widgetHead"><b>Файли папки</b></div><div class="widgetBody">${files.map(f=>`<div class="item" data-file="${esc(f.id)}"><div class="icon">${fileIcon(f)}</div><div class="itemName">${esc(f.name)}<div class="itemMeta">${esc(f.ext||'file')} · ${bytes(f.size||0)}</div></div></div>`).join('')||'<div class="empty">Файлів ще немає. В адмін-режимі вибери цю папку і натисни + Дані / перетягни файли.</div>'}</div></div></div>`); $('folderAddFile')?.addEventListener('click',()=>{if(guardAdmin()) $('fileInput').click();}); reader.querySelectorAll('[data-file]').forEach(x=>x.addEventListener('click',()=>openFile(x.dataset.file))); renderReaderTabs(); renderSide();}
-function fileIcon(f){const e=(f.ext||'').toLowerCase(); if(e==='json') return '{}'; if(e==='csv') return 'CSV'; if(e==='tsv') return 'TSV'; if(e==='xlsx') return 'XLSX'; if(f.isData) return '▦'; if(['png','jpg','jpeg','webp','gif'].includes(e)) return '🖼'; if(e==='pdf') return 'PDF'; if(['md','txt'].includes(e)) return 'TXT'; if(e==='html') return 'HTML'; if(e==='docx') return 'DOC'; return '📎';}
+function fileIcon(f){if(MRS_MATERIALS.fileIcon) return MRS_MATERIALS.fileIcon(f); const e=materialFileExtension(f); if(e==='json') return '{}'; if(e==='csv') return 'CSV'; if(e==='tsv') return 'TSV'; if(e==='xlsx') return 'XLSX'; if(['ppt','pptx'].includes(e)) return 'PPT'; if(f.isData) return 'DATA'; if(['png','jpg','jpeg','webp','gif','bmp','svg'].includes(e)) return 'IMG'; if(['mp4','mov','webm','avi','mkv'].includes(e)) return 'VID'; if(e==='pdf') return 'PDF'; if(['md','txt'].includes(e)) return 'TXT'; if(e==='html') return 'HTML'; if(e==='docx') return 'DOC'; return 'FILE';}
 function renderReaderTabs(){
   readerTabs.innerHTML = state.openTabs.map(t=>`<button class="readerTab ${t.id===state.activeFile?'active':''}" data-id="${esc(t.id)}">${esc(short(translateText(t.title),20))}</button>`).join('');
   readerTabs.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>{
     const t=state.openTabs.find(x=>x.id===b.dataset.id);
     if(t?.kind==='dataset') openDataset(t.ref);
+    else if(t?.kind==='chart' && String(t.ref||'').startsWith('auto:')) openSimpleChartView(t.ref);
     else if(t?.kind==='chart') openChartView(t.ref);
     else if(t?.kind==='fs') openFsFile(t.ref);
     else if(t?.kind==='company') openCompany(t.ref);
@@ -9011,10 +9977,203 @@ function renderReaderTabs(){
   }));
 }
 function addTab(id,title,kind,ref){state.openTabs=[{id,title,kind,ref}]; state.activeFile=id; renderReaderTabs();}
-function openDataset(id, sourceFileId, editMode=false){if(editMode&&!isAdmin()) editMode=false; const ds=dataset(id); if(!ds) return; state.activeDataset=id; addTab('ds:'+id,ds.name,'dataset',id); state.activeFile='ds:'+id; const cols=columns(ds).map(c=>c.name); const rowLimit=250; const rows=ds.rows.slice(0,rowLimit); const quality=dataQuality(ds); const limitText=ds.rows.length>rowLimit?`Показано перші ${rowLimit} із ${ds.rows.length} рядків.`:`Показано всі ${ds.rows.length} рядків.`;
-  reader.innerHTML=translateText(`<div class="previewToolbar"><b>${esc(ds.name)}</b><span class="pill">${ds.rows.length} рядків</span><span class="pill">${cols.length} колонок</span><span class="pill ${quality.missing?'warn':'good'}">${quality.missing?'є пропуски':'дані ок'}</span><span class="hint">${limitText}</span><button class="btn small primary adminOnly" id="readerAutoBtn">✨ Авто-звіт</button><button class="btn small adminOnly" id="readerChartBtn">+ графік</button><button class="btn small adminOnly" id="readerTableBtn">+ табличка</button><button class="btn small adminOnly" id="readerEditBtn">${editMode?'Перегляд':'Редагувати рядки'}</button>${editMode&&isAdmin()?'<button class="btn small primary adminOnly" id="saveRowsBtn">Зберегти зміни</button>':''}</div><div style="overflow:auto;max-height:100%"><table class="previewTable" id="readerDataTable"><thead><tr>${cols.map(c=>`<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${rows.map((r,ri)=>`<tr data-row="${ri}">${cols.map(c=>`<td data-col="${esc(c)}" class="${isNum(r[c])?'num':''} ${editMode?'editCell':''}" ${editMode?'contenteditable="true"':''}>${esc(editMode?(r[c]??''):(isNum(r[c])?fmt(r[c]):r[c]))}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`);
-  $('readerAutoBtn')?.addEventListener('click',()=>autoReport(id)); $('readerChartBtn')?.addEventListener('click',()=>openChartModal(null,id)); $('readerTableBtn')?.addEventListener('click',()=>openTableModal(null,id)); $('readerEditBtn')?.addEventListener('click',()=>openDataset(id,sourceFileId,!editMode)); $('saveRowsBtn')?.addEventListener('click',()=>saveDatasetEdits(id));
-  state.activeFile= sourceFileId || 'ds:'+id; refreshSideOnly(); renderReaderTabs();
+function simpleTableStore(){state.simpleTableViews=state.simpleTableViews||{}; return state.simpleTableViews;}
+function defaultHiddenColumnsForTable(cols){
+  return (cols||[]).map(c=>c.name).filter(name=>{
+    const key=compactColumnName(name);
+    return key==='seo_scan' || /(^|_)task_id$/.test(key) || /dataforseo.*task/.test(key) || key==='raw_html' || key==='raw_json';
+  });
+}
+function simpleTableState(ds){
+  const store=simpleTableStore();
+  if(!store[ds.id]){
+    const cols=analyzeTable(ds).columns;
+    store[ds.id]={search:'',filters:{},sortCol:'',sortDir:'desc',hiddenCols:defaultHiddenColumnsForTable(cols),selectedRowIndex:null};
+  }
+  store[ds.id].filters=store[ds.id].filters||{};
+  store[ds.id].hiddenCols=Array.isArray(store[ds.id].hiddenCols)?store[ds.id].hiddenCols:[];
+  return store[ds.id];
+}
+function simpleFilterColumns(analysis){
+  return analysis.columns.filter(c=>['category','status','boolean'].includes(c.type) && distinctCount(analysis.rows,c.name)>1 && distinctCount(analysis.rows,c.name)<=80).slice(0,8);
+}
+function simpleColumnValueOptions(rows, col){
+  return [...countByColumn(rows,col).entries()]
+    .filter(([label])=>label!=='Blank')
+    .sort((a,b)=>b[1]-a[1] || String(a[0]).localeCompare(String(b[0])))
+    .slice(0,60);
+}
+function compareSimpleValues(a,b,type){
+  if(type==='number') return num(a)-num(b);
+  if(type==='date') return (new Date(a).getTime()||0)-(new Date(b).getTime()||0);
+  return String(a??'').localeCompare(String(b??''),undefined,{numeric:true,sensitivity:'base'});
+}
+function applySimpleTableState(ds, analysis, viewState){
+  const hidden=new Set(viewState.hiddenCols||[]);
+  const visibleCols=analysis.columns.filter(c=>!hidden.has(c.name));
+  const searchable=visibleCols.length?visibleCols:analysis.columns;
+  const q=String(viewState.search||'').trim().toLowerCase();
+  let rows=(analysis.rows||[]).map((row,index)=>({row,index}));
+  if(q){
+    rows=rows.filter(item=>searchable.some(col=>String(item.row?.[col.name]??'').toLowerCase().includes(q)));
+  }
+  for(const [col,value] of Object.entries(viewState.filters||{})){
+    if(!value) continue;
+    rows=rows.filter(item=>String(item.row?.[col]??'').trim()===String(value));
+  }
+  if(viewState.sortCol){
+    const meta=analysis.columns.find(c=>c.name===viewState.sortCol)||{type:'text'};
+    const dir=viewState.sortDir==='asc'?1:-1;
+    rows=rows.slice().sort((a,b)=>dir*compareSimpleValues(a.row?.[viewState.sortCol],b.row?.[viewState.sortCol],meta.type));
+  }
+  return {rows, visibleCols};
+}
+function cellDisplay(value, type){
+  if(value===null||value===undefined||value==='') return '';
+  if(type==='number') return fmt(value);
+  return String(value);
+}
+function simpleCellHtml(value, type){
+  const text=cellDisplay(value,type);
+  if(!text) return '';
+  if((type==='url'||type==='domain') && looksLikeDomainValue(text)){
+    const href=/^https?:\/\//i.test(text)?text:`https://${text}`;
+    return `<a href="${esc(href)}" target="_blank" rel="noopener noreferrer">${esc(short(text,70))}</a>`;
+  }
+  return esc(short(text,160));
+}
+function renderColumnTypeBadges(analysis){
+  return `<div class="simpleColumnTypes">${analysis.columns.map(col=>`<span class="columnTypeBadge" title="${esc(col.name)}">${esc(short(col.name,18))}<b>${esc(col.type)}</b></span>`).join('')}</div>`;
+}
+function renderSimpleRowDetails(row, analysis){
+  if(!row) return '<div class="empty">Select a row to inspect details.</div>';
+  const names=analysis.names;
+  const used=new Set();
+  const pick=(patterns)=>{
+    const picked=[];
+    for(const pattern of patterns){
+      const found=names.find(name=>!used.has(name) && (pattern instanceof RegExp ? pattern.test(compactColumnName(name)) : compactColumnName(name)===compactColumnName(pattern)));
+      if(found){
+        const value=row?.[found];
+        if(value!==''&&value!==null&&value!==undefined){used.add(found); picked.push([found,value]);}
+      }
+    }
+    return picked;
+  };
+  const groups=[
+    ['Company',pick(['company','company_name','brand','name','source_site','website','url','seo_domain','domain','city_region'])],
+    ['Classification',pick(['segment','subsegment','category','priority','verification_status','status','seo_threat_level'])],
+    ['SEO',pick([/seo_total_estimated_traffic/,/seo_threat_score/,/seo_organic_count/,/seo_paid_count/,/seo_featured_snippet_count/,/seo_local_pack_count/,/seo_organic_etv/,/seo_paid_etv/,/seo_/])],
+    ['Notes',pick(['why_relevant','outreach_angle','next_action','notes','description','summary'])],
+    ['Technical',pick(['row_number','id',/task_id/,/dataforseo/,/run_date/,/created/,/updated/,/cost/,/scan/])]
+  ].filter(([,items])=>items.length);
+  const remaining=names.filter(name=>!used.has(name)).filter(name=>row?.[name]!==''&&row?.[name]!==null&&row?.[name]!==undefined).slice(0,8).map(name=>[name,row?.[name]]);
+  if(remaining.length) groups.push(['Other fields',remaining]);
+  return `<div class="rowDetailsGrid">${groups.map(([title,items])=>`<section class="rowDetailGroup"><h4>${esc(title)}</h4>${items.map(([key,value])=>`<div class="rowDetail"><span>${esc(key)}</span><b>${simpleCellHtml(value,(analysis.columns.find(c=>c.name===key)||{}).type||'text')}</b></div>`).join('')}</section>`).join('')}</div>`;
+}
+function renderSimpleTablePreview(ds, opts={}){
+  const analysis=analyzeTable(ds);
+  const viewState=simpleTableState(ds);
+  const applied=applySimpleTableState(ds,analysis,viewState);
+  const renderLimit=300;
+  const visible=applied.visibleCols.length?applied.visibleCols:analysis.columns.slice(0,12);
+  const shown=applied.rows.slice(0,renderLimit);
+  if(viewState.selectedRowIndex===null || !applied.rows.some(item=>item.index===viewState.selectedRowIndex)){
+    viewState.selectedRowIndex=shown[0]?.index ?? null;
+  }
+  const selected=analysis.rows[viewState.selectedRowIndex]||null;
+  const filters=simpleFilterColumns(analysis);
+  const filterHtml=filters.map(col=>{
+    const current=viewState.filters[col.name]||'';
+    const options=simpleColumnValueOptions(analysis.rows,col.name).map(([label,count])=>`<option value="${esc(label)}" ${current===label?'selected':''}>${esc(short(label,42))} (${fmt(count)})</option>`).join('');
+    return `<label class="simpleFilter"><span>${esc(col.name)}</span><select class="select" data-simple-filter="${esc(col.name)}"><option value="">All</option>${options}</select></label>`;
+  }).join('');
+  const sortOptions=analysis.columns.map(col=>`<option value="${esc(col.name)}" ${viewState.sortCol===col.name?'selected':''}>${esc(col.name)}</option>`).join('');
+  const columnChecks=analysis.columns.map(col=>{
+    const checked=!viewState.hiddenCols.includes(col.name);
+    return `<label class="check simpleColumnCheck"><input type="checkbox" data-simple-column="${esc(col.name)}" ${checked?'checked':''}><span>${esc(col.name)} <small>${esc(col.type)}</small></span></label>`;
+  }).join('');
+  const rowLimitText=applied.rows.length>renderLimit?`Showing first ${renderLimit} of ${fmt(applied.rows.length)} filtered rows.`:`Showing ${fmt(applied.rows.length)} filtered rows.`;
+  reader.innerHTML=`<div class="simpleTableShell" data-simple-table>
+    <div class="previewToolbar simpleTableTop">
+      <b>${esc(ds.name||'Table')}</b>
+      <span class="pill">${fmt(analysis.rows.length)} rows</span>
+      <span class="pill">${fmt(analysis.columns.length)} columns</span>
+      <span class="pill">${fmt(applied.rows.length)} after filters</span>
+      <button class="btn small" id="simpleExportCsv">Export table CSV</button>
+      <button class="btn small" id="simpleSaveView">Save view</button>
+      <button class="btn small" id="simpleResetTable">Reset</button>
+    </div>
+    <div class="simpleTableControls">
+      <input id="simpleTableSearch" class="select" placeholder="Search visible columns..." value="${esc(viewState.search||'')}">
+      <label class="simpleSort"><span>Sort</span><select class="select" id="simpleSortCol"><option value="">None</option>${sortOptions}</select></label>
+      <button class="btn small" id="simpleSortDir">${viewState.sortDir==='asc'?'Asc':'Desc'}</button>
+      <details class="simpleColumnPicker"><summary class="btn small">Columns (${visible.length}/${analysis.columns.length})</summary><div class="checks">${columnChecks}</div></details>
+    </div>
+    <div class="simpleFilterBar">${filterHtml||'<span class="hint">No compact category/status filters detected.</span>'}</div>
+    ${renderColumnTypeBadges(analysis)}
+    <div class="hint simpleRowLimit">${esc(rowLimitText)}</div>
+    <div class="simpleContentGrid">
+      <div class="simpleTableWrap"><table class="previewTable simplePreviewTable"><thead><tr>${visible.map(col=>`<th><button class="tableSortButton" data-simple-sort="${esc(col.name)}">${esc(col.name)} <small>${esc(col.type)}</small></button></th>`).join('')}</tr></thead><tbody>${shown.map(item=>`<tr data-simple-row="${item.index}" class="${item.index===viewState.selectedRowIndex?'selected':''}">${visible.map(col=>`<td class="${col.type==='number'?'num':''}">${simpleCellHtml(item.row?.[col.name],col.type)}</td>`).join('')}</tr>`).join('')||`<tr><td colspan="${Math.max(1,visible.length)}"><div class="empty">No rows match the current filters.</div></td></tr>`}</tbody></table></div>
+      <aside class="simpleRowDetails"><div class="zoneHead"><b>Selected row details</b><span class="tiny">${viewState.selectedRowIndex!==null?'#'+(viewState.selectedRowIndex+1):''}</span></div>${renderSimpleRowDetails(selected,analysis)}</aside>
+    </div>
+  </div>`;
+  bindSimpleTableControls(ds.id);
+  if(opts.focus==='search'){
+    const input=$('simpleTableSearch');
+    if(input){
+      input.focus();
+      const pos=String(input.value||'').length;
+      try{input.setSelectionRange(pos,pos);}catch(e){}
+    }
+  }
+}
+function bindSimpleTableControls(dsId){
+  const ds=dataset(dsId);
+  if(!ds) return;
+  const viewState=simpleTableState(ds);
+  $('simpleTableSearch')?.addEventListener('input',e=>{viewState.search=e.target.value||''; renderSimpleTablePreview(ds,{focus:'search'}); renderSide();});
+  $('simpleSortCol')?.addEventListener('change',e=>{viewState.sortCol=e.target.value||''; renderSimpleTablePreview(ds);});
+  $('simpleSortDir')?.addEventListener('click',()=>{viewState.sortDir=viewState.sortDir==='asc'?'desc':'asc'; renderSimpleTablePreview(ds);});
+  $('simpleResetTable')?.addEventListener('click',()=>{state.simpleTableViews[ds.id]={search:'',filters:{},sortCol:'',sortDir:'desc',hiddenCols:defaultHiddenColumnsForTable(analyzeTable(ds).columns),selectedRowIndex:null}; renderSimpleTablePreview(ds); renderSide();});
+  $('simpleExportCsv')?.addEventListener('click',()=>exportDatasetCsv(ds.id));
+  $('simpleSaveView')?.addEventListener('click',()=>saveSimpleTableView(ds.id));
+  reader.querySelectorAll('[data-simple-filter]').forEach(sel=>sel.addEventListener('change',()=>{viewState.filters[sel.dataset.simpleFilter]=sel.value||''; renderSimpleTablePreview(ds); renderSide();}));
+  reader.querySelectorAll('[data-simple-column]').forEach(input=>input.addEventListener('change',()=>{const col=input.dataset.simpleColumn; const hidden=new Set(viewState.hiddenCols||[]); if(input.checked) hidden.delete(col); else hidden.add(col); viewState.hiddenCols=[...hidden]; renderSimpleTablePreview(ds); renderSide();}));
+  reader.querySelectorAll('[data-simple-sort]').forEach(btn=>btn.addEventListener('click',()=>{const col=btn.dataset.simpleSort; if(viewState.sortCol===col) viewState.sortDir=viewState.sortDir==='asc'?'desc':'asc'; else {viewState.sortCol=col; viewState.sortDir='desc';} renderSimpleTablePreview(ds);}));
+  reader.querySelectorAll('[data-simple-row]').forEach(row=>row.addEventListener('click',()=>{viewState.selectedRowIndex=Number(row.dataset.simpleRow); renderSimpleTablePreview(ds); renderSide();}));
+}
+function saveSimpleTableView(dsId){
+  const ds=dataset(dsId);
+  if(!ds) return;
+  const viewState=clone(simpleTableState(ds));
+  REPORT.meta=REPORT.meta||{};
+  REPORT.meta.simpleSavedViews=Array.isArray(REPORT.meta.simpleSavedViews)?REPORT.meta.simpleSavedViews:[];
+  const name=promptI18n('Saved view name',`${ds.name} view ${REPORT.meta.simpleSavedViews.length+1}`)||'Saved view';
+  REPORT.meta.simpleSavedViews.push({id:uid('view'),name,datasetId:ds.id,viewState,createdAt:new Date().toISOString()});
+  schedulePersist();
+  renderSide();
+  toast('View saved');
+}
+function applySimpleSavedView(viewId){
+  const view=(REPORT.meta?.simpleSavedViews||[]).find(item=>item.id===viewId);
+  if(!view) return;
+  const ds=dataset(view.datasetId);
+  if(!ds) return;
+  state.activeDataset=ds.id;
+  simpleTableStore()[ds.id]=clone(view.viewState||{});
+  openDataset(ds.id,ds.sourceFileId);
+}
+function openDataset(id, sourceFileId, editMode=false){
+  if(editMode&&!isAdmin()) editMode=false;
+  const ds=dataset(id);
+  if(!ds) return;
+  state.activeDataset=id;
+  addTab('ds:'+id,ds.name,'dataset',id);
+  state.activeFile='ds:'+id;
+  renderSimpleTablePreview(ds);
+  refreshSideOnly();
+  renderReaderTabs();
 }
 function refreshSideOnly(){renderSide();}
 async function openFile(id){const f=fileRec(id); if(!f) return; addTab('file:'+id,f.name,'file',id); state.activeFile='file:'+id; const ext=(f.ext||'').toLowerCase(); const jsonDataset=ext==='json'?REPORT.datasets.find(d=>d.sourceFileId===f.id):null; let html='';
@@ -9342,7 +10501,6 @@ function jsonHighlightedCode(json){
 }
 async function renderDocxFile(f){
   try{
-    if(typeof JSZip==='undefined') return f.contentText?`<pre class="mono">${esc(f.contentText)}</pre>`:`<div class="empty"><b>${esc(f.name)}</b><br>JSZip недоступний для читання .docx</div>`;
     let text='';
     if(f.contentBase64){
       text=await docxTextFromBase64(f.contentBase64);
@@ -9389,7 +10547,8 @@ async function docxTextFromBase64(b64){
   return docxTextFromArrayBuffer(bytes.buffer);
 }
 async function docxTextFromArrayBuffer(ab){
-  const zip=await JSZip.loadAsync(ab);
+  const Zip=await ensureJSZip();
+  const zip=await Zip.loadAsync(ab);
   assertSafeArchive(zip,'DOCX');
   const xml=await safeZipText(zip,'word/document.xml');
   if(!xml) return '';
@@ -9833,7 +10992,22 @@ function inspectCsvInput(text){
 }
 function csvPreviewHtml(result){if(!result.matrix.length) return ''; const shown=result.matrix.slice(0,6); return `<div class="hintBox ${result.ok?'':'error'}">${result.ok?`${result.rows.length} рядків · ${result.columns.length} колонок`:`${result.errors.map(esc).join('<br>')}`}</div><div class="csvPreview"><table class="previewTable"><thead><tr>${shown[0].map(v=>`<th>${esc(v)}</th>`).join('')}</tr></thead><tbody>${shown.slice(1).map(row=>`<tr>${result.columns.map((_,i)=>`<td>${esc(row[i]??'')}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;}
 function openPasteModal(){if(!guardAdmin()) return; openModal('Вставити CSV / TSV',`<div class="formGrid"><div class="field full"><label>Назва таблиці</label><input id="pasteName" value="${esc(t('pastedData'))}"></div><div class="field full"><label>Дані з Excel або Google Sheets</label><textarea id="pasteText" placeholder="brand,traffic,ctr\nClient,1000,3.2\nCompetitor,2000,4.1"></textarea></div><div class="field full" id="pastePreview"><div class="hintBox">Вставте таблицю, щоб перевірити її перед імпортом.</div></div></div>`,`<button class="btn" id="cancelModal">Скасувати</button><button class="btn primary" id="savePaste" disabled>Створити таблицю</button>`); const update=()=>{const result=inspectCsvInput($('pasteText').value); $('pastePreview').innerHTML=csvPreviewHtml(result)||'<div class="hintBox">Вставте таблицю, щоб перевірити її перед імпортом.</div>'; $('savePaste').disabled=!result.ok; return result;}; $('pasteText').addEventListener('input',update); $('cancelModal').onclick=closeModal; $('savePaste').onclick=()=>{const result=update(); if(!result.ok) return; const text=$('pasteText').value; const name=($('pasteName').value||t('pastedData')).trim(); const fileId=uid('file'); REPORT.files.push({id:fileId,name:name+'.csv',path:'data/'+name+'.csv',folder:'Дані',ext:'csv',type:'text/csv',size:text.length,isData:true,contentText:text,createdAt:new Date().toISOString()}); const ds={id:uid('ds'),name,sourceFileId:fileId,createdAt:new Date().toISOString(),rows:result.rows,columns:inferColumns(result.rows)}; REPORT.datasets.push(ds); state.activeDataset=ds.id; closeModal(); refresh(); showImportSuccess(ds);};}
-function showImportSuccess(ds){showNotice(`Таблицю "${ds.name}" імпортовано: ${ds.rows.length} рядків, ${columns(ds).length} колонок.`,'success'); openModal('Дані додано',`<div class="hintBox"><b>${esc(ds.name)}</b><br>${ds.rows.length} рядків · ${columns(ds).length} колонок</div>`,`<button class="btn" id="importDone">Готово</button><button class="btn" id="importOpen">Відкрити таблицю</button><button class="btn primary adminOnly" id="importReport">Створити авто-звіт</button>`); $('importDone').onclick=closeModal; $('importOpen').onclick=()=>{closeModal();openDataset(ds.id);}; $('importReport').onclick=()=>{closeModal();autoReport(ds.id);};}
+function openImportedDataset(dsId, showDashboardNotice=false){
+  const ds=dataset(dsId);
+  if(!ds) return;
+  closeModal();
+  state.activeDataset=ds.id;
+  refresh();
+  openDataset(ds.id,ds.sourceFileId);
+  if(showDashboardNotice) showNotice('Авто-звіт готовий: summary cards, графіки та таблиця відкриті.','success');
+}
+function showImportSuccess(ds){
+  showNotice(`Таблицю "${ds.name}" імпортовано: ${ds.rows.length} рядків, ${columns(ds).length} колонок.`,'success');
+  openModal('Дані додано',`<div class="hintBox"><b>${esc(ds.name)}</b><br>${ds.rows.length} рядків · ${columns(ds).length} колонок</div>`,`<button class="btn" id="importDone">Готово</button><button class="btn" id="importOpen">Відкрити таблицю</button><button class="btn primary adminOnly" id="importReport">Показати авто-звіт</button>`);
+  $('importDone').onclick=closeModal;
+  $('importOpen').onclick=()=>openImportedDataset(ds.id,false);
+  $('importReport').onclick=()=>openImportedDataset(ds.id,true);
+}
 
 function dataQuality(ds){const cols=columns(ds).map(c=>c.name); let missing=0; for(const r of (ds?.rows||[]).slice(0,500)){for(const c of cols){const v=r[c]; if(v===null||v===undefined||String(v).trim()==='') missing++;}} return {missing};}
 function autoChartConfig(dsId){const ds=dataset(dsId); const x=guessX(ds); const y=guessY(ds); const type=(x&&/date|дата|month|місяць|time/i.test(x))?'line':'bar'; return {id:uid('ch'),title:y&&x?`${y} по ${x}`:t('newChart'),type,datasetId:ds?.id||state.activeDataset,x:x||'',y:y||'',agg:'sum',sort:type==='line'?'none':'desc',top:10,sourceFileId:ds?.sourceFileId||''};}
@@ -9847,18 +11021,18 @@ function saveDatasetEdits(dsId){const ds=dataset(dsId); const table=$('readerDat
 function quickChart(dsId){const ds=dataset(dsId); const ch=autoChartConfig(dsId); if(!ch.x||!ch.y){toast('Потрібна текстова і числова колонка'); return;} inheritSourceMeta(ch, ds); ch._baseTitle=ch.title; REPORT.charts.push(ch); refresh(); openDataset(ch.datasetId,ch.sourceFileId); toast('Швидкий графік створено');}
 function quickChartFromTable(tb){const ds=dataset(tb.datasetId); if(!ds){toast('Таблицю-джерело не знайдено'); return;} const selected=(tb.columns&&tb.columns.length?tb.columns:columns(ds).map(c=>c.name)); const metas=columns(ds); const isNumber=c=>metas.find(m=>m.name===c)?.type==='number'; const y=selected.find(isNumber) || numberCols(ds)[0]; const x=selected.find(c=>!isNumber(c)) || textCols(ds)[0]; if(!x||!y){toast('Для графіка потрібна 1 текстова і 1 числова колонка'); return;} const ch={id:uid('ch'),title:`${y} по ${x}`,type:'bar',datasetId:ds.id,x,y,agg:'sum',top:10,sort:'desc',sourceFileId:tb.sourceFileId||ds.sourceFileId||''}; inheritSourceMeta(ch, ds); ch._baseTitle=ch.title; REPORT.charts.push(ch); refresh(); openDataset(ds.id,ch.sourceFileId); toast('Графік створено з таблички');}
 async function handleFiles(fileList){if(!guardAdmin()) {toast('Редагування вимкнено'); return;} const files=[...fileList]; if(files.length>MAX_IMPORT_FILES){showNotice(`За один раз можна додати не більше ${MAX_IMPORT_FILES} файлів.`,'error');return;} const before=new Set((REPORT.datasets||[]).map(d=>d.id)); let count=0; for(const file of files){try{await addFile(file); count++;}catch(e){console.warn('[import] skipped:',file?.name,e?.message||e);showNotice(e?.message||`Не вдалося додати ${file?.name||'файл'}.`,'error');}} refresh(); const added=(REPORT.datasets||[]).filter(d=>!before.has(d.id)); if(added.length===1) showImportSuccess(added[0]); else if(added.length>1) showNotice(`Додано ${added.length} таблиць із ${count} файлів.`,'success'); else if(count) showNotice(`Додано файлів: ${count}.`,'success');}
-async function addFile(file){assertSafeImportFile(file); const ext=(file.name.split('.').pop()||'').toLowerCase(); const id=uid('file'); const co=company(state.activeCompany); const companyId=co?.id||''; const companyPath=co?('companies/'+co.folder+'/'):'data/'; if(['csv','tsv'].includes(ext)){const text=await file.text(); const matrix=parseCsv(text, ext==='tsv'?'\t':undefined); const rows=rowsFromMatrix(matrix); const rec={id,name:file.name,path:companyPath+file.name,folder:co?.name||'Дані',companyId,ext,type:file.type||'text/csv',size:file.size,isData:true,contentText:text}; REPORT.files.push(rec); const ds={id:uid('ds'),name:file.name.replace(/\.[^.]+$/,''),sourceFileId:id,createdAt:new Date().toISOString(),rows,columns:inferColumns(rows)}; REPORT.datasets.push(ds); state.activeDataset=ds.id; toast(`Додано таблицю: ${file.name}`); return;}
-  if(ext==='json'){const text=await file.text(); let rows=[]; let obj=null; try{obj=JSON.parse(text); if(obj && Array.isArray(obj.datasets)){REPORT=stripLegacyTrueSavageDemoPack(stripLegacyCaspianPack(normalizeReport(obj))); state.activeDataset=REPORT.datasets[0]?.id||null; state.openTabs=[]; initState(); toast('Проєкт JSON завантажено'); return;} rows=jsonRows(obj);}catch(e){toast('JSON не прочитався');} const rec={id,name:file.name,path:companyPath+file.name,folder:co?.name||'Дані',companyId,ext,type:file.type||'application/json',size:file.size,isData:rows.length>0,contentText:text}; REPORT.files.push(rec); if(rows.length){const ds={id:uid('ds'),name:file.name.replace(/\.[^.]+$/,''),sourceFileId:id,createdAt:new Date().toISOString(),rows,columns:inferColumns(rows)}; REPORT.datasets.push(ds); state.activeDataset=ds.id; toast(`Додано JSON-таблицю: ${file.name}`);} return;}
-  if(ext==='xlsx'){const ab=await file.arrayBuffer(); const b64=abToBase64(ab); const rec={id,name:file.name,path:companyPath+file.name,folder:co?.name||'Дані',companyId,ext,type:file.type||'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',size:file.size,isData:true,contentBase64:b64}; REPORT.files.push(rec); try{const sheets=await parseXlsx(ab); let added=0; for(const sh of sheets){if(sh.rows.length){REPORT.datasets.push({id:uid('ds'),name:file.name.replace(/\.[^.]+$/,'')+' / '+sh.name,sourceFileId:id,createdAt:new Date().toISOString(),rows:sh.rows,columns:inferColumns(sh.rows)}); added++;}} if(added){state.activeDataset=REPORT.datasets[REPORT.datasets.length-1].id; toast(`Excel прочитано: ${added} лист(ів)`);} else toast('Excel відкрито, але таблиць не знайдено');}catch(e){console.error(e); toast('Не вдалося прочитати .xlsx');} return;}
+async function addFile(file){assertSafeImportFile(file); const ext=(file.name.split('.').pop()||'').toLowerCase(); const id=uid('file'); const co=company(state.activeCompany); const companyId=co?.id||''; const companyPath=co?('companies/'+co.folder+'/'):'data/'; const importedAt=new Date().toISOString(); const fileMeta={size:file.size||0,lastModified:file.lastModified||0,createdAt:importedAt,updatedAt:importedAt}; if(['csv','tsv'].includes(ext)){const text=await file.text(); const matrix=parseCsv(text, ext==='tsv'?'\t':undefined); const rows=rowsFromMatrix(matrix); const rec={id,name:file.name,path:companyPath+file.name,folder:co?.name||'Дані',companyId,ext,type:file.type||'text/csv',...fileMeta,isData:true,contentText:text}; REPORT.files.push(rec); const ds={id:uid('ds'),name:file.name.replace(/\.[^.]+$/,''),sourceFileId:id,createdAt:importedAt,rows,columns:inferColumns(rows)}; REPORT.datasets.push(ds); state.activeDataset=ds.id; toast(`Додано таблицю: ${file.name}`); return;}
+  if(ext==='json'){const text=await file.text(); let rows=[]; let obj=null; try{obj=JSON.parse(text); if(obj && Array.isArray(obj.datasets)){REPORT=stripLegacyTrueSavageDemoPack(stripLegacyCaspianPack(normalizeReport(obj))); state.activeDataset=REPORT.datasets[0]?.id||null; state.openTabs=[]; initState(); toast('Проєкт JSON завантажено'); return;} rows=jsonRows(obj);}catch(e){toast('JSON не прочитався');} const rec={id,name:file.name,path:companyPath+file.name,folder:co?.name||'Дані',companyId,ext,type:file.type||'application/json',...fileMeta,isData:rows.length>0,contentText:text}; REPORT.files.push(rec); if(rows.length){const ds={id:uid('ds'),name:file.name.replace(/\.[^.]+$/,''),sourceFileId:id,createdAt:importedAt,rows,columns:inferColumns(rows)}; REPORT.datasets.push(ds); state.activeDataset=ds.id; toast(`Додано JSON-таблицю: ${file.name}`);} return;}
+  if(ext==='xlsx'){const ab=await file.arrayBuffer(); const b64=abToBase64(ab); const rec={id,name:file.name,path:companyPath+file.name,folder:co?.name||'Дані',companyId,ext,type:file.type||'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',...fileMeta,isData:true,contentBase64:b64}; REPORT.files.push(rec); try{const sheets=await parseXlsx(ab); let added=0; for(const sh of sheets){if(sh.rows.length){REPORT.datasets.push({id:uid('ds'),name:file.name.replace(/\.[^.]+$/,'')+' / '+sh.name,sourceFileId:id,createdAt:importedAt,rows:sh.rows,columns:inferColumns(sh.rows)}); added++;}} if(added){state.activeDataset=REPORT.datasets[REPORT.datasets.length-1].id; toast(`Excel прочитано: ${added} лист(ів)`);} else toast('Excel відкрито, але таблиць не знайдено');}catch(e){console.error(e); toast('Не вдалося прочитати .xlsx');} return;}
   if(ext==='md' && /YT_VIDEO_VISUALIZATION_/i.test(file.name)){
     const text=await file.text();
-    const rec={id,name:file.name,path:companyPath+file.name,folder:co?.name||'Файли',companyId,ext,type:file.type||'text/markdown',size:file.size,isData:false,contentText:text};
+    const rec={id,name:file.name,path:companyPath+file.name,folder:co?.name||'Файли',companyId,ext,type:file.type||'text/markdown',...fileMeta,isData:false,contentText:text};
     REPORT.files.push(rec);
     const parsed=parseVisualizationMarkdown(text,file.name, co?.name || inferAuthorHintFromPath(companyPath+file.name,''));
     if(parsed){
       const dsName=(co?.name||'YouTube')+' · Video Metrics';
       let ds=(REPORT.datasets||[]).find(d=>d.name===dsName);
-      if(!ds){ds={id:uid('ds'),name:dsName,sourceFileId:id,createdAt:new Date().toISOString(),rows:[],columns:[]}; REPORT.datasets.push(ds);}
+      if(!ds){ds={id:uid('ds'),name:dsName,sourceFileId:id,createdAt:importedAt,rows:[],columns:[]}; REPORT.datasets.push(ds);}
       const rowKey=r=>String(r.full_title||r.video_label||'').trim().toLowerCase();
       const byLabel=new Map((ds.rows||[]).map(r=>[rowKey(r),r]));
       byLabel.set(rowKey(parsed),parsed);
@@ -9872,7 +11046,7 @@ async function addFile(file){assertSafeImportFile(file); const ext=(file.name.sp
   }
   if(ext==='md'){
     const text=await file.text();
-    const rec={id,name:file.name,path:companyPath+file.name,folder:co?.name||'Файли',companyId,ext,type:file.type||'text/markdown',size:file.size,isData:false,contentText:text};
+    const rec={id,name:file.name,path:companyPath+file.name,folder:co?.name||'Файли',companyId,ext,type:file.type||'text/markdown',...fileMeta,isData:false,contentText:text};
     REPORT.files.push(rec);
     const result=upsertMarkdownTablesFromText({
       text,
@@ -9890,7 +11064,7 @@ async function addFile(file){assertSafeImportFile(file); const ext=(file.name.sp
     }
     return;
   }
-  const isText=['txt','md','html'].includes(ext); const rec={id,name:file.name,path:companyPath+file.name,folder:co?.name||'Файли',companyId,ext,type:file.type||'application/octet-stream',size:file.size,isData:false}; if(isText) rec.contentText=await file.text(); else rec.contentBase64=abToBase64(await file.arrayBuffer()); REPORT.files.push(rec); toast(`Файл додано: ${file.name}`);
+  const isText=['txt','md','html'].includes(ext); const rec={id,name:file.name,path:companyPath+file.name,folder:co?.name||'Файли',companyId,ext,type:file.type||'application/octet-stream',...fileMeta,isData:false}; if(isText) rec.contentText=await file.text(); else rec.contentBase64=abToBase64(await file.arrayBuffer()); REPORT.files.push(rec); toast(`Файл додано: ${file.name}`);
 }
 function parseCsv(text,delimiter){text=String(text||'').replace(/^\ufeff/,''); if(!delimiter){const first=text.split(/\r?\n/)[0]||''; delimiter=(first.match(/;/g)||[]).length>(first.match(/,/g)||[]).length?';':','; if((first.match(/\t/g)||[]).length>0) delimiter='\t';}
   const rows=[]; let row=[],cell='',q=false; for(let i=0;i<text.length;i++){const c=text[i],n=text[i+1]; if(q){if(c==='"'&&n==='"'){cell+='"';i++;} else if(c==='"') q=false; else cell+=c;} else {if(c==='"') q=true; else if(c===delimiter){row.push(cell);cell='';} else if(c==='\n'){row.push(cell); rows.push(row); row=[]; cell='';} else if(c==='\r'){} else cell+=c;}} row.push(cell); rows.push(row); return rows.filter(r=>r.some(c=>String(c).trim()!==''));}
@@ -10651,9 +11825,9 @@ function rowsFromMatrix(matrix){if(!matrix.length) return []; const headers=uniq
 function uniqueHeaders(hs){const seen={}; return hs.map((h,i)=>{h=h||'column_'+(i+1); if(seen[h]){seen[h]++; return h+'_'+seen[h];} seen[h]=1; return h;});}
 function jsonRows(obj){if(Array.isArray(obj)) return obj.filter(x=>x&&typeof x==='object'); if(Array.isArray(obj.rows)) return obj.rows; if(Array.isArray(obj.data)) return obj.data; if(Array.isArray(obj.entities)) return obj.entities; return [];}
 async function parseXlsx(ab){
-  if(typeof JSZip==='undefined') throw new Error('JSZip missing');
+  const Zip=await ensureJSZip();
   if(Number(ab?.byteLength||0)>MAX_IMPORT_FILE_BYTES) throw new Error('XLSX-файл завеликий.');
-  const zip=await JSZip.loadAsync(ab);
+  const zip=await Zip.loadAsync(ab);
   assertSafeArchive(zip,'XLSX');
   const parser=new DOMParser();
   const parseXml=(text,label)=>{
@@ -10766,6 +11940,13 @@ async function buildClientBundleFromFs(reportBase){
   return {report, zipEntries};
 }
 function download(name,content,type){const a=document.createElement('a'); const blob=(content instanceof Blob)?content:new Blob([content],{type}); a.href=URL.createObjectURL(blob); a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000);}
+function currentDocumentExportHtml(){
+  let html=String(document.documentElement.outerHTML).replace(/<script\b(?=[^>]*data-lazy-vendor="jszip")[^>]*><\/script>\s*/gi,'');
+  if(app?.dataset?.access==='viewer' || REPORT.meta?.clientLocked===true){
+    html=html.replace(/<details class="simpleTreeGroup advancedLabs"[\s\S]*?<\/details>\s*/g,'');
+  }
+  return '<!doctype html>\n'+html;
+}
 async function saveHtml(){
   if(!guardAdmin()) return;
   const titleBase=(REPORT.meta.title||'marketing-report-admin').replace(/[^a-z0-9а-яіїєґ_-]+/gi,'-');
@@ -10786,15 +11967,18 @@ async function saveHtml(){
     REPORT.meta.accessMode='admin';
     app.dataset.access='admin';
     $('reportData').textContent=serializeReportData(packedReport);
-    const html='<!doctype html>\n'+document.documentElement.outerHTML;
+    const html=currentDocumentExportHtml();
 
-    if(typeof JSZip==='undefined'){
+    let Zip=null;
+    try{
+      Zip=await ensureJSZip();
+    }catch(e){
       download(`${titleBase}-admin.html`,html,'text/html;charset=utf-8');
       toast('JSZip недоступний: збережено лише HTML');
       return;
     }
 
-    const zip=new JSZip();
+    const zip=new Zip();
     zip.file(`${titleBase}-admin.html`, html);
     zip.file('project.json', JSON.stringify(packedReport,null,2));
     for(const z of zipEntries){
@@ -10832,7 +12016,7 @@ function saveProjectHtmlOnly(){
     delete snapshot.meta.clientLocked;
     snapshot.meta.activeDataset=state.activeDataset&&snapshot.datasets?.some(d=>d.id===state.activeDataset)?state.activeDataset:snapshot.datasets?.[0]?.id||null;
     $('reportData').textContent=serializeReportData(snapshot);
-    const html='<!doctype html>\n'+document.documentElement.outerHTML;
+    const html=currentDocumentExportHtml();
     const base=(REPORT.meta.title||'marketing_report_studio_v8_access_folders_fixed').replace(/[^a-z0-9а-яіїєґ_-]+/gi,'-');
     download(`${base}.html`, html, 'text/html;charset=utf-8');
     toast('Збережено HTML-файл проєкту');
@@ -10850,6 +12034,28 @@ function saveProjectHtmlOnly(){
 }
 async function saveClientHtml(){
   if(!guardAdmin()) return;
+  const simpleQuality=runSimpleDashboardExportChecklist(REPORT);
+  if(simpleQuality.blockers.length){
+    showNotice(`Client export blocked: ${simpleQuality.blockers[0].message}`,'error');
+    toast('Add a table or file before export');
+    return;
+  }
+  if(simpleQuality.warnings.length) showNotice(`Client export has warnings: ${simpleQuality.warnings[0].message}`,'info');
+  const simpleTitleBase=(REPORT.meta.title||'marketing-report-client').replace(/[^a-z0-9_-]+/gi,'-')||'marketing-report-client';
+  try{
+    toast('Preparing client report...');
+    const html=renderSimpleDashboardExportHtml(REPORT);
+    download(`${simpleTitleBase}-client.html`,html,'text/html;charset=utf-8');
+    REPORT.meta.clientExportedAt=new Date().toISOString();
+    markClientExportStepAfterExport(REPORT,simpleQuality);
+    persistNow();
+    refresh();
+    toast('Client report exported');
+  }catch(e){
+    console.error(e);
+    toast('Could not export client report');
+  }
+  return;
   const quality=runReportQualityChecklist(REPORT);
   if(quality.blockers.length){
     showNotice(`Client export blocked: ${quality.blockers[0].message}`,'error');
@@ -10877,15 +12083,18 @@ async function saveClientHtml(){
     REPORT.meta.accessMode='viewer';
     app.dataset.access='viewer';
     $('reportData').textContent=serializeReportData(packedReport);
-    const html='<!doctype html>\n'+document.documentElement.outerHTML;
+    const html=currentDocumentExportHtml();
 
-    if(typeof JSZip==='undefined'){
+    let Zip=null;
+    try{
+      Zip=await ensureJSZip();
+    }catch(e){
       download(`${titleBase}-client.html`,html,'text/html;charset=utf-8');
       toast('JSZip недоступний: збережено лише HTML');
       return;
     }
 
-    const zip=new JSZip();
+    const zip=new Zip();
     zip.file(`${titleBase}-client.html`, html);
     zip.file('project.json', JSON.stringify(packedReport,null,2));
     for(const z of zipEntries){
@@ -10894,7 +12103,7 @@ async function saveClientHtml(){
     const blob=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}});
     download(`${titleBase}-client-bundle.zip`, blob, 'application/zip');
     REPORT.meta.clientExportedAt=new Date().toISOString();
-    markFirstReportStepComplete(REPORT,'exportClientReport');
+    markClientExportStepAfterExport(REPORT,quality);
     toast(`Готово: архів створено (${zipEntries.length} файлів)`);
   }catch(e){
     console.error(e);
@@ -10910,6 +12119,29 @@ async function saveClientHtml(){
 }
 async function saveClientPackage(){
   if(!guardAdmin()) return;
+  const simpleQuality=runSimpleDashboardExportChecklist(REPORT);
+  if(simpleQuality.blockers.length){
+    showNotice(t('clientPackageBlocked',{message:translateText(simpleQuality.blockers[0].message)}),'error');
+    toast('Add a table or file before export');
+    return;
+  }
+  if(simpleQuality.warnings.length) showNotice(t('clientPackageWarnings',{message:translateText(simpleQuality.warnings[0].message)}),'info');
+  const simpleTitleBase=(REPORT.meta.title||'marketing-report-client-package').replace(/[^a-z0-9_-]+/gi,'-')||'marketing-report-client-package';
+  try{
+    toast(t('preparingClientPackage'));
+    const html=renderSimpleDashboardExportHtml(REPORT);
+    const blob=await buildSimpleClientPackageZip(REPORT, html);
+    download(`${simpleTitleBase}-client-package.zip`, blob, 'application/zip');
+    REPORT.meta.clientPackageExportedAt=new Date().toISOString();
+    markClientExportStepAfterExport(REPORT,simpleQuality);
+    persistNow();
+    refresh();
+    toast(t('clientPackageCreated',{files:0}));
+  }catch(e){
+    console.error(e);
+    toast(e?.message||t('couldNotBuildClientPackage'));
+  }
+  return;
   const quality=runReportQualityChecklist(REPORT);
   if(quality.blockers.length){
     showNotice(t('clientPackageBlocked',{message:translateText(quality.blockers[0].message)}),'error');
@@ -10924,7 +12156,6 @@ async function saveClientPackage(){
   const oldDataset=state.activeDataset;
 
   try{
-    if(typeof JSZip==='undefined') throw new Error(t('jszipClientPackageUnavailable'));
     toast(t('preparingClientPackage'));
     let {report:packedReport, zipEntries}=await buildClientBundleFromFs(exportReportSnapshot());
     packedReport=sanitizeClientExportData(packedReport);
@@ -10938,12 +12169,12 @@ async function saveClientPackage(){
     REPORT.meta.accessMode='viewer';
     app.dataset.access='viewer';
     $('reportData').textContent=serializeReportData(packedReport);
-    const html='<!doctype html>\n'+document.documentElement.outerHTML;
+    const html=currentDocumentExportHtml();
 
     const blob=await buildClientPackageZip(packedReport, html, zipEntries);
     download(`${titleBase}-client-package.zip`, blob, 'application/zip');
     REPORT.meta.clientPackageExportedAt=new Date().toISOString();
-    markFirstReportStepComplete(REPORT,'exportClientReport');
+    markClientExportStepAfterExport(REPORT,quality);
     toast(t('clientPackageCreated',{files:zipEntries.length}));
   }catch(e){
     console.error(e);
@@ -10976,18 +12207,29 @@ async function exportInternalAuditPackage(){
 function exportJson(){if(!guardAdmin()) return; const snapshot=persistedReportSnapshot(); download('ci-os-unified-data.json',JSON.stringify(snapshot.ci,null,2),'application/json;charset=utf-8')}
 function setupResizers(){
   const layout=$('layout');
+  const splitX=$('splitX');
+  const splitY=$('splitY');
+  if(!layout || !splitX || !splitY) return;
+  applyWorkspaceLayout();
   let drag=null;
   let frame=null;
   let lastPointer=null;
+  let nextSidePx=null;
+  let nextTopPct=null;
   const applyDrag=()=>{
     frame=null;
     if(!drag || !lastPointer) return;
     const r=layout.getBoundingClientRect();
     if(drag==='x'){
-      const side=Math.min(520,Math.max(220,r.right-lastPointer.clientX-10));
+      const maxSide=Math.max(260,Math.min(640,r.width-320));
+      const side=Math.min(maxSide,Math.max(240,r.right-lastPointer.clientX-6));
+      nextSidePx=side;
+      document.documentElement.style.setProperty('--workspace-side',side+'px');
       document.documentElement.style.setProperty('--side',side+'px');
     }else{
-      const top=Math.min(90,Math.max(15,((lastPointer.clientY-r.top)/r.height)*100));
+      const top=Math.min(78,Math.max(22,((lastPointer.clientY-r.top)/r.height)*100));
+      nextTopPct=top;
+      document.documentElement.style.setProperty('--workspace-top',top+'%');
       document.documentElement.style.setProperty('--top',top+'%');
     }
   };
@@ -10995,13 +12237,89 @@ function setupResizers(){
     lastPointer={clientX:e.clientX,clientY:e.clientY};
     if(!frame) frame=requestAnimationFrame(applyDrag);
   };
-  $('splitX').addEventListener('pointerdown',e=>{drag='x'; e.preventDefault(); queueDrag(e);});
-  $('splitY').addEventListener('pointerdown',e=>{drag='y'; e.preventDefault(); queueDrag(e);});
+  const startDrag=(axis,e)=>{
+    drag=axis;
+    nextSidePx=null;
+    nextTopPct=null;
+    document.body.classList.add('workspaceResizing');
+    e.preventDefault();
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    queueDrag(e);
+  };
+  splitX.addEventListener('pointerdown',e=>startDrag('x',e));
+  splitY.addEventListener('pointerdown',e=>startDrag('y',e));
   window.addEventListener('pointermove',e=>{if(!drag) return; queueDrag(e);});
-  window.addEventListener('pointerup',()=>{
+  const finishDrag=()=>{
     if(frame){cancelAnimationFrame(frame); applyDrag();}
+    if(drag && (nextSidePx!==null || nextTopPct!==null)){
+      const prefs=getWorkspaceLayout();
+      if(nextSidePx!==null) prefs.sidePx=Math.round(nextSidePx);
+      if(nextTopPct!==null) prefs.topPct=Math.round(nextTopPct*10)/10;
+      REPORT.meta.workspaceLayout=normalizeWorkspaceLayout(prefs);
+      schedulePersist();
+    }
     drag=null;
     lastPointer=null;
+    nextSidePx=null;
+    nextTopPct=null;
+    document.body.classList.remove('workspaceResizing');
+  };
+  window.addEventListener('pointerup',finishDrag);
+  window.addEventListener('pointercancel',finishDrag);
+}
+function setupWorkspacePanelDrag(){
+  const layout=$('layout');
+  if(!layout) return;
+  let dragKey=null;
+  const clearDropTargets=()=>{
+    layout.querySelectorAll('.workspacePanelDropTarget').forEach(el=>el.classList.remove('workspacePanelDropTarget'));
+  };
+  const clearDragState=()=>{
+    layout.querySelectorAll('.workspacePanelDragging,.workspacePanelDropTarget').forEach(el=>el.classList.remove('workspacePanelDragging','workspacePanelDropTarget'));
+  };
+  layout.querySelectorAll('[data-workspace-handle]').forEach(handle=>{
+    const panel=handle.closest('[data-workspace-panel]');
+    if(!panel) return;
+    handle.draggable=true;
+    handle.addEventListener('dragstart',e=>{
+      if(e.target?.closest?.('button,input,select,textarea,a,.readerTabs')){
+        e.preventDefault();
+        return;
+      }
+      dragKey=panel.dataset.workspacePanel||'';
+      panel.classList.add('workspacePanelDragging');
+      if(e.dataTransfer){
+        e.dataTransfer.effectAllowed='move';
+        e.dataTransfer.setData('text/plain',dragKey);
+      }
+    });
+    handle.addEventListener('dragend',()=>{
+      dragKey=null;
+      clearDragState();
+    });
+  });
+  layout.addEventListener('dragover',e=>{
+    if(!dragKey) return;
+    const panel=e.target?.closest?.('[data-workspace-panel]');
+    if(!panel || panel.dataset.workspacePanel===dragKey) return;
+    e.preventDefault();
+    clearDropTargets();
+    panel.classList.add('workspacePanelDropTarget');
+    if(e.dataTransfer) e.dataTransfer.dropEffect='move';
+  });
+  layout.addEventListener('dragleave',e=>{
+    const panel=e.target?.closest?.('[data-workspace-panel]');
+    if(panel && !panel.contains(e.relatedTarget)) panel.classList.remove('workspacePanelDropTarget');
+  });
+  layout.addEventListener('drop',e=>{
+    if(!dragKey) return;
+    const panel=e.target?.closest?.('[data-workspace-panel]');
+    if(!panel) return;
+    e.preventDefault();
+    const targetKey=panel.dataset.workspacePanel||'';
+    clearDragState();
+    moveWorkspacePanel(dragKey,targetKey);
+    dragKey=null;
   });
 }
 async function openMembersModal(){
@@ -11042,12 +12360,43 @@ function toggleEditMode(){
   refresh();
   toast(state.access==='admin'?t('editModeEnabled'):t('viewModeEnabled'));
 }
+function setupFileDropZones(){
+  const selector='[data-file-drop-zone],#materialsDropZone,.simpleEmptyDrop';
+  const findZone=e=>e.target?.closest?.(selector);
+  ['dragenter','dragover'].forEach(eventName=>document.addEventListener(eventName,e=>{
+    const zone=findZone(e);
+    if(!zone || !isAdmin()) return;
+    e.preventDefault();
+    zone.classList.add('drag');
+  }));
+  ['dragleave','drop'].forEach(eventName=>document.addEventListener(eventName,e=>{
+    const zone=findZone(e);
+    if(!zone || !isAdmin()) return;
+    e.preventDefault();
+    zone.classList.remove('drag');
+  }));
+  document.addEventListener('drop',e=>{
+    const zone=findZone(e);
+    if(!zone || !isAdmin()) return;
+    const files=e.dataTransfer?.files;
+    if(files?.length) handleFiles(files);
+  });
+  document.addEventListener('click',e=>{
+    const zone=e.target?.closest?.('#materialsDropZone,[data-file-drop-zone]');
+    if(zone && isAdmin()) $('fileInput')?.click();
+  });
+}
 function bind(){
-  $('pasteBtn').onclick=()=>openDataModal(); $('uploadFilesBtn').onclick=()=>$('fileInput').click(); $('connectFolderBtn').onclick=()=>pickAndConnectFolder(); $('saveDiskBtn').onclick=()=>{toast('Зберігаю HTML-файл на диск...'); saveProjectHtmlOnly();}; $('saveHtmlBtn').onclick=saveHtml; $('saveClientHtmlBtn').onclick=saveClientHtml; $('saveClientPackageBtn').onclick=saveClientPackage; $('internalAuditPackageBtn').onclick=exportInternalAuditPackage; $('exportJsonBtn').onclick=exportJson; $('membersBtn').onclick=openMembersModal; $('clearReaderBtn').onclick=()=>{state.openTabs=[]; state.activeFile=null; reader.innerHTML=`<div class="empty">${t('emptyReader')}</div>`; renderReaderTabs(); renderSide();}; $('unlockAdminBtn').onclick=toggleEditMode; $('cloudStatus').onclick=()=>{if(BROWSER_ONLY_MODE){toast('Файли й дані залишаються лише у цьому браузері.');return;} if(cloudSync.conflict){toast('Збережіть свою копію локально, потім перезавантажте сторінку.');return;} if(cloudSync.ready&&cloudSync.dirty){saveReportToCloud();return;} if(cloudSync.ready) reloadCloudReport(); else if(HOSTED_MODE) initCloudSync();}; $('langBtn').onclick=()=>setLanguage(state.lang==='uk'?'en':'uk'); $('themeBtn').onclick=()=>{state.theme=state.theme==='dark'?'light':'dark'; app.dataset.theme=state.theme}; $('modalClose').onclick=closeModal; $('appNoticeClose').onclick=hideNotice; $('modalBackdrop').addEventListener('click',e=>{if(e.target.id==='modalBackdrop')closeModal();}); document.addEventListener('keydown',handleModalKeydown); $('fileInput').addEventListener('change',e=>{handleFiles(e.target.files); e.target.value='';}); search.addEventListener('input',scheduleSideSearchRender); sideList.addEventListener('click', onSideListClick);
-  sideList.addEventListener('change',e=>{const sel=e.target.closest('[data-ai-section-select]'); if(sel&&sideList.contains(sel)){state.aiSectionId=sel.value||''; renderSide();}});
+  $('pasteBtn').onclick=()=>openDataModal(); $('uploadFilesBtn').onclick=()=>$('fileInput').click(); $('connectFolderBtn').onclick=()=>pickAndConnectFolder(); $('saveDiskBtn').onclick=()=>{toast('Зберігаю HTML-файл на диск...'); saveProjectHtmlOnly();}; $('saveHtmlBtn').onclick=saveHtml; $('saveClientHtmlBtn').onclick=saveClientHtml; $('saveClientPackageBtn').onclick=saveClientPackage; $('internalAuditPackageBtn').onclick=exportInternalAuditPackage; $('exportJsonBtn').onclick=exportJson; $('membersBtn').onclick=openMembersModal; $('clientReportBtn').onclick=openClientReportWorkspace; $('clearReaderBtn').onclick=()=>{state.openTabs=[]; state.activeFile=null; reader.innerHTML=`<div class="empty">${t('emptyReader')}</div>`; renderReaderTabs(); renderSide();}; $('unlockAdminBtn').onclick=toggleEditMode; $('cloudStatus').onclick=()=>{if(BROWSER_ONLY_MODE){toast('Файли й дані залишаються лише у цьому браузері.');return;} if(cloudSync.conflict){toast('Збережіть свою копію локально, потім перезавантажте сторінку.');return;} if(cloudSync.ready&&cloudSync.dirty){saveReportToCloud();return;} if(cloudSync.ready) reloadCloudReport(); else if(HOSTED_MODE) initCloudSync();}; $('langBtn').onclick=()=>setLanguage(state.lang==='uk'?'en':'uk'); $('themeBtn').onclick=()=>{state.theme=state.theme==='dark'?'light':'dark'; app.dataset.theme=state.theme}; $('modalClose').onclick=closeModal; $('appNoticeClose').onclick=hideNotice; $('modalBackdrop').addEventListener('click',e=>{if(e.target.id==='modalBackdrop')closeModal();}); document.addEventListener('keydown',handleModalKeydown); $('fileInput').addEventListener('change',e=>{handleFiles(e.target.files); e.target.value='';}); search.addEventListener('input',scheduleSideSearchRender); sideList.addEventListener('click', onSideListClick);
+  sideList.addEventListener('change',e=>{const fileSort=e.target.closest('[data-file-sort]'); if(fileSort&&sideList.contains(fileSort)){state.fileSort=MATERIAL_FILE_SORT_OPTIONS.includes(fileSort.value)?fileSort.value:'newest'; renderSide(); return;} const sel=e.target.closest('[data-ai-section-select]'); if(sel&&sideList.contains(sel)){state.aiSectionId=sel.value||''; renderSide();}});
+  document.querySelector('.workspaceTopbar')?.addEventListener('click',e=>{const proxy=e.target.closest('[data-topbar-proxy]'); if(!proxy) return; const target=$(proxy.dataset.topbarProxy||''); if(target){e.preventDefault(); proxy.closest('details')?.removeAttribute('open'); target.click();}});
   $('companyNameInput')?.addEventListener('input',e=>{REPORT.meta=REPORT.meta||{}; REPORT.meta.companyName=String(e.target.value||'').trim(); renderReportTitle(); schedulePersist();});
   renderReportTitle();
   analytics.addEventListener('click',e=>{
+    const simpleExport=e.target.closest('[data-simple-export]');
+    if(simpleExport){handleSimpleExportAction(simpleExport.dataset.simpleExport);return;}
+    const simpleChart=e.target.closest('[data-simple-open-chart]');
+    if(simpleChart){openSimpleChartView(simpleChart.dataset.simpleOpenChart);return;}
     const firstReportAction=e.target.closest('[data-first-report-action]');
     if(firstReportAction){performFirstReportAction(firstReportAction.dataset.firstReportAction);return;}
     if(e.target.closest('[data-first-report-upload]')){openDataModal();return;}
@@ -11062,7 +12411,7 @@ function bind(){
     if(!b) return;
     openSimpleWidgetView(b.dataset.openWidget);
   });
-  const dz=$('dropZone'); ['dragenter','dragover'].forEach(ev=>dz.addEventListener(ev,e=>{if(!isAdmin()) return; e.preventDefault(); dz.classList.add('drag')})); ['dragleave','drop'].forEach(ev=>dz.addEventListener(ev,e=>{if(!isAdmin()) return; e.preventDefault(); dz.classList.remove('drag')})); dz.addEventListener('drop',e=>{if(isAdmin()) handleFiles(e.dataTransfer.files)}); window.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault(); saveHtml();} if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault(); search.focus();}}); window.addEventListener('beforeunload', persistNow); setupResizers(); tryAutoReconnectFs();
+  setupFileDropZones(); window.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault(); saveHtml();} if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault(); search.focus();}}); window.addEventListener('beforeunload', persistNow); setupResizers(); setupWorkspacePanelDrag(); tryAutoReconnectFs();
   document.addEventListener('click',e=>{
     const btn=e.target.closest('.mdMermaidShift');
     if(!btn) return;
@@ -11087,5 +12436,5 @@ renderReaderTabs();
 renderClientExportV2();
 fetchAiStatus().then(()=>renderSide()).catch(()=>{state.aiStatus=createDefaultAiStatus(); state.aiStatusLoaded=true; renderSide();});
 initCloudSync();
-setTimeout(maybeOpenOnboardingWizard,900);
+// Advanced onboarding remains in the codebase but is not auto-opened in the simple workspace.
 })();

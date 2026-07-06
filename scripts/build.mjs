@@ -14,6 +14,15 @@ const legacyOutputHtml = resolve(
   outputDir,
   'marketing_report_studio_v8_access_folders_fixed.html',
 );
+const DEFAULT_MATERIAL_FOLDERS = [
+  { id: 'market-research', name: '01. Market Research' },
+  { id: 'competitor-intelligence', name: '02. Competitor Intelligence' },
+  { id: 'customer-insights', name: '03. Customer Insights' },
+  { id: 'product-positioning', name: '04. Product & Positioning' },
+  { id: 'campaign-performance', name: '05. Campaign Performance' },
+  { id: 'sales-enablement', name: '06. Sales Enablement' },
+  { id: 'legal-compliance', name: '07. Legal & Compliance' },
+];
 
 const sourceHtml = await readFile(sourcePath, 'utf8');
 const html = createHostedShell(sourceHtml);
@@ -22,6 +31,7 @@ const scriptHashes = getExecutableInlineScriptHashes(html);
 await rm(outputDir, { recursive: true, force: true });
 await mkdir(outputDir, { recursive: true });
 await cp(resolve(projectRoot, 'vendor'), resolve(outputDir, 'vendor'), { recursive: true });
+await cp(resolve(projectRoot, 'src'), resolve(outputDir, 'src'), { recursive: true });
 await cp(resolve(projectRoot, 'app.js'), resolve(outputDir, 'app.js'));
 await writeFile(outputHtml, html, 'utf8');
 await writeFile(legacyOutputHtml, html, 'utf8');
@@ -44,57 +54,17 @@ function createHostedShell(documentHtml) {
   const emptyReport = {
     meta: {
       title: 'Marketing Report Studio',
-      accessMode: 'viewer',
+      accessMode: 'admin',
     },
-    reportSchemaVersion: 2,
-    reportSections: createDefaultReportSections(),
     datasets: [],
     files: [],
     charts: [],
     tables: [],
-    competitorProfiles: {
-      items: [],
-      updatedAt: null,
+    materialFolders: createDefaultMaterialFolders(),
+    simpleWorkspace: {
+      version: 1,
+      direction: 'upload files -> auto-structure tables -> visualize -> preview files -> export simple client report',
     },
-    pricingFeatureMatrix: null,
-    materialsInventory: {
-      items: [],
-      updatedAt: null,
-    },
-    sourceRegistry: {
-      items: [],
-      updatedAt: null,
-    },
-    evidenceCards: {
-      items: [],
-      updatedAt: null,
-    },
-    aiAssistance: {
-      aiEnabled: false,
-      aiMode: 'disabled',
-      taskDrafts: [],
-      suggestions: [],
-      updatedAt: null,
-    },
-    aiReviewQueue: {
-      items: [],
-      updatedAt: null,
-    },
-    aiAuditLog: {
-      events: [],
-      provenance: [],
-      updatedAt: null,
-    },
-    versionRetentionPolicy: null,
-    versionRetentionState: {
-      pinnedVersionIds: [],
-      archivedVersionIds: [],
-      cleanupCandidateVersionIds: [],
-      updatedAt: null,
-    },
-    governanceSettings: null,
-    onboardingState: null,
-    firstReportFlow: null,
     companies: [],
     ci: null,
   };
@@ -107,6 +77,16 @@ function createHostedShell(documentHtml) {
     .replace(/>/g, '\\u003e')
     .replace(/&/g, '\\u0026');
   return documentHtml.replace(reportScript, `$1\n${safeJson}\n$2`);
+}
+
+function createDefaultMaterialFolders() {
+  return DEFAULT_MATERIAL_FOLDERS.map((folder) => ({
+    id: folder.id,
+    name: folder.name,
+    system: true,
+    createdAt: null,
+    updatedAt: null,
+  }));
 }
 
 function createDefaultReportSections() {
