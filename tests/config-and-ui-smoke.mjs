@@ -46,6 +46,8 @@ for (const id of ['clientReportBtn', 'saveHtmlBtn', 'saveClientPackageBtn', 'exp
 assert.match(appSource, /const BROWSER_ONLY_MODE = true/, 'hosted UI must be locked to browser-only mode');
 assert.match(appSource, /if\(BROWSER_ONLY_MODE\)/, 'network API calls must have a browser-only guard');
 assert.doesNotMatch(appSource, /\bfetch\s*\(/, 'standalone UI must not contain a network request path');
+assert.match(appSource, /function replaceTranslatedPhrase\(text, from, to\)/, 'translation replacements must use phrase boundaries');
+assert.doesNotMatch(appSource, /text=text\.split\(from\)\.join\(to\)/, 'translation must not replace words inside product names like Marketing');
 assert.match(appSource, /function renderSimpleDashboard\(ds\)/, 'default UI must render summary cards and auto charts');
 assert.match(appSource, /function renderSimpleTablePreview\(ds/, 'default UI must render the searchable table preview');
 assert.match(appSource, /function renderSimpleProjectTree\(\)/, 'default UI must render the simple project file tree');

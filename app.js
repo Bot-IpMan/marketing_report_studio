@@ -1349,6 +1349,18 @@ function getSavedLang(){
     return null;
   }
 }
+function escapeRegExp(value){
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+function replaceTranslatedPhrase(text, from, to){
+  const source=String(from ?? '');
+  if(!source) return text;
+  const escaped=escapeRegExp(source);
+  if(/^[\p{L}\p{N}]+$/u.test(source)){
+    return String(text).replace(new RegExp(`(^|[^\p{L}\p{N}])(${escaped})(?=$|[^\p{L}\p{N}])`, 'gu'), `$1${to}`);
+  }
+  return String(text).split(source).join(to);
+}
 function translateText(value){
   let text=String(value ?? '');
   const lang=state.lang==='en'?'en':'uk';
@@ -1357,7 +1369,7 @@ function translateText(value){
     text=text.replace(pattern, replacement);
   }
   for(const [from,to] of translationPairsForLang(lang)){
-    text=text.split(from).join(to);
+    text=replaceTranslatedPhrase(text, from, to);
   }
   return text;
 }
