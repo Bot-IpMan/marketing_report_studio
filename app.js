@@ -2,7 +2,7 @@
 'use strict';
 const DEFAULT_MATERIAL_FOLDERS = [
   {id:'market-research',name:'01. Market Research',match:/market|research|analysis|industry|landscape/i},
-  {id:'competitor-intelligence',name:'02. Competitor Intelligence',match:/competitor|competitive|pricing|positioning|feature/i},
+  {id:'market-notes',name:'02. Market Notes',match:/competitor|competitive|pricing|positioning|feature|market|notes/i},
   {id:'customer-insights',name:'03. Customer Insights',match:/customer|persona|interview|survey|feedback|review/i},
   {id:'product-positioning',name:'04. Product & Positioning',match:/product|positioning|message|website|landing|brand/i},
   {id:'campaign-performance',name:'05. Campaign Performance',match:/campaign|performance|analytics|traffic|seo|ads|social/i},
@@ -19,7 +19,7 @@ function createDefaultMaterialFolders(){
   }));
 }
 const DEFAULT = {
-  meta:{title:'Ринкова конкурентна розвідка', companyName:'', updatedAt:new Date().toISOString(), lang:'uk'},
+  meta:{title:'Marketing Report Studio', companyName:'', updatedAt:new Date().toISOString(), lang:'uk'},
   datasets:[],
   companies:[],
   files:[],
@@ -2124,7 +2124,7 @@ function buildUnifiedCiModel(report){
   const now=new Date().toISOString();
   const ci=ciEmptyModel(now);
   const meta=r.meta||{};
-  const title=String(meta.title||'Ринкова конкурентна розвідка').trim();
+  const title=String(meta.title||'Marketing Report Studio').trim();
   const companies=Array.isArray(r.companies)?r.companies:[];
   const files=Array.isArray(r.files)?r.files:[];
   const datasets=Array.isArray(r.datasets)?r.datasets:[];

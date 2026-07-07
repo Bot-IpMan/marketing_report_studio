@@ -16,7 +16,7 @@ const legacyOutputHtml = resolve(
 );
 const DEFAULT_MATERIAL_FOLDERS = [
   { id: 'market-research', name: '01. Market Research' },
-  { id: 'competitor-intelligence', name: '02. Competitor Intelligence' },
+  { id: 'market-notes', name: '02. Market Notes' },
   { id: 'customer-insights', name: '03. Customer Insights' },
   { id: 'product-positioning', name: '04. Product & Positioning' },
   { id: 'campaign-performance', name: '05. Campaign Performance' },
@@ -32,6 +32,7 @@ await rm(outputDir, { recursive: true, force: true });
 await mkdir(outputDir, { recursive: true });
 await cp(resolve(projectRoot, 'vendor'), resolve(outputDir, 'vendor'), { recursive: true });
 await cp(resolve(projectRoot, 'src'), resolve(outputDir, 'src'), { recursive: true });
+await cp(resolve(projectRoot, 'public'), outputDir, { recursive: true });
 await cp(resolve(projectRoot, 'app.js'), resolve(outputDir, 'app.js'));
 await writeFile(outputHtml, html, 'utf8');
 await writeFile(legacyOutputHtml, html, 'utf8');
