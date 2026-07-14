@@ -45,7 +45,8 @@ for (const id of ['clientReportBtn', 'saveHtmlBtn', 'saveClientPackageBtn', 'exp
 
 assert.match(appSource, /const BROWSER_ONLY_MODE = true/, 'hosted UI must be locked to browser-only mode');
 assert.match(appSource, /if\(BROWSER_ONLY_MODE\)/, 'network API calls must have a browser-only guard');
-assert.doesNotMatch(appSource, /\bfetch\s*\(/, 'standalone UI must not contain a network request path');
+assert.doesNotMatch(appSource, /fetch\s*\(\s*['"`]https?:\/\//, 'standalone UI must not call external services');
+assert.match(appSource, /fetch\(url,\{method:'HEAD'.*credentials:'same-origin'/, 'PDF asset preflight must remain a same-origin HEAD request');
 assert.match(appSource, /function replaceTranslatedPhrase\(text, from, to\)/, 'translation replacements must use phrase boundaries');
 assert.doesNotMatch(appSource, /text=text\.split\(from\)\.join\(to\)/, 'translation must not replace words inside product names like Marketing');
 assert.match(appSource, /function renderSimpleDashboard\(ds\)/, 'default UI must render summary cards and auto charts');
@@ -53,6 +54,11 @@ assert.match(appSource, /function renderSimpleTablePreview\(ds/, 'default UI mus
 assert.match(appSource, /function renderSimpleProjectTree\(\)/, 'default UI must render the simple project file tree');
 assert.match(appSource, /function setupWorkspacePanelDrag\(\)/, 'workspace panels must be draggable between layout areas');
 assert.match(appSource, /function autoChartConfigsForTable\(ds/, 'default UI must generate rule-based automatic charts from table columns');
+assert.match(appSource, /MRS_CHART_CANDIDATES\.createChartCandidateRegistry/, 'default analysis must use the universal chart registry');
+assert.match(appSource, /MRS_DERIVED_TABLES\.createDerivedTableRegistry/, 'default analysis must expose derived-table candidates');
+assert.match(appSource, /const PDFJS_MODULE_SRC = 'vendor\/pdfjs\/pdf\.min\.mjs'/, 'PDF extraction must use the vendored PDF.js module');
+assert.match(appSource, /const ANALYSIS_WORKER_SRC = 'src\/workers\/analysis\.worker\.js'/, 'analysis Worker must be local');
+assert.match(appSource, /MRS_STORAGE\.saveReport/, 'structured autosave must use the IndexedDB storage layer');
 assert.match(appSource, /function runSimpleDashboardExportChecklist\(reportData\)/, 'simple export must not depend on evidence readiness');
 assert.match(appSource, /function renderSimpleDashboardExportHtml\(reportData\)/, 'simple export must render a static dashboard report');
 assert.match(appSource, /data-client-locked="true"/, 'simple client export must be clientLocked');
@@ -68,5 +74,6 @@ assert.match(buildScript, /Strict-Transport-Security: max-age=31536000/, 'hosted
 assert.match(buildScript, /Cross-Origin-Opener-Policy: same-origin/, 'hosted build must isolate the top-level window');
 assert.doesNotMatch(buildScript, /_routes\.json/, 'browser-only build must not emit Pages Functions routing');
 assert.doesNotMatch(sourceBundle, /static\.cloudflareinsights\.com|beacon\.min\.js|cloudflareinsights/i, 'repo must not include analytics beacon code');
+assert.doesNotMatch(sourceBundle, /<script[^>]+https?:\/\//i, 'the browser shell must not load scripts from a CDN');
 
 console.log('Config and simple UI smoke test passed.');

@@ -689,6 +689,50 @@
 .autoChartCard .widgetBody{
   min-height:150px;
 }
+details:not([open])>.advancedMenu,details:not([open])>.workspaceMenuPanel{display:none}
+.chartRegistryTabs,.chartCandidateActions,.chartRegistryPager{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.chartRegistryTabs{margin-bottom:8px}
+.chartRegistryTabs button span{opacity:.72;margin-left:3px}
+.chartRegistryFilters{display:grid;grid-template-columns:minmax(180px,1.6fr) repeat(6,minmax(110px,1fr));gap:7px;margin-bottom:9px}
+.chartRegistryFilters label{display:grid;gap:3px;color:var(--mrs-muted);font-size:10px;font-weight:800}
+.chartRegistryFilters input,.chartRegistryFilters select{width:100%;min-width:0}
+.chartCandidateList{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px}
+.chartCandidateCard{display:grid;gap:8px;min-width:0;border:1px solid var(--mrs-border);border-radius:var(--mrs-radius-md);background:var(--mrs-surface-2);padding:10px}
+.chartCandidateCard.diagnostic{border-style:dashed}
+.chartCandidateTitle{display:flex;justify-content:space-between;gap:8px}
+.chartCandidateCard dl{display:grid;grid-template-columns:1fr 1fr;gap:5px 8px;margin:0}
+.chartCandidateCard dl div{min-width:0}
+.chartCandidateCard dt,.chartCandidateSource{color:var(--mrs-muted);font-size:10px}
+.chartCandidateCard dd{margin:0;overflow:hidden;color:var(--mrs-text);font-size:11px;font-weight:750;text-overflow:ellipsis;white-space:nowrap}
+.chartVisualWorkspace,.chartCatalog,.chartSelectedPreview{display:grid;gap:8px;margin-top:9px;padding-top:9px;border-top:1px solid var(--mrs-border)}
+.chartSelectedPreview{padding:10px;border:1px solid rgba(49,92,246,.35);border-radius:var(--mrs-radius-lg);background:rgba(49,92,246,.06)}
+.chartSelectedPreview .autoChartCard{max-width:760px}
+.chartCatalog{margin-top:12px}
+.chartFamilyVariantTitle{min-height:28px;color:var(--mrs-muted);font-size:11px}
+.chartFamilyAggregation{display:grid;gap:3px;color:var(--mrs-muted);font-size:10px}
+.chartFamilyAggregation select{width:100%;min-width:0;height:28px}
+.chartCandidateActions{margin-top:auto;padding:0 10px 9px}
+.chartCandidateCard .chartCandidateActions{padding:0}
+.chartRegistryPager{justify-content:space-between;margin-top:9px;color:var(--mrs-muted);font-size:11px}
+.pdfDiagnostics{display:grid;gap:8px;margin-bottom:9px;padding:10px;border:1px solid var(--mrs-border);border-radius:var(--mrs-radius-lg);background:var(--mrs-surface-2)}
+.pdfDiagnostics p{margin:0;color:var(--mrs-text);font-size:12px}
+.pdfDiagnostics dl{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:7px;margin:0}
+.pdfDiagnostics dl div{padding:6px;border-radius:8px;background:var(--mrs-surface-1)}
+.pdfDiagnostics dt{color:var(--mrs-muted);font-size:10px}.pdfDiagnostics dd{margin:2px 0 0;font-size:12px;font-weight:800}
+.analysisProgress{display:grid;grid-template-columns:minmax(180px,auto) minmax(140px,1fr) auto;align-items:center;gap:10px;border:1px solid rgba(91,130,255,.4);border-radius:var(--mrs-radius-md);background:rgba(49,92,246,.09);padding:8px 10px}
+.analysisProgress b,.analysisProgress span{display:block}
+.analysisProgress span{color:var(--mrs-muted);font-size:10px}
+.analysisProgressTrack{height:7px;overflow:hidden;border-radius:999px;background:var(--soft)}
+.analysisProgressTrack i{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,var(--brand),var(--brand2))}
+.sourceAnchorBar{margin:7px 0;border:1px solid var(--mrs-border);border-radius:var(--mrs-radius-sm);background:var(--mrs-surface-2);color:var(--mrs-muted);padding:7px 9px;font-size:11px}
+.documentOverview{display:grid;gap:8px;margin-bottom:10px;border:1px solid var(--mrs-border);border-radius:var(--mrs-radius-md);background:var(--mrs-surface-2);padding:10px}
+.documentOverviewHead,.documentOverviewHead>div{display:flex;align-items:center;justify-content:space-between;gap:7px;flex-wrap:wrap}
+.documentOverviewHead>div{justify-content:flex-start}
+.documentOverviewHead>span{color:var(--mrs-muted);font-size:11px}
+.documentWarnings{display:grid;gap:4px;color:var(--mrs-warning);font-size:11px}
+.extractedTableList{display:flex;gap:6px;flex-wrap:wrap}
+.extractedTableList button{display:grid;justify-items:start;text-align:left}
+.extractedTableList button span{color:var(--mrs-muted);font-size:10px;font-weight:500}
 .autoInsightList{
   display:grid;
   gap:8px;
@@ -776,6 +820,12 @@
   color:var(--mrs-text);
   font-size:10px;
 }
+.dataQualityPanel{border:1px solid var(--mrs-border);border-radius:var(--mrs-radius-md);background:var(--mrs-surface-2)}
+.dataQualityPanel>summary{display:flex;justify-content:space-between;gap:8px;cursor:pointer;padding:8px 10px;color:var(--mrs-text)}
+.dataQualityPanel>summary span{color:var(--mrs-muted);font-size:10px}
+.dataQualityPanel[open]{padding-bottom:8px}
+.dataQualityPanel[open]>.sourceAnchorBar,.dataQualityPanel[open]>.simpleTableWrap,.dataQualityPanel[open]>.hint{margin-left:8px;margin-right:8px}
+.dataQualityPanel .simpleTableWrap{min-height:0;max-height:300px}
 .simpleContentGrid{
   display:grid;
   grid-template-columns:minmax(0,1fr) minmax(260px,340px);
@@ -945,6 +995,10 @@
   .workspaceTopbar .spacer{display:none}
   .workspaceLayout{grid-template-columns:minmax(260px,1fr) 12px minmax(260px,var(--workspace-side,320px))}
   .simpleDashboardSplit,.simpleContentGrid{grid-template-columns:1fr}
+  .chartRegistryFilters{grid-template-columns:repeat(2,minmax(130px,1fr))}
+  .chartRegistryFilters>input{grid-column:1/-1}
+  .analysisProgress{grid-template-columns:1fr auto}
+  .analysisProgressTrack{grid-column:1/-1;grid-row:2}
 }
 @media(max-width:920px){
   .workspaceTopbar{position:sticky;top:0;z-index:30}
@@ -962,6 +1016,12 @@
 @media(max-width:560px){
   .workspaceSearchBox{flex:1 1 100%}
   .workspacePrimary,.workspaceMobileMore,.workspaceMenu{flex:1 1 calc(50% - 8px);justify-content:center}
+  .workspaceTopbar,.workspaceLayout,.workspaceLayout>.panel,.workspaceLayout .content,.simpleDashboard,.chartVisualWorkspace,.chartCatalog{width:100%;max-width:100%;min-width:0}
+  .simpleSummaryCards,.autoChartGrid,.chartCandidateList,.chartRegistryFilters{grid-template-columns:minmax(0,1fr)}
+  .autoChartCard,.chartCandidateCard,.pdfDiagnostics,.svgChart{max-width:100%;min-width:0}
+  .autoChartCard .widgetBody,.autoChartCard .widgetBody>div{max-width:100%;min-width:0;overflow:hidden;contain:inline-size}
+  .svgChart{display:block;width:100%;overflow:hidden}
+  .workspaceMenuPanel,.advancedMenu{max-width:calc(100vw - 16px)}
 }
 
 </style>
@@ -1029,6 +1089,8 @@
     {"id":"sourcesEvidence","title":"Sources and Evidence","type":"sourcesEvidence","order":12,"blocks":[],"status":"empty"}
   ],
   "datasets": [],
+  "documents": [],
+  "extractedTables": [],
   "files": [],
   "charts": [],
   "tables": [],
@@ -1108,6 +1170,12 @@
 <script src="src/core/i18n.js"></script>
 <script src="src/features/materials.js"></script>
 <script src="src/features/export.js"></script>
+<script src="src/features/universal-analysis.js"></script>
+<script src="src/features/chart-candidates.js"></script>
+<script src="src/features/derived-table-candidates.js"></script>
+<script src="src/features/table-detection.js"></script>
+<script src="src/features/document-extract.js"></script>
+<script src="src/features/storage.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

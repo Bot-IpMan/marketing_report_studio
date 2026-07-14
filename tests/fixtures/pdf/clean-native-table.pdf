@@ -1,0 +1,55 @@
+%PDF-1.4
+%MRS
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 600 >>
+stream
+BT
+/F1 11 Tf
+1 0 0 1 50 710 Tm (Metric) Tj
+1 0 0 1 205 710 Tm (Q1-2025) Tj
+1 0 0 1 285 710 Tm (Q2-2025) Tj
+1 0 0 1 365 710 Tm (Q3-2025) Tj
+1 0 0 1 445 710 Tm (Q4-2025) Tj
+1 0 0 1 50 676 Tm (Revenue) Tj
+1 0 0 1 205 676 Tm (100) Tj
+1 0 0 1 285 676 Tm (120) Tj
+1 0 0 1 365 676 Tm (140) Tj
+1 0 0 1 445 676 Tm (160) Tj
+1 0 0 1 50 642 Tm (Cost) Tj
+1 0 0 1 205 642 Tm (70) Tj
+1 0 0 1 285 642 Tm (75) Tj
+1 0 0 1 365 642 Tm (85) Tj
+1 0 0 1 445 642 Tm (90) Tj
+1 0 0 1 50 608 Tm (Operating income) Tj
+1 0 0 1 205 608 Tm (30) Tj
+1 0 0 1 285 608 Tm (45) Tj
+1 0 0 1 365 608 Tm (55) Tj
+1 0 0 1 445 608 Tm (70) Tj
+ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000014 00000 n 
+0000000063 00000 n 
+0000000120 00000 n 
+0000000246 00000 n 
+0000000897 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+994
+%%EOF

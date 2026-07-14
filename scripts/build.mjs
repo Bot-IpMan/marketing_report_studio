@@ -4,6 +4,9 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const packageJson=JSON.parse(await readFile(resolve(projectRoot,'package.json'),'utf8'));
+const buildTimestamp=new Date().toISOString();
+const buildCommit=String(process.env.CF_PAGES_COMMIT_SHA||process.env.GITHUB_SHA||'').slice(0,40)||null;
 const sourcePath = resolve(
   projectRoot,
   'marketing_report_studio_v8_access_folders_fixed.html',
@@ -56,8 +59,11 @@ function createHostedShell(documentHtml) {
     meta: {
       title: 'Marketing Report Studio',
       accessMode: 'admin',
+      buildFingerprint:{version:packageJson.version||'unknown',timestamp:buildTimestamp,commit:buildCommit},
     },
     datasets: [],
+    documents: [],
+    extractedTables: [],
     files: [],
     charts: [],
     tables: [],

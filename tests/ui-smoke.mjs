@@ -9,6 +9,13 @@ const extractedScriptPaths = [
   'src/core/i18n.js',
   'src/features/materials.js',
   'src/features/export.js',
+  'src/features/universal-analysis.js',
+  'src/features/chart-candidates.js',
+  'src/features/derived-table-candidates.js',
+  'src/features/table-detection.js',
+  'src/features/document-extract.js',
+  'src/features/storage.js',
+  'src/workers/analysis.worker.js',
 ];
 
 new vm.Script(appSource);
@@ -21,6 +28,12 @@ for (const marker of [
   '<script src="src/core/i18n.js"></script>',
   '<script src="src/features/materials.js"></script>',
   '<script src="src/features/export.js"></script>',
+  '<script src="src/features/universal-analysis.js"></script>',
+  '<script src="src/features/chart-candidates.js"></script>',
+  '<script src="src/features/derived-table-candidates.js"></script>',
+  '<script src="src/features/table-detection.js"></script>',
+  '<script src="src/features/document-extract.js"></script>',
+  '<script src="src/features/storage.js"></script>',
   '<script src="app.js"></script>',
   'id="appNotice"',
   'id="pasteBtn"',
@@ -45,9 +58,33 @@ for (const marker of [
   'function classifyColumnType(name, values)',
   'function analyzeTable(ds)',
   'function autoChartConfigsForTable(ds',
+  'function getDatasetAnalysis(ds',
+  'function renderChartRegistry(ds,analysis)',
+  'function renderCandidateFamily(family,ds)',
+  'data-chart-workspace=',
+  'data-chart-catalog=',
+  'function openDerivedTableView(candidateId)',
+  "['recommended','Recommended'",
+  "['all','All charts'",
+  "['diagnostics','Diagnostics'",
+  "renderSimpleTreeGroup('Generated tables'",
+  "if(key==='sourceTable')",
   'function renderSimpleDashboard(ds)',
   'function renderSimpleTablePreview(ds',
   'function renderSimpleProjectTree()',
+  'async function parseXlsx(ab)',
+  'async function parseXlsxStyles(zip,parseXml)',
+  "safeZipText(zip,'xl/styles.xml')",
+  "cellValue(c,shared,styles,{date1904})",
+  'function excelSerialDate(value,date1904=false)',
+  "if(style.kind==='percent')",
+  "if(style.kind==='currency')",
+  "negativeStyle==='parentheses'",
+  "text.match(/\\[\\$([A-Z]{3})-[0-9a-f]+\\]/i)",
+  "['Protocol',info.protocol",
+  "['Module URL',info.moduleUrl",
+  "['Worker URL',info.workerUrl",
+  "['Error stage',info.errorStage",
   'function runSimpleDashboardExportChecklist(reportData)',
   'function renderSimpleDashboardExportHtml(reportData)',
   'function buildSimpleClientPackageZip(reportData, reportHtml)',
@@ -86,6 +123,10 @@ assert.doesNotMatch(html, /<script src="vendor\/jszip-3\.10\.1\.min\.js"><\/scri
 assert.doesNotMatch(appSource, /files\.slice\(0,120\)|documents\.slice\(0,80\)|images\.slice\(0,80\)/, 'simple tree must not silently hide files.');
 assert.doesNotMatch(appSource, /runReportQualityChecklist\(REPORT\);\s*if\(quality\.blockers\.length\)\{[\s\S]{0,220}saveClientHtml/, 'default client HTML export must not be blocked by evidence checklist.');
 assert.doesNotMatch(appSource, /setTimeout\(maybeOpenOnboardingWizard,900\)/, 'complex onboarding must not auto-open in the default workspace.');
+assert.match(appSource, /slice\(0,300\)/, 'table preview must cap rendered rows instead of rendering the full dataset.');
+assert.match(appSource, /pageSize:24/, 'chart catalog must render a bounded metadata page.');
+assert.match(appSource, /pageSize:dashboardView==='recommended'\?12:20/, 'rendered chart workspaces must stay bounded.');
+assert.match(appSource, /queryChartCandidateFamilies/, 'All charts must group aggregation variants without discarding candidates.');
 
 const staticHtml = html.slice(0, html.indexOf('<script type="application/json"'));
 const ids = [...staticHtml.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]);

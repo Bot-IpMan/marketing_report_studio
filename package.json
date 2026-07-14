@@ -6,7 +6,17 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "e2e": "node tests/e2e-smoke.mjs",
-    "test": "node tests/api-smoke.mjs && node tests/worker-smoke.mjs && node tests/config-and-ui-smoke.mjs && node tests/ui-smoke.mjs",
+    "e2e:strict": "node scripts/run-e2e-strict.mjs",
+    "qa:assets": "node tests/hosted-assets-smoke.mjs",
+    "qa:charts": "node tests/chart-registry-smoke.mjs",
+    "qa:documents": "node tests/document-adapters-smoke.mjs",
+    "qa:large": "node tests/large-data-smoke.mjs",
+    "qa:pdf": "node scripts/qa-local-fixtures.mjs tests/fixtures/pdf",
+    "qa:pdf:strict": "node scripts/qa-local-fixtures.mjs tests/fixtures/pdf --strict",
+    "qa:scale": "node tests/performance-storage-smoke.mjs",
+    "qa:xlsx": "node tests/xlsx-styles-smoke.mjs",
+    "qa:xlsx:regions": "node tests/xlsx-regions-smoke.mjs",
+    "test": "node tests/api-smoke.mjs && node tests/worker-smoke.mjs && node tests/config-and-ui-smoke.mjs && node tests/ui-smoke.mjs && node tests/universal-analysis-smoke.mjs && node tests/chart-registry-smoke.mjs && node tests/performance-storage-smoke.mjs && node tests/pdf-fixtures-smoke.mjs && node tests/hosted-assets-smoke.mjs && node tests/xlsx-styles-smoke.mjs && node tests/xlsx-regions-smoke.mjs && node tests/document-adapters-smoke.mjs",
     "check": "npm run test && npm run e2e && npm run build"
   }
 }

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { createReadStream, existsSync, mkdirSync, mkdtempSync, rmSync, statSync } from 'node:fs';
+import { createReadStream, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import http from 'node:http';
 import net from 'node:net';
 import { tmpdir } from 'node:os';
@@ -10,11 +10,17 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const appFileName = 'marketing_report_studio_v8_access_folders_fixed.html';
+const pdfFixtureBase64=Object.fromEntries(['clean-native-table.pdf','native-text-no-table.pdf','corrupted-text.pdf','scanned-image-only.pdf'].map(name=>[name,readFileSync(resolve(projectRoot,'tests/fixtures/pdf',name)).toString('base64')]));
 let appUrl = pathToFileURL(resolve(projectRoot, appFileName)).href;
 const browserPath = findBrowser();
 
 if (!browserPath) {
-  console.log('Browser E2E smoke skipped: no usable Chrome/Edge headless browser found. Set E2E_BROWSER to a working Chromium-compatible executable.');
+  const message='Browser E2E smoke SKIPPED: no usable Chrome/Edge headless browser found. Set E2E_BROWSER to a working Chromium-compatible executable.';
+  if(process.env.E2E_STRICT==='1'){
+    console.error(`${message} Strict mode requires a browser, so this run is FAIL.`);
+    process.exit(1);
+  }
+  console.log(message);
   process.exit(0);
 }
 
@@ -49,13 +55,13 @@ async function runDumpDomE2E() {
     '--no-first-run',
     '--no-default-browser-check',
     '--run-all-compositor-stages-before-draw',
-    '--virtual-time-budget=30000',
+    '--virtual-time-budget=90000',
     `--user-data-dir=${userDataDir}`,
     '--dump-dom',
     appUrl,
   ];
   if (process.getuid?.() === 0 || process.env.CI) args.splice(1, 0, '--no-sandbox');
-  const result = spawnSync(browserPath, args, { encoding: 'utf8', timeout: 60000 });
+  const result = spawnSync(browserPath, args, { encoding: 'utf8', timeout: 150000 });
   if (result.stderr) {
     for (const line of result.stderr.split(/\r?\n/).map((item) => item.trim()).filter(Boolean)) {
       browserStderr.push(line);
@@ -73,6 +79,9 @@ async function runDumpDomE2E() {
   assert.equal(data.rows, true, `CSV row count was not detected: ${JSON.stringify(data)}`);
   assert.equal(data.columns, true, `CSV column count was not detected: ${JSON.stringify(data)}`);
   assert.ok(data.chartCount >= 3, `Auto charts were not generated: ${JSON.stringify(data)}`);
+  assert.equal(data.chartCatalogWorks, true, `All charts did not preserve the visual workspace and expose the catalog: ${JSON.stringify(data)}`);
+  assert.equal(data.chartPreviewWorks, true, `Chart catalog preview did not render an actual chart: ${JSON.stringify(data)}`);
+  assert.equal(data.pinnedChartWorks, true, `Pinned view did not render an actual chart: ${JSON.stringify(data)}`);
   assert.equal(data.tableExists, true, `Table preview was not rendered: ${JSON.stringify(data)}`);
   assert.equal(data.searchWorks, true, `Table search failed: ${JSON.stringify(data)}`);
   assert.equal(data.filterWorks, true, `Table filter failed: ${JSON.stringify(data)}`);
@@ -81,6 +90,10 @@ async function runDumpDomE2E() {
   assert.equal(data.exportLocked, true, `Client export was not locked: ${JSON.stringify(data)}`);
   assert.equal(data.exportHasDashboard, true, `Client export missed dashboard content: ${JSON.stringify(data)}`);
   assert.equal(data.exportHasEditorControls, false, `Client export leaked editor controls: ${JSON.stringify(data)}`);
+  assert.equal(data.cleanPdfWorks, true, `Clean native-text PDF browser pipeline failed: ${JSON.stringify(data)}`);
+  assert.equal(data.noTablePdfWorks, true, `Native-text/no-table PDF state failed: ${JSON.stringify(data)}`);
+  assert.equal(data.scannedPdfWorks, true, `Scanned PDF honesty state failed: ${JSON.stringify(data)}`);
+  assert.equal(data.corruptedPdfWorks, true, `Corrupted PDF honesty state failed: ${JSON.stringify(data)}`);
   console.log('Browser E2E smoke passed.');
 }
 
@@ -145,7 +158,7 @@ async function runE2E() {
       }
     });
     page.on('Runtime.exceptionThrown', (event) => {
-      consoleErrors.push(`exception: ${event.exceptionDetails?.text || 'Unhandled exception'}`);
+      consoleErrors.push(`exception: ${formatException(event.exceptionDetails||{})}`);
     });
     page.on('Page.javascriptDialogOpening', async (event) => {
       dialogs.push(event.message || '');
@@ -161,7 +174,7 @@ async function runE2E() {
     await waitForPage('app shell rendered', `
       document.readyState === 'complete' &&
       document.querySelector('.workspaceTopbar') &&
-      document.querySelector('#sideList [data-side-panel="materials"]')
+      document.querySelector('[data-simple-file-tree]')
     `);
     await delay(250);
   });
@@ -172,7 +185,8 @@ async function runE2E() {
       const sideUpload = visibleState('#uploadFilesBtn');
       const topbar=document.querySelector('.workspaceTopbar');
       const topbarRect=topbar?.getBoundingClientRect();
-      const docOverflow=Math.max(document.documentElement.scrollWidth, document.body.scrollWidth)-window.innerWidth;
+      const htmlRight=Math.max(...[...document.querySelectorAll('body *')].filter(element=>element instanceof HTMLElement).map(element=>element.getBoundingClientRect().right),window.innerWidth);
+      const docOverflow=htmlRight-window.innerWidth;
       return {
         primary,
         sideUpload,
@@ -270,6 +284,7 @@ async function runE2E() {
       mobile: true,
     });
     await evaluate(`window.dispatchEvent(new Event('resize'))`);
+    await evaluate(`new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>setTimeout(resolve,80))))`);
     await click('[data-side-panel="materials"]');
     const mobileState = await evaluate(`(() => {
       const topbar=document.querySelector('.workspaceTopbar');
@@ -383,12 +398,13 @@ async function runSimpleE2E() {
         return rect.width>0 && rect.height>0 && style.display!=='none' && style.visibility!=='hidden';
       };
       const visibleButtons=[...document.querySelectorAll('.workspaceTopbar button')]
-        .filter((el)=>visible('#'+el.id) || (el.offsetWidth>0 && getComputedStyle(el).display!=='none'))
+        .filter((el)=>(el.id&&visible('#'+el.id)) || (el.offsetWidth>0 && getComputedStyle(el).display!=='none'))
         .map((el)=>el.textContent.trim());
       return {
         addData: visible('#pasteBtn'),
         exportReport: visible('#saveClientHtmlBtn'),
         save: visible('#saveDiskBtn'),
+        compactMenu: visible('#workspaceMoreBtn'),
         tree: Boolean(document.querySelector('[data-simple-file-tree]')),
         analytics: visible('.analytics'),
         reader: visible('.reader'),
@@ -398,12 +414,13 @@ async function runSimpleE2E() {
         docOverflow: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth)-window.innerWidth
       };
     })()`);
-    assert.ok(state.addData && state.exportReport && state.save, `Default controls are not visible: ${JSON.stringify(state)}`);
+    assert.ok(state.addData && ((state.exportReport&&state.save)||state.compactMenu), `Default controls are not visible: ${JSON.stringify(state)}`);
     assert.ok(state.tree && state.analytics && state.reader, `Three-zone UI is not ready: ${JSON.stringify(state)}`);
     assert.match(state.searchPlaceholder, /project files|файлів/i);
     assert.equal(state.advancedOpen, false, `Advanced / Labs should be collapsed by default: ${JSON.stringify(state)}`);
     assert.ok(state.docOverflow <= 4, `Desktop page has horizontal overflow: ${JSON.stringify(state)}`);
     assert.doesNotMatch(state.visibleButtons.join(' '), /Save admin|Client package|CI JSON|Audit/);
+    await evaluate(`window.addEventListener('unhandledrejection',event=>console.error('[e2e unhandled rejection]',event.reason?.stack||event.reason?.message||String(event.reason)))`);
   });
 
   await step('upload CTA opens import modal', async () => {
@@ -455,11 +472,10 @@ async function runSimpleE2E() {
     assert.deepEqual({ rows: imported.rows, columns: imported.columns }, { rows: 200, columns: 31 });
     await waitForPage('CSV import success modal', `document.querySelector('#importReport')`, 15000);
     await click('#importReport');
-    await waitForPage('sample dashboard and table', `
-      document.querySelector('[data-simple-dashboard]') &&
-      document.querySelector('[data-simple-table]') &&
-      document.querySelector('[data-simple-file-tree]')
-    `, 12000);
+    await waitForPage('sample dashboard', `document.querySelector('[data-simple-dashboard]') && document.querySelector('[data-simple-file-tree]')`, 12000);
+    const hasTable=await evaluate(`Boolean(document.querySelector('[data-simple-table]'))`);
+    if(!hasTable) await evaluate(`document.querySelector('.simpleTreeItem[data-type="dataset"]')?.click()`);
+    await waitForPage('sample table preview', `document.querySelector('[data-simple-table]')`,8000);
   });
 
   await step('dashboard cards charts table and controls work', async () => {
@@ -476,8 +492,8 @@ async function runSimpleE2E() {
       };
     })()`);
     assert.ok(dashboard.rows && dashboard.columns, `Dashboard did not show 200 rows / 31 columns: ${JSON.stringify(dashboard)}`);
-    assert.ok(dashboard.cardText.some((item) => /Rows\\s+200/i.test(item)), `Rows summary card missing: ${JSON.stringify(dashboard)}`);
-    assert.ok(dashboard.cardText.some((item) => /Columns\\s+31/i.test(item)), `Columns summary card missing: ${JSON.stringify(dashboard)}`);
+    assert.ok(dashboard.cardText.some((item) => item.startsWith('Rows200')), `Rows summary card missing: ${JSON.stringify(dashboard)}`);
+    assert.ok(dashboard.cardText.some((item) => item.startsWith('Columns31')), `Columns summary card missing: ${JSON.stringify(dashboard)}`);
     assert.ok(dashboard.chartCount >= 3, `Auto charts were not generated: ${JSON.stringify(dashboard)}`);
     assert.ok(dashboard.tableExists, `Table preview missing: ${JSON.stringify(dashboard)}`);
     assert.ok(dashboard.requiredColumns, `Required SEO columns missing from UI: ${JSON.stringify(dashboard)}`);
@@ -505,6 +521,25 @@ async function runSimpleE2E() {
       select.dispatchEvent(new Event('change', {bubbles:true}));
     })()`);
     await waitForPage('table sort applied', `/Company 200/i.test(document.querySelector('.simplePreviewTable tbody tr')?.textContent || '')`, 8000);
+  });
+
+  await step('All charts keeps visual workspace and pin renders a chart', async () => {
+    const before=await evaluate(`document.querySelectorAll('[data-chart-workspace="recommended"] .autoChartCard').length`);
+    assert.ok(before>0,'Recommended must render actual charts before opening All charts.');
+    await click('[data-chart-view="all"]');
+    await waitForPage('separate All charts catalog', `document.querySelector('[data-chart-catalog="all"]') && document.querySelector('[data-chart-workspace] .autoChartCard')`);
+    const catalog=await evaluate(`(() => ({workspaceCharts:document.querySelectorAll('[data-chart-workspace] .autoChartCard').length,families:document.querySelectorAll('[data-chart-catalog="all"] .chartCandidateFamily').length,filters:Boolean(document.querySelector('#simpleChartMetric'))}))()`);
+    assert.ok(catalog.workspaceCharts>0&&catalog.families>0&&catalog.filters,`All charts replaced or failed to expose the catalog: ${JSON.stringify(catalog)}`);
+    await evaluate(`(() => {const select=document.querySelector('#simpleChartMetric');if([...select.options].some(option=>option.value==='seo_total_estimated_traffic'))select.value='seo_total_estimated_traffic';select.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+    await waitForPage('filtered chart family', `document.querySelector('[data-chart-catalog="all"] [data-simple-open-chart]')`);
+    await click('[data-chart-catalog="all"] [data-simple-open-chart]');
+    await waitForPage('actual selected chart preview', `document.querySelector('[data-selected-chart-preview] .svgChart')`);
+    await click('[data-selected-chart-preview] [data-pin-chart]');
+    await waitForPage('pinned count increment', `Number(document.querySelector('[data-chart-view="pinned"] span')?.textContent||0)>0`);
+    await click('[data-chart-view="pinned"]');
+    await waitForPage('actual pinned chart render', `document.querySelector('[data-chart-workspace="pinned"] .autoChartCard .svgChart')`);
+    await click('[data-chart-view="recommended"]');
+    await waitForPage('recommended chart render restored', `document.querySelector('[data-chart-workspace="recommended"] .autoChartCard .svgChart')`);
   });
 
   await step('right tree show-more for many files', async () => {
@@ -541,10 +576,38 @@ async function runSimpleE2E() {
         hasEditorControls:/adminOnly|pasteBtn|saveHtmlBtn|Client package|CI JSON|Audit|Advanced \\/ Labs|contenteditable/i.test(html)
       };
     })()`);
-    assert.match(exportState.download, /client\\.html$/);
+    assert.ok(exportState.download.endsWith('client.html'),`Unexpected client export filename: ${exportState.download}`);
     assert.ok(exportState.hasClientLocked, `Client export is not marked locked: ${JSON.stringify(exportState)}`);
     assert.ok(exportState.hasRows && exportState.hasCharts, `Client export missed dashboard content: ${JSON.stringify(exportState)}`);
     assert.equal(exportState.hasEditorControls, false, `Client export leaked editor controls: ${JSON.stringify(exportState)}`);
+  });
+
+  await step('real PDF upload pipeline and honest unsupported states', async () => {
+    await evaluate(`(() => {
+      const fixtures=${JSON.stringify(pdfFixtureBase64)},dt=new DataTransfer();
+      for(const [name,base64] of Object.entries(fixtures)){
+        const binary=atob(base64),bytes=new Uint8Array(binary.length);
+        for(let index=0;index<binary.length;index+=1) bytes[index]=binary.charCodeAt(index);
+        dt.items.add(new File([bytes],name,{type:'application/pdf'}));
+      }
+      document.querySelector('#materialsDropZone').dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:dt}));
+    })()`);
+    await waitForPage('PDF batch import result', `document.querySelector('#importReport')`,45000);
+    await click('#importReport');
+    await waitForPage('PDF files in project tree', `${JSON.stringify(Object.keys(pdfFixtureBase64))}.every(name=>(document.querySelector('[data-simple-file-tree]')?.textContent||'').includes(name))`,15000);
+    async function diagnostics(name){
+      await evaluate(`(() => {const item=[...document.querySelectorAll('.simpleTreeItem[data-type="emb-file"]')].find(element=>element.textContent.includes(${JSON.stringify(name)}));if(!item)throw new Error('Missing PDF tree item');item.click();})()`);
+      await waitForPage(`${name} diagnostics`,`document.querySelector('[data-pdf-diagnostics]') && (document.querySelector('#readerContent')?.textContent||'').includes(${JSON.stringify(name)})`);
+      return evaluate(`(document.querySelector('#readerContent')?.textContent||'').replace(/\\s+/g,' ')`);
+    }
+    const clean=await diagnostics('clean-native-table.pdf');
+    assert.match(clean,/PDF\.js\s*loaded/i);assert.match(clean,/Worker\s*(?:configured|fake_worker)/i);assert.match(clean,/Protocol\s*https?:/i);assert.match(clean,/Module URL\s*http:\/\/127\.0\.0\.1:\d+\/vendor\/pdfjs\/pdf\.min\.mjs/i);assert.match(clean,/Worker URL\s*http:\/\/127\.0\.0\.1:\d+\/vendor\/pdfjs\/pdf\.worker\.min\.mjs/i);assert.match(clean,/Tables detected\s*[1-9]/i);assert.match(clean,/Chart candidates\s*[1-9]/i);
+    const noTable=await diagnostics('native-text-no-table.pdf');
+    assert.match(noTable,/Native text was extracted, but no reliable table was detected/i);assert.match(noTable,/Tables detected\s*0/i);
+    const scanned=await diagnostics('scanned-image-only.pdf');
+    assert.match(scanned,/PDF_SCANNED_NO_OCR/);assert.match(scanned,/OCR is not enabled/i);assert.match(scanned,/Tables detected\s*0/i);
+    const corrupted=await diagnostics('corrupted-text.pdf');
+    assert.match(corrupted,/PDF_TEXT_CORRUPTED/);assert.match(corrupted,/needs_review/i);assert.doesNotMatch(corrupted,/Tables detected\s*[1-9]/i);
   });
 
   await step('mobile viewport simple tree smoke', async () => {
@@ -565,6 +628,7 @@ async function runSimpleE2E() {
         topbarWidth: topbarRect ? topbarRect.width : 0,
         simpleTreeExists: Boolean(document.querySelector('[data-simple-file-tree]')),
         dropZoneExists: Boolean(document.querySelector('#materialsDropZone'))
+        ,overflowing:[...document.querySelectorAll('body *')].map(element=>{const rect=element.getBoundingClientRect();return {tag:element.tagName,className:String(element.className||'').slice(0,100),id:element.id||'',left:Math.round(rect.left),right:Math.round(rect.right),width:Math.round(rect.width),scrollWidth:element.scrollWidth};}).filter(item=>item.right>window.innerWidth+4||item.left<-4||item.scrollWidth>item.width+4).sort((a,b)=>Math.max(b.right-window.innerWidth,b.scrollWidth-b.width)-Math.max(a.right-window.innerWidth,a.scrollWidth-a.width)).slice(0,8)
       };
     })()`);
     assert.ok(mobileState.docOverflow <= 4, `Mobile page has horizontal overflow: ${JSON.stringify(mobileState)}`);
@@ -1064,6 +1128,8 @@ async function buildFailureReport(error) {
         title: document.title,
         notice: document.querySelector('#appNoticeText')?.textContent || '',
         topbar: document.querySelector('.workspaceTopbar')?.textContent.trim().replace(/\\s+/g, ' ').slice(0, 260) || '',
+        analytics: document.querySelector('#analyticsContent')?.textContent.trim().replace(/\\s+/g, ' ').slice(0, 800) || '',
+        analyticsHtml: document.querySelector('#analyticsContent')?.innerHTML.slice(0, 1200) || '',
         side: document.querySelector('#sideList')?.textContent.trim().replace(/\\s+/g, ' ').slice(0, 600) || '',
         viewport: { width: window.innerWidth, height: window.innerHeight, scrollWidth: document.documentElement.scrollWidth }
       }))()`),
@@ -1096,7 +1162,8 @@ function formatConsoleErrors(errors) {
 function formatException(details) {
   const callFrames = details.stackTrace?.callFrames || [];
   const location = callFrames[0] ? ` at ${callFrames[0].url}:${callFrames[0].lineNumber + 1}` : '';
-  return `${details.text || 'Runtime exception'}${location}`;
+  const description=details.exception?.description||details.exception?.value||'';
+  return `${description||details.text||'Runtime exception'}${location}`;
 }
 
 function delay(ms) {
@@ -1154,6 +1221,7 @@ function createE2EHarnessHtml(appFileName) {
 <pre id="result">{"ok":false,"error":"not started"}</pre>
 <iframe id="appframe" src="/${appFileName}" style="width:1200px;height:900px"></iframe>
 <script>
+const pdfFixtures=${JSON.stringify(pdfFixtureBase64)};
 const resultEl=document.getElementById('result');
 function finish(data){resultEl.textContent=JSON.stringify(data);}
 function sleep(ms){return new Promise(resolve=>setTimeout(resolve,ms));}
@@ -1235,6 +1303,25 @@ async function run(){
   const chartCount=d.querySelectorAll('.autoChartCard').length;
   const tableExists=Boolean(d.querySelector('.simplePreviewTable'));
 
+  const recommendedBefore=d.querySelectorAll('[data-chart-workspace="recommended"] .autoChartCard').length;
+  d.querySelector('[data-chart-view="all"]').click();
+  await waitFor('separate chart catalog',()=>d.querySelector('[data-chart-catalog="all"]')&&d.querySelector('[data-chart-workspace] .autoChartCard'));
+  const chartCatalogWorks=recommendedBefore>0&&d.querySelectorAll('[data-chart-workspace] .autoChartCard').length>0&&d.querySelectorAll('[data-chart-catalog="all"] .chartCandidateFamily').length>0&&Boolean(d.querySelector('#simpleChartMetric'));
+  const metric=d.querySelector('#simpleChartMetric');
+  if([...metric.options].some(option=>option.value==='seo_total_estimated_traffic')) metric.value='seo_total_estimated_traffic';
+  metric.dispatchEvent(new w.Event('change',{bubbles:true}));
+  await waitFor('filtered chart families',()=>d.querySelector('[data-chart-catalog="all"] [data-simple-open-chart]'));
+  d.querySelector('[data-chart-catalog="all"] [data-simple-open-chart]').click();
+  await waitFor('selected chart preview',()=>d.querySelector('[data-selected-chart-preview] .svgChart'));
+  const chartPreviewWorks=Boolean(d.querySelector('[data-selected-chart-preview] .svgChart'));
+  d.querySelector('[data-selected-chart-preview] [data-pin-chart]').click();
+  await waitFor('pinned count',()=>Number(d.querySelector('[data-chart-view="pinned"] span')?.textContent||0)>0);
+  d.querySelector('[data-chart-view="pinned"]').click();
+  await waitFor('pinned rendered chart',()=>d.querySelector('[data-chart-workspace="pinned"] .autoChartCard .svgChart'));
+  const pinnedChartWorks=Boolean(d.querySelector('[data-chart-workspace="pinned"] .autoChartCard .svgChart'));
+  d.querySelector('[data-chart-view="recommended"]').click();
+  await waitFor('recommended charts restored',()=>d.querySelector('[data-chart-workspace="recommended"] .autoChartCard .svgChart'));
+
   const search=d.querySelector('#simpleTableSearch');
   search.value='Company 150';
   search.dispatchEvent(new w.InputEvent('input', {bubbles:true,inputType:'insertText',data:'Company 150'}));
@@ -1275,12 +1362,41 @@ async function run(){
   w.HTMLAnchorElement.prototype.click=originalClick;
   const exportHtml=await w.fetch(downloads[0].href).then(response=>response.text());
 
+  const pdfDrop=new w.DataTransfer();
+  for(const [name,base64] of Object.entries(pdfFixtures)){
+    const binary=atob(base64),bytes=new Uint8Array(binary.length);
+    for(let index=0;index<binary.length;index+=1) bytes[index]=binary.charCodeAt(index);
+    pdfDrop.items.add(new w.File([bytes],name,{type:'application/pdf'}));
+  }
+  d.querySelector('#materialsDropZone').dispatchEvent(new w.DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:pdfDrop}));
+  await waitFor('PDF import completion',()=>d.querySelector('#importReport'),30000);
+  d.querySelector('#importReport').click();
+  await waitFor('PDF files in tree',()=>Object.keys(pdfFixtures).every(name=>(d.querySelector('[data-simple-file-tree]')?.textContent||'').includes(name)),15000);
+  async function pdfDiagnosticsText(name){
+    const item=[...d.querySelectorAll('.simpleTreeItem[data-type="emb-file"]')].find(element=>element.textContent.includes(name));
+    if(!item) throw new Error('Missing PDF tree item: '+name);
+    item.click();
+    await waitFor(name+' diagnostics',()=>d.querySelector('[data-pdf-diagnostics]')&&(d.querySelector('#readerContent')?.textContent||'').includes(name));
+    return d.querySelector('#readerContent')?.textContent.replace(/\s+/g,' ')||'';
+  }
+  const cleanPdfText=await pdfDiagnosticsText('clean-native-table.pdf');
+  const noTablePdfText=await pdfDiagnosticsText('native-text-no-table.pdf');
+  const scannedPdfText=await pdfDiagnosticsText('scanned-image-only.pdf');
+  const corruptedPdfText=await pdfDiagnosticsText('corrupted-text.pdf');
+  const cleanPdfWorks=/PDF\.js\s*loaded/i.test(cleanPdfText)&&/Worker\s*(?:configured|fake_worker)/i.test(cleanPdfText)&&/Protocol\s*https?:/i.test(cleanPdfText)&&/Module URL\s*http:\/\/127\.0\.0\.1:\d+\/vendor\/pdfjs\/pdf\.min\.mjs/i.test(cleanPdfText)&&/Worker URL\s*http:\/\/127\.0\.0\.1:\d+\/vendor\/pdfjs\/pdf\.worker\.min\.mjs/i.test(cleanPdfText)&&/Tables detected\s*[1-9]/i.test(cleanPdfText)&&/Chart candidates\s*[1-9]/i.test(cleanPdfText);
+  const noTablePdfWorks=/Native text was extracted, but no reliable table was detected/i.test(noTablePdfText)&&/Tables detected\s*0/i.test(noTablePdfText);
+  const scannedPdfWorks=/PDF_SCANNED_NO_OCR/.test(scannedPdfText)&&/OCR is not enabled/i.test(scannedPdfText)&&/Tables detected\s*0/i.test(scannedPdfText);
+  const corruptedPdfWorks=/PDF_TEXT_CORRUPTED/.test(corruptedPdfText)&&/needs_review/i.test(corruptedPdfText)&&!/Tables detected\s*[1-9]/i.test(corruptedPdfText);
+
   finish({
     ok:true,
     rows,
     columns,
     requiredColumns,
     chartCount,
+    chartCatalogWorks,
+    chartPreviewWorks,
+    pinnedChartWorks,
     tableExists,
     searchWorks,
     filterWorks,
@@ -1288,7 +1404,11 @@ async function run(){
     treeShowMore,
     exportLocked:/data-client-locked="true"/.test(exportHtml),
     exportHasDashboard:/200\s+rows/i.test(exportHtml) && /Auto Charts/i.test(exportHtml),
-    exportHasEditorControls:/adminOnly|pasteBtn|saveHtmlBtn|Client package|CI JSON|Audit|Advanced \/ Labs|contenteditable/i.test(exportHtml)
+    exportHasEditorControls:/adminOnly|pasteBtn|saveHtmlBtn|Client package|CI JSON|Audit|Advanced \/ Labs|contenteditable/i.test(exportHtml),
+    cleanPdfWorks,
+    noTablePdfWorks,
+    scannedPdfWorks,
+    corruptedPdfWorks
   });
 }
 run().catch(error=>finish({ok:false,error:error && (error.stack || error.message || String(error))}));
@@ -1298,7 +1418,8 @@ run().catch(error=>finish({ok:false,error:error && (error.stack || error.message
 }
 
 try {
-  await runDumpDomE2E();
+  await runSimpleE2E();
+  console.log('Browser E2E smoke passed.');
   assert.equal(consoleErrors.length, 0, formatConsoleErrors(consoleErrors));
 } catch (error) {
   console.error(await buildFailureReport(error));
@@ -1320,6 +1441,8 @@ function startStaticServer(port) {
   const types = {
     '.html': 'text/html;charset=utf-8',
     '.js': 'text/javascript;charset=utf-8',
+    '.mjs': 'text/javascript;charset=utf-8',
+    '.pdf': 'application/pdf',
     '.css': 'text/css;charset=utf-8',
     '.json': 'application/json;charset=utf-8',
     '.svg': 'image/svg+xml',

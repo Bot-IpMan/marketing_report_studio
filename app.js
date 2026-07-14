@@ -21,6 +21,8 @@ function createDefaultMaterialFolders(){
 const DEFAULT = {
   meta:{title:'Marketing Report Studio', companyName:'', updatedAt:new Date().toISOString(), lang:'uk'},
   datasets:[],
+  documents:[],
+  extractedTables:[],
   companies:[],
   files:[],
   charts:[],
@@ -140,12 +142,27 @@ const MRS_DOM = (typeof window!=='undefined' && window.MRSDom) || {};
 const MRS_I18N = (typeof window!=='undefined' && window.MRSI18n) || {};
 const MRS_MATERIALS = (typeof window!=='undefined' && window.MRSMaterials) || {};
 const MRS_EXPORT = (typeof window!=='undefined' && window.MRSExport) || {};
+const MRS_ANALYSIS = (typeof window!=='undefined' && window.MRSUniversalAnalysis) || {};
+const MRS_CHART_CANDIDATES = (typeof window!=='undefined' && window.MRSChartCandidates) || {};
+const MRS_DERIVED_TABLES = (typeof window!=='undefined' && window.MRSDerivedTables) || {};
+const MRS_TABLE_DETECTION = (typeof window!=='undefined' && window.MRSTableDetection) || {};
+const MRS_DOCUMENT_EXTRACT = (typeof window!=='undefined' && window.MRSDocumentExtract) || {};
+const MRS_STORAGE = (typeof window!=='undefined' && window.MRSStorage) || {};
+const ANALYSIS_WORKER_SRC = 'src/workers/analysis.worker.js';
+const PDFJS_MODULE_SRC = 'vendor/pdfjs/pdf.min.mjs';
+const PDFJS_WORKER_SRC = 'vendor/pdfjs/pdf.worker.min.mjs';
+const analysisCache = new Map();
+const analysisJobs = new Map();
+const pdfJsRuntime = {promise:null,status:'idle',attempts:0,lastError:null,diagnostics:null,preflight:null};
+let pdfJsLoadDiagnostics = null;
+let indexedDbWarningShown = false;
 let persistTimer = null;
 let sideSearchRenderTimer = null;
+let chartRegistryRenderTimer = null;
 let jszipLoadPromise = null;
 let localStorageDisabledBySize = false;
 let REPORT = normalizeReport(loadReport() || DEFAULT);
-const state = {activeDataset: REPORT.datasets[0]?.id || null, activeFile:null, openTabs:[], theme:'dark', access:((HOSTED_MODE&&!BROWSER_ONLY_MODE)||REPORT.meta?.clientLocked)?'viewer':(REPORT.meta?.accessMode || 'admin'), activeCompany:null, compareA:null, compareB:null, compareOnly:false, openFolders:{}, showCompare:false, fsOpen:{}, fsRoots:[], fsPollTimer:null, analyticsSite:'all', analyticsResearch:'all', materialType:'all', reviewFilter:'all', competitorFilter:'all', matrixFilter:'all', fileSort:'newest', aiStatus:null, aiStatusLoaded:false, aiSectionId:'', aiQueueType:'all', aiQueueStatus:'all', aiAuditFilter:'all', versionDiffFilter:'all', sidePanelView:'materials', lastVizFsSync:0, widgetSnapshots:{}, lang:(REPORT.meta?.lang || getSavedLang() || 'uk')};
+const state = {activeDataset: REPORT.datasets[0]?.id || null, activeFile:null, openTabs:[], theme:'dark', access:((HOSTED_MODE&&!BROWSER_ONLY_MODE)||REPORT.meta?.clientLocked)?'viewer':(REPORT.meta?.accessMode || 'admin'), activeCompany:null, compareA:null, compareB:null, compareOnly:false, openFolders:{}, showCompare:false, fsOpen:{}, fsRoots:[], fsPollTimer:null, analyticsSite:'all', analyticsResearch:'all', materialType:'all', reviewFilter:'all', competitorFilter:'all', matrixFilter:'all', fileSort:'newest', aiStatus:null, aiStatusLoaded:false, aiSectionId:'', aiQueueType:'all', aiQueueStatus:'all', aiAuditFilter:'all', versionDiffFilter:'all', sidePanelView:'materials', lastVizFsSync:0, widgetSnapshots:{}, simpleChartDashboardView:'recommended', simpleChartCatalogOpen:false, simpleChartCatalogView:'all', simpleChartSelectedId:null, simpleChartFamilySelections:{}, simpleChartPage:1, simpleChartFilters:{search:'',metric:'all',dimension:'all',chartType:'all',aggregation:'all',sourceTable:'all',confidence:'all'}, simpleDerivedPage:1, lang:(REPORT.meta?.lang || getSavedLang() || 'uk')};
 const cloudSync = {enabled:HOSTED_MODE&&!BROWSER_ONLY_MODE, ready:false, localFallback:BROWSER_ONLY_MODE, saving:false, dirty:false, conflict:false, suppress:false, saveTimer:null, retryCount:0, reportId:null, version:null, role:null, user:null, workspace:null};
 let VERSION_DIFF_BASELINE = null;
 let VERSION_DIFF_BASELINE_REPORT = null;
@@ -1664,7 +1681,14 @@ function estimateUtf8Bytes(s){
 function saveReportToLocal(){
   if((HOSTED_MODE&&cloudSync.enabled) || REPORT.meta?.clientLocked) return;
   try{
-    const raw=JSON.stringify(persistedReportSnapshot());
+    const snapshot=persistedReportSnapshot();
+    if(typeof MRS_STORAGE.saveReport==='function'){
+      MRS_STORAGE.saveReport(REPORT_STORAGE_KEY,snapshot).catch(error=>{
+        console.warn('[storage] IndexedDB autosave failed:',error?.message||error);
+        if(!indexedDbWarningShown){indexedDbWarningShown=true;showNotice(error?.code==='STORAGE_QUOTA_ERROR'?'Browser storage quota is full. Export the project to avoid data loss.':'IndexedDB autosave is unavailable; localStorage fallback remains active.','error');}
+      });
+    }
+    const raw=JSON.stringify(snapshot);
     const bytes=estimateUtf8Bytes(raw);
     if(bytes>LOCALSTORAGE_MAX_BYTES){
       if(!localStorageDisabledBySize){
@@ -4930,7 +4954,7 @@ function buildSimpleDashboardExportData(reportData){
   const analysis=ds?analyzeTable(ds):null;
   const columnsOut=analysis?analysis.columns.map(col=>col.name):[];
   const previewRows=ds?(ds.rows||[]).slice(0,50):[];
-  const chartConfigs=ds?autoChartConfigsForTable(ds,analysis).slice(0,6):[];
+  const chartConfigs=ds?autoChartConfigsForTable(ds,analysis).slice(0,10):[];
   return {
     exportVersion:1,
     clientLocked:true,
@@ -4955,7 +4979,9 @@ function buildSimpleDashboardExportData(reportData){
       x:ch.x,
       y:ch.y,
       agg:ch.agg,
-      svg:renderChart(ch)
+      sourceFileId:ch.sourceFileId||'',sourceDocumentId:ch.sourceDocumentId||'',sourceTableId:ch.sourceTableId||'',
+      sourceAnchor:{...(ch.sourceAnchor||{})},transformation:{...(ch.transformation||{})},
+      confidence:ds?.extractionConfidence||'unknown',svg:renderChart(ch)
     })),
     files:simpleDashboardFileManifest(report)
   };
@@ -5008,11 +5034,18 @@ function sanitizeSimpleDashboardExportData(reportData){
       id:ds.id,
       name:ds.name,
       sourceFileId:ds.sourceFileId||'',
+      sourceDocumentId:ds.sourceDocumentId||'',
+      sourceTableId:ds.sourceTableId||'',
+      sourceAnchor:{...(ds.sourceAnchor||{})},
+      extractionConfidence:ds.extractionConfidence||'unknown',
+      warnings:ds.warnings||[],
       createdAt:ds.createdAt||'',
       columns:ds.columns||[],
       rows:ds.rows||[]
     })),
-    files:data.files
+    files:data.files,
+    documents:(reportData.documents||[]).map(documentModel=>({id:documentModel.id,fileId:documentModel.fileId,fileName:documentModel.fileName,extension:documentModel.extension,extractionStatus:documentModel.extractionStatus,extractionConfidence:documentModel.extractionConfidence,metadata:documentModel.metadata,warnings:(documentModel.warnings||[]).map(warning=>({code:warning.code||String(warning),message:warning.message||''})),tables:documentModel.tables||[]})),
+    extractedTables:(reportData.extractedTables||[]).map(table=>({...table}))
   };
 }
 async function buildSimpleClientPackageZip(reportData, reportHtml){
@@ -6726,7 +6759,59 @@ function addSelectedEvidenceCandidates(reportData, candidateIds){
   if(added) cards.updatedAt=new Date().toISOString();
   return {added, errors:[]};
 }
-function normalizeReport(r){r=clone(r); r.meta=r.meta||{}; r.datasets=Array.isArray(r.datasets)?r.datasets:[]; r.files=Array.isArray(r.files)?r.files:[]; r.charts=Array.isArray(r.charts)?r.charts:[]; r.tables=Array.isArray(r.tables)?r.tables:[]; r.companies=Array.isArray(r.companies)?r.companies:[]; normalizeReportSchema(r); normalizeMaterialFolders(r); normalizeMaterialsInventory(r); normalizeSourceRegistry(r); normalizeEvidenceCards(r); normalizeCompetitorProfiles(r); normalizePricingFeatureMatrix(r); normalizeAiAssistanceState(r); normalizeAiReviewQueue(r); normalizeAiAuditLog(r); normalizeVersionRetentionPolicy(r); normalizeGovernanceSettings(r); normalizeOnboardingState(r); normalizeFirstReportFlowState(r); r.ci=normalizeCiModel(r.ci); stripLiveMarkdownDerived(r); for(const ds of r.datasets){ds.id=ds.id||uid('ds'); ds.name=ds.name||'Таблиця'; ds.rows=Array.isArray(ds.rows)?ds.rows:[]; ds.columns=inferColumns(ds.rows);} syncCompaniesFromRows(r); for(const f of r.files){f.id=f.id||uid('file'); f.folder=f.folder||'Загальні'; f.path=f.path||((f.companyId?((company(f.companyId,r)?.folder||'company')+'/'):'')+f.name);} collectMaterialsFromCurrentState(r); buildSourcesFromMaterials(r); normalizeCompetitorProfiles(r); normalizePricingFeatureMatrix(r); return r;}
+function normalizeDocumentState(reportData){
+  const report=reportData&&typeof reportData==='object'?reportData:{};
+  report.documents=Array.isArray(report.documents)?report.documents:[];
+  report.extractedTables=Array.isArray(report.extractedTables)?report.extractedTables:[];
+  const statuses=new Set(['not_started','processing','complete','partial','preview_only','needs_review','failed','cancelled']);
+  const confidences=new Set(['unknown','low','medium','high']);
+  for(const documentModel of report.documents){
+    documentModel.id=String(documentModel.id||uid('doc'));
+    documentModel.fileId=String(documentModel.fileId||'');
+    documentModel.fileName=String(documentModel.fileName||'Document');
+    documentModel.extension=String(documentModel.extension||extFromName(documentModel.fileName)).toLowerCase();
+    documentModel.extractionStatus=statuses.has(documentModel.extractionStatus)?documentModel.extractionStatus:'not_started';
+    documentModel.extractionConfidence=confidences.has(documentModel.extractionConfidence)?documentModel.extractionConfidence:'unknown';
+    documentModel.metadata=documentModel.metadata&&typeof documentModel.metadata==='object'?documentModel.metadata:{};
+    documentModel.textBlocks=Array.isArray(documentModel.textBlocks)?documentModel.textBlocks:[];
+    documentModel.tables=Array.isArray(documentModel.tables)?documentModel.tables:[];
+    documentModel.images=Array.isArray(documentModel.images)?documentModel.images:[];
+    documentModel.diagramBlocks=Array.isArray(documentModel.diagramBlocks)?documentModel.diagramBlocks:[];
+    documentModel.warnings=Array.isArray(documentModel.warnings)?documentModel.warnings:[];
+  }
+  for(const table of report.extractedTables){
+    table.id=String(table.id||uid('table'));
+    table.documentId=String(table.documentId||'');
+    table.sourceFileId=String(table.sourceFileId||'');
+    table.datasetId=String(table.datasetId||'');
+    table.columns=Array.isArray(table.columns)?table.columns:[];
+    table.sourceAnchor=table.sourceAnchor&&typeof table.sourceAnchor==='object'?table.sourceAnchor:{};
+    table.detection=table.detection&&typeof table.detection==='object'?table.detection:{method:'legacy',confidence:'unknown',score:0,warnings:[]};
+  }
+  report.meta=report.meta||{};
+  report.meta.pinnedChartCandidateIds=Array.isArray(report.meta.pinnedChartCandidateIds)?report.meta.pinnedChartCandidateIds.map(String):[];
+  report.meta.pinnedDerivedTableIds=Array.isArray(report.meta.pinnedDerivedTableIds)?report.meta.pinnedDerivedTableIds.map(String):[];
+  return report;
+}
+async function hydrateReportFromIndexedDb(){
+  if(REPORT.meta?.clientLocked||typeof MRS_STORAGE.loadReport!=='function') return;
+  try{
+    const stored=await MRS_STORAGE.loadReport(REPORT_STORAGE_KEY);
+    const candidate=stored?.report;
+    if(!candidate||typeof candidate!=='object') return;
+    const currentScore=reportContentScore(REPORT),candidateScore=reportContentScore(candidate);
+    const newer=reportUpdatedAt(candidate)>reportUpdatedAt(REPORT);
+    if(!newer&&candidateScore<=currentScore) return;
+    REPORT=stripLegacyTrueSavageDemoPack(stripLegacyCaspianPack(normalizeReport(candidate)));
+    analysisCache.clear();state.activeDataset=REPORT.meta?.activeDataset||REPORT.datasets[0]?.id||null;state.openTabs=[];state.activeFile=null;
+    initState();refresh();reader.innerHTML=`<div class="empty">${t('emptyReader')}</div>`;renderReaderTabs();
+    showNotice('Restored the latest browser workspace from IndexedDB.','success');
+  }catch(error){
+    console.warn('[storage] IndexedDB restore failed:',error?.message||error);
+    if(!indexedDbWarningShown){indexedDbWarningShown=true;showNotice('IndexedDB restore is unavailable; embedded/localStorage data was kept.','error');}
+  }
+}
+function normalizeReport(r){r=clone(r); r.meta=r.meta||{}; r.datasets=Array.isArray(r.datasets)?r.datasets:[]; r.files=Array.isArray(r.files)?r.files:[]; r.charts=Array.isArray(r.charts)?r.charts:[]; r.tables=Array.isArray(r.tables)?r.tables:[]; r.companies=Array.isArray(r.companies)?r.companies:[]; normalizeDocumentState(r); normalizeReportSchema(r); normalizeMaterialFolders(r); normalizeMaterialsInventory(r); normalizeSourceRegistry(r); normalizeEvidenceCards(r); normalizeCompetitorProfiles(r); normalizePricingFeatureMatrix(r); normalizeAiAssistanceState(r); normalizeAiReviewQueue(r); normalizeAiAuditLog(r); normalizeVersionRetentionPolicy(r); normalizeGovernanceSettings(r); normalizeOnboardingState(r); normalizeFirstReportFlowState(r); r.ci=normalizeCiModel(r.ci); stripLiveMarkdownDerived(r); for(const ds of r.datasets){ds.id=ds.id||uid('ds'); ds.name=ds.name||'Таблиця'; ds.rows=Array.isArray(ds.rows)?ds.rows:[]; ds.warnings=Array.isArray(ds.warnings)?ds.warnings:[]; ds.sourceAnchor=ds.sourceAnchor&&typeof ds.sourceAnchor==='object'?ds.sourceAnchor:{}; ds.extractionConfidence=ds.extractionConfidence||'unknown'; ds.columns=inferColumns(ds.rows);} syncCompaniesFromRows(r); for(const f of r.files){f.id=f.id||uid('file'); f.folder=f.folder||'Загальні'; f.path=f.path||((f.companyId?((company(f.companyId,r)?.folder||'company')+'/'):'')+f.name);} collectMaterialsFromCurrentState(r); buildSourcesFromMaterials(r); normalizeCompetitorProfiles(r); normalizePricingFeatureMatrix(r); return r;}
 function isGenericLiveMarkdownArtifact(x){return String(x?.sourceKind||'')==='markdown-live';}
 function isLiveMarkdownArtifact(x){return ['markdown-live','markdown-fs-video'].includes(String(x?.sourceKind||''));}
 function stripLiveMarkdownDerived(r){
@@ -6837,7 +6922,14 @@ function stripLegacyTrueSavageDemoPack(r){
   return r;
 }
 REPORT=stripLegacyTrueSavageDemoPack(REPORT);
-function inferColumns(rows){const names=[]; for(const row of (rows||[]).slice(0,200)){Object.keys(row||{}).forEach(k=>{if(!String(k).startsWith('_')&&!names.includes(k)) names.push(k)})} return names.map(name=>({name, type:classifyColumnType(name,(rows||[]).map(row=>row?.[name]))}));}
+function inferColumns(rows){
+  if(typeof MRS_ANALYSIS.profileDataset==='function'){
+    return MRS_ANALYSIS.profileDataset({id:'inference',rows:Array.isArray(rows)?rows:[]}).legacyColumns;
+  }
+  const names=[];
+  for(const row of (rows||[])) Object.keys(row||{}).forEach(key=>{if(!String(key).startsWith('_')&&!names.includes(key)) names.push(key);});
+  return names.map(name=>({name,type:classifyColumnType(name,(rows||[]).map(row=>row?.[name]))}));
+}
 function compactColumnName(name){return String(name||'').toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'');}
 function nonEmptyValues(values, limit=240){return (values||[]).filter(v=>v!==''&&v!==null&&v!==undefined).slice(0,limit);}
 function looksLikeDomainValue(value){
@@ -6876,6 +6968,149 @@ function classifyColumnType(name, values){
   const avgLen=sample.reduce((sum,v)=>sum+String(v).length,0)/sample.length;
   if(distinct.size<=Math.max(8,Math.min(60,Math.ceil(sample.length*0.35))) && avgLen<=90) return 'category';
   return 'text';
+}
+function datasetAnalysisSignature(ds){
+  const rows=Array.isArray(ds?.rows)?ds.rows:[];
+  const names=[];
+  for(const row of rows.slice(0,3)) Object.keys(row||{}).forEach(name=>{if(!String(name).startsWith('_')&&!names.includes(name)) names.push(name);});
+  return `${rows.length}|${names.join('|')}|${ds?.updatedAt||ds?.createdAt||''}`;
+}
+function applyPinnedCandidateState(bundle){
+  if(!bundle) return bundle;
+  const chartPins=new Set(REPORT?.meta?.pinnedChartCandidateIds||[]);
+  const tablePins=new Set(REPORT?.meta?.pinnedDerivedTableIds||[]);
+  const storedCharts=(REPORT?.meta?.pinnedChartCandidates||[]).filter(candidate=>candidate?.datasetId===bundle.charts?.datasetId);
+  const storedTables=(REPORT?.meta?.pinnedDerivedTableCandidates||[]).filter(candidate=>candidate?.datasetId===bundle.derivedTables?.datasetId);
+  if(bundle.charts?.candidates){
+    const ids=new Set(bundle.charts.candidates.map(candidate=>candidate.id));
+    for(const candidate of storedCharts) if(!ids.has(candidate.id)) bundle.charts.candidates.push({...candidate});
+  }
+  if(bundle.derivedTables?.candidates){
+    const ids=new Set(bundle.derivedTables.candidates.map(candidate=>candidate.id));
+    for(const candidate of storedTables) if(!ids.has(candidate.id)) bundle.derivedTables.candidates.push({...candidate});
+  }
+  for(const candidate of bundle.charts?.candidates||[]) candidate.pinned=chartPins.has(candidate.id);
+  for(const candidate of bundle.derivedTables?.candidates||[]) candidate.pinned=tablePins.has(candidate.id);
+  return bundle;
+}
+function computeDatasetAnalysis(ds,options={}){
+  const profile=typeof MRS_ANALYSIS.profileDataset==='function'
+    ? MRS_ANALYSIS.profileDataset(ds,options)
+    : {datasetId:ds?.id||'',rowCount:ds?.rows?.length||0,columnCount:columns(ds).length,columns:columns(ds),roles:{metrics:numberCols(ds),categories:textCols(ds),dimensions:[],timelines:[]},quality:{warnings:[]}};
+  const charts=typeof MRS_CHART_CANDIDATES.createChartCandidateRegistry==='function'
+    ? MRS_CHART_CANDIDATES.createChartCandidateRegistry(ds,profile,options)
+    : {datasetId:ds?.id||'',candidateCount:0,candidates:[],recommended:[],diagnostics:[],diagnosticCount:0,metrics:[],dimensions:[],chartTypes:[],aggregations:[]};
+  const derivedTables=typeof MRS_DERIVED_TABLES.createDerivedTableRegistry==='function'
+    ? MRS_DERIVED_TABLES.createDerivedTableRegistry(ds,profile,options)
+    : {datasetId:ds?.id||'',candidateCount:0,candidates:[],recommended:[],diagnostics:[],diagnosticCount:0,types:[]};
+  return applyPinnedCandidateState({signature:datasetAnalysisSignature(ds),profile,charts,derivedTables,computedAt:new Date().toISOString()});
+}
+function getDatasetAnalysis(ds,options={}){
+  if(!ds) return computeDatasetAnalysis({id:'',rows:[]},options);
+  const cached=analysisCache.get(ds.id);
+  const signature=datasetAnalysisSignature(ds);
+  if(!options.refresh&&cached?.signature===signature) return applyPinnedCandidateState(cached);
+  const bundle=computeDatasetAnalysis(ds,options);
+  analysisCache.set(ds.id,bundle);
+  ds.columns=bundle.profile?.legacyColumns||ds.columns||[];
+  return bundle;
+}
+function invalidateDatasetAnalysis(id){if(id) analysisCache.delete(String(id));}
+function activeAnalysisJob(){
+  return [...analysisJobs.values()].find(job=>job.status==='processing')||null;
+}
+function updateAnalysisJob(jobId,patch){
+  const current=analysisJobs.get(jobId)||{jobId,status:'processing',progress:0,stage:'starting',processed:0,total:0,cancelable:true};
+  Object.assign(current,patch||{});analysisJobs.set(jobId,current);
+  const nowTime=Date.now();
+  if(!current.lastRenderAt||nowTime-current.lastRenderAt>120||current.status!=='processing'){
+    current.lastRenderAt=nowTime;
+    if(analytics?.isConnected) renderAnalytics();
+  }
+  return current;
+}
+function cancelAnalysisJob(jobId){
+  const job=analysisJobs.get(jobId);
+  if(!job||job.status!=='processing') return;
+  job.controller?.abort?.();
+  if(typeof job.cancel==='function') job.cancel(); else job.worker?.terminate?.();
+  updateAnalysisJob(jobId,{status:'cancelled',stage:'cancelled',cancelable:false,errorCode:'ANALYSIS_CANCELLED'});
+}
+function analyzeDatasetAsync(ds,options={}){
+  if(!ds) return Promise.resolve(null);
+  const jobId=options.jobId||uid('analysis');
+  const total=ds.rows?.length||0;
+  const job=updateAnalysisJob(jobId,{kind:'dataset',label:ds.name||'Table',datasetId:ds.id,status:'processing',stage:'profiling',progress:0,processed:0,total,cancelable:true});
+  const finish=bundle=>{
+    if(!bundle) return null;
+    bundle.signature=datasetAnalysisSignature(ds);
+    analysisCache.set(ds.id,applyPinnedCandidateState(bundle));
+    ds.columns=bundle.profile?.legacyColumns||ds.columns||[];
+    updateAnalysisJob(jobId,{status:'complete',stage:'complete',progress:1,processed:total,total,cancelable:false});
+    setTimeout(()=>{analysisJobs.delete(jobId);if(analytics?.isConnected)renderAnalytics();},500);
+    return bundle;
+  };
+  const fallback=(warningCode='')=>new Promise(resolve=>{
+    let cancelled=false,settled=false;
+    const yieldToMain=()=>new Promise(next=>setTimeout(next,0));
+    job.cancel=()=>{if(settled)return;cancelled=true;settled=true;resolve(null);};
+    (async()=>{
+      await yieldToMain();
+      if(cancelled) return;
+      updateAnalysisJob(jobId,{stage:warningCode?'worker_unavailable_fallback':'profiling',progress:.08});
+      const profile=typeof MRS_ANALYSIS.profileDataset==='function'?MRS_ANALYSIS.profileDataset(ds,options):computeDatasetAnalysis(ds,options).profile;
+      if(warningCode&&profile?.quality){profile.quality.warnings=[...(profile.quality.warnings||[]),{code:warningCode,message:'Background analysis was unavailable; the browser used a yielded main-thread fallback.'}];}
+      await yieldToMain();
+      if(cancelled) return;
+      updateAnalysisJob(jobId,{stage:'chart_candidates',progress:.58,processed:Math.round(total*.58)});
+      const charts=typeof MRS_CHART_CANDIDATES.createChartCandidateRegistry==='function'?MRS_CHART_CANDIDATES.createChartCandidateRegistry(ds,profile,options):{candidates:[],recommended:[],diagnostics:[]};
+      await yieldToMain();
+      if(cancelled) return;
+      updateAnalysisJob(jobId,{stage:'derived_tables',progress:.82,processed:Math.round(total*.82)});
+      const derivedTables=typeof MRS_DERIVED_TABLES.createDerivedTableRegistry==='function'?MRS_DERIVED_TABLES.createDerivedTableRegistry(ds,profile,options):{candidates:[],recommended:[],diagnostics:[]};
+      if(cancelled) return;
+      settled=true;resolve(finish({profile,charts,derivedTables,warnings:warningCode?[warningCode]:[]}));
+    })().catch(()=>{if(!settled){settled=true;resolve(finish(computeDatasetAnalysis(ds,options)));}});
+  });
+  if(typeof Worker==='undefined'||total<1500) return fallback(typeof Worker==='undefined'&&total>=1500?'WORKER_UNAVAILABLE':'');
+  return new Promise(resolve=>{
+    let settled=false;
+    try{
+      const worker=new Worker(new URL(ANALYSIS_WORKER_SRC,document.baseURI));
+      job.worker=worker;
+      const cleanup=()=>{try{worker.terminate();}catch(e){}};
+      job.cancel=()=>{if(settled)return;settled=true;cleanup();resolve(null);};
+      worker.onmessage=event=>{
+        const message=event.data||{};
+        if(message.jobId!==jobId||settled) return;
+        if(message.type==='progress'){
+          updateAnalysisJob(jobId,{stage:message.stage||'processing',progress:Number(message.progress)||0,processed:Math.round(total*(Number(message.progress)||0)),total});
+        }else if(message.type==='result'){
+          settled=true;cleanup();resolve(finish({profile:message.profile,charts:message.charts,derivedTables:message.derivedTables}));
+        }else if(message.type==='error'){
+          settled=true;cleanup();fallback('WORKER_UNAVAILABLE').then(resolve);
+        }
+      };
+      worker.onerror=()=>{if(settled)return;settled=true;cleanup();fallback('WORKER_UNAVAILABLE').then(resolve);};
+      worker.postMessage({type:'analyze_dataset',jobId,dataset:ds,options:{sampleSize:options.sampleSize||1200,recommendedLimit:10}});
+    }catch(error){fallback('WORKER_UNAVAILABLE').then(resolve);}
+  });
+}
+function chartCandidateById(id,dsId=''){
+  const datasets=dsId?[dataset(dsId)].filter(Boolean):(REPORT.datasets||[]);
+  for(const ds of datasets){
+    const found=getDatasetAnalysis(ds).charts?.candidates?.find(candidate=>candidate.id===id);
+    if(found) return {candidate:found,ds,bundle:getDatasetAnalysis(ds)};
+  }
+  return null;
+}
+function derivedTableCandidateById(id,dsId=''){
+  const datasets=dsId?[dataset(dsId)].filter(Boolean):(REPORT.datasets||[]);
+  for(const ds of datasets){
+    const found=getDatasetAnalysis(ds).derivedTables?.candidates?.find(candidate=>candidate.id===id);
+    if(found) return {candidate:found,ds,bundle:getDatasetAnalysis(ds)};
+  }
+  return null;
 }
 function clampWorkspaceNumber(value,min,max,fallback){
   const n=Number(value);
@@ -7056,74 +7291,45 @@ function formatCompactNumber(value){
 }
 function analyzeTable(ds){
   const rows=Array.isArray(ds?.rows)?ds.rows:[];
-  const inferred=inferColumns(rows);
-  const cols=inferred.length?inferred:columns(ds);
-  const names=cols.map(c=>c.name);
-  const companyCol=findColumnName(names,['company','company_name','brand','name','competitor']);
-  const segmentCol=findColumnName(names,['segment']);
-  const priorityCol=findColumnName(names,['priority']);
-  const threatCol=findColumnName(names,['seo_threat_level','threat_level']);
-  const trafficCol=findColumnName(names,['seo_total_estimated_traffic','total_estimated_traffic','traffic']);
-  const threatScoreCol=findColumnName(names,['seo_threat_score','threat_score']);
-  const numericCols=cols.filter(c=>c.type==='number');
-  const categoryCols=cols.filter(c=>['category','status','boolean'].includes(c.type));
-  return {
-    ds, rows, columns:cols, names, companyCol, segmentCol, priorityCol, threatCol, trafficCol, threatScoreCol,
-    numericCols, categoryCols,
-    priorityCounts:countByColumn(rows,priorityCol),
-    threatCounts:countByColumn(rows,threatCol),
-    segmentCounts:countByColumn(rows,segmentCol),
-    totalTraffic:trafficCol?sumColumn(rows,trafficCol):0
-  };
+  const bundle=getDatasetAnalysis(ds);
+  const profile=bundle.profile||{};
+  const cols=(profile.legacyColumns||inferColumns(rows)).map(column=>{
+    const full=(profile.columns||[]).find(item=>item.name===column.name)||{};
+    return {...column,...full,type:column.type||MRS_ANALYSIS.legacyColumnType?.(full)||full.physicalType||'unknown'};
+  });
+  const names=cols.map(column=>column.name);
+  const numericCols=cols.filter(column=>column.analyticalRole==='metric');
+  const categoryCols=cols.filter(column=>['category','dimension','boolean'].includes(column.analyticalRole));
+  return {ds,rows,columns:cols,names,numericCols,categoryCols,profile,bundle,quality:profile.quality||{},chartRegistry:bundle.charts,derivedTableRegistry:bundle.derivedTables};
 }
 function tableSummaryCards(analysis){
   const cards=[
     ['Rows',fmt(analysis.rows.length),'Detected records'],
     ['Columns',fmt(analysis.columns.length),'Detected fields'],
-    ['Numeric columns',fmt(analysis.numericCols.length),'Ready for sums/top lists'],
-    ['Category/status columns',fmt(analysis.categoryCols.length),'Ready for filters']
+    ['Numeric metrics',fmt(analysis.numericCols.length),'Identifiers excluded'],
+    ['Dimensions',fmt(analysis.categoryCols.length),'Categories and labels']
   ];
-  if(analysis.companyCol) cards.push(['Companies',fmt(distinctCount(analysis.rows,analysis.companyCol)),analysis.companyCol]);
-  if(analysis.segmentCol) cards.push(['Segments',fmt(distinctCount(analysis.rows,analysis.segmentCol)),analysis.segmentCol]);
-  for(const [label,count] of [...analysis.priorityCounts.entries()].sort((a,b)=>String(a[0]).localeCompare(String(b[0])))){
-    if(label!=='Blank') cards.push([`Priority ${label}`,fmt(count),analysis.priorityCol]);
-  }
-  for(const [label,count] of [...analysis.threatCounts.entries()].sort((a,b)=>String(a[0]).localeCompare(String(b[0])))){
-    if(label!=='Blank') cards.push([`SEO ${label} threat`,fmt(count),analysis.threatCol]);
-  }
-  if(analysis.trafficCol) cards.push(['Total estimated traffic',formatCompactNumber(analysis.totalTraffic),analysis.trafficCol]);
+  cards.push(['Chart candidates',fmt(analysis.chartRegistry?.candidateCount||0),'Valid deterministic candidates']);
+  cards.push(['Generated tables',fmt(analysis.derivedTableRegistry?.candidateCount||0),'Available on demand']);
+  const highMissing=analysis.quality?.highMissingColumnCount||0;
+  if(highMissing) cards.push(['High missingness',fmt(highMissing),'Columns above 50% missing']);
   return cards;
 }
 function autoChartConfigsForTable(ds, analysis=analyzeTable(ds)){
-  const charts=[];
-  const add=(key,title,type,x,y,agg='sum',top=10)=>{
-    if(!x || (agg!=='count'&&!y)) return;
-    charts.push({id:`auto:${ds.id}:${key}`,autoKey:key,title,type,datasetId:ds.id,x,y,agg,sort:type==='line'?'none':'desc',top,sourceFileId:ds.sourceFileId||''});
-  };
-  add('rows-by-segment','Rows by segment','bar',analysis.segmentCol,'__count','count',12);
-  add('priority-distribution','Priority distribution','bar',analysis.priorityCol,'__count','count',12);
-  add('seo-threat-level-distribution','SEO threat level distribution','bar',analysis.threatCol,'__count','count',12);
-  add('top-estimated-traffic','Top 10 by estimated traffic','bar',analysis.companyCol||analysis.names[0],analysis.trafficCol,'sum',10);
-  add('top-threat-score','Top 10 by threat score','bar',analysis.companyCol||analysis.names[0],analysis.threatScoreCol,'sum',10);
-  add('traffic-by-segment','Traffic by segment','bar',analysis.segmentCol,analysis.trafficCol,'sum',12);
-  return charts;
+  const candidates=analysis?.chartRegistry?.recommended||getDatasetAnalysis(ds).charts?.recommended||[];
+  return candidates.map(candidate=>MRS_CHART_CANDIDATES.candidateToChartConfig(candidate));
 }
 function simpleInsightsForTable(analysis){
-  const out=[];
-  const high=[...analysis.threatCounts.entries()].find(([k])=>/^high$/i.test(String(k||'')));
-  const medium=[...analysis.threatCounts.entries()].find(([k])=>/^medium$/i.test(String(k||'')));
-  if(high) out.push(`${fmt(high[1])} rows have high SEO threat level.`);
-  if(medium) out.push(`${fmt(medium[1])} rows have medium SEO threat level.`);
-  if(analysis.trafficCol){
-    const company=analysis.companyCol||analysis.names[0];
-    const top=[...(analysis.rows||[])].filter(row=>isNum(row?.[analysis.trafficCol])).sort((a,b)=>num(b?.[analysis.trafficCol])-num(a?.[analysis.trafficCol]))[0];
-    if(top) out.push(`${String(top?.[company]||'Top row')} has the highest estimated SEO traffic in this table.`);
+  const out=[`${fmt(analysis.columns.length)} columns detected.`,`${fmt(analysis.numericCols.length)} numeric metrics detected.`];
+  const highMissing=analysis.quality?.highMissingColumnCount||0;
+  if(highMissing) out.push(`${fmt(highMissing)} columns have more than 50% missing values.`);
+  const category=analysis.categoryCols.find(column=>(column.distinctCount||0)>=2&&(column.distinctCount||0)<=30);
+  if(category){
+    const top=[...countByColumn(analysis.rows,category.name).entries()].filter(([label])=>label!=='Blank').sort((a,b)=>b[1]-a[1])[0];
+    if(top) out.push(`"${top[0]}" is the largest value in ${category.name}: ${fmt(top[1])} rows.`);
   }
-  if(analysis.segmentCol && analysis.segmentCounts.size){
-    const top=[...analysis.segmentCounts.entries()].sort((a,b)=>b[1]-a[1])[0];
-    if(top) out.push(`Segment "${top[0]}" has the most rows: ${fmt(top[1])}.`);
-  }
-  if(!out.length) out.push('Upload or select a table to generate rule-based insights from detected columns.');
+  if(!(analysis.chartRegistry?.candidates||[]).some(candidate=>candidate.candidateType==='metric_metric')) out.push('This table has insufficient compatible data for a correlation scatter chart.');
+  if(!(analysis.chartRegistry?.candidateCount||0)) out.push('No meaningful chart candidates detected for this table.');
   return out.slice(0,5);
 }
 function renderSimpleEmptyState(){
@@ -7141,13 +7347,115 @@ function renderSimpleEmptyState(){
     </div>
   </div>`;
 }
+function sourceAnchorText(source){
+  const anchor=source?.sourceAnchor||source||{};
+  const parts=[];
+  if(anchor.sheet||source?.sourceSheetName) parts.push(`Sheet: ${anchor.sheet||source.sourceSheetName}`);
+  if(anchor.page) parts.push(`Page: ${anchor.page}`);
+  if(anchor.section) parts.push(`Section: ${anchor.section}`);
+  if(anchor.startRow!=null) parts.push(`Rows: ${anchor.startRow}${anchor.endRow&&anchor.endRow!==anchor.startRow?`–${anchor.endRow}`:''}`);
+  if(anchor.startColumn!=null) parts.push(`Columns: ${anchor.startColumn}${anchor.endColumn&&anchor.endColumn!==anchor.startColumn?`–${anchor.endColumn}`:''}`);
+  if(anchor.jsonPath) parts.push(`Path: ${anchor.jsonPath}`);
+  return parts.join(' · ')||'Dataset source';
+}
+function analysisProgressHtml(){
+  const job=activeAnalysisJob();
+  if(!job) return '';
+  const percent=Math.max(0,Math.min(100,Math.round((Number(job.progress)||0)*100)));
+  const detail=job.total?`${fmt(job.processed||0)} / ${fmt(job.total)}`:`${percent}%`;
+  return `<div class="analysisProgress" data-analysis-progress><div><b>Analyzing ${esc(job.label||'data')}</b><span>${esc(String(job.stage||'processing').replace(/_/g,' '))} · ${esc(detail)}</span></div><div class="analysisProgressTrack"><i style="width:${percent}%"></i></div>${job.cancelable?`<button class="btn small" data-cancel-analysis="${esc(job.jobId)}">Cancel</button>`:''}</div>`;
+}
+function chartRegistryFiltersHtml(registry,ds){
+  const filters=state.simpleChartFilters||{};
+  const options=(values,current)=>['all',...new Set(values||[])].map(value=>`<option value="${esc(value)}" ${String(current||'all')===String(value)?'selected':''}>${esc(value==='all'?'All':value)}</option>`).join('');
+  const sourceOptions=(REPORT.datasets||[]).filter(item=>Array.isArray(item.rows)&&item.rows.length).map(item=>`<option value="${esc(item.id)}" ${item.id===ds.id?'selected':''}>${esc(item.name||'Table')}</option>`).join('');
+  return `<div class="chartRegistryFilters">
+    <input id="simpleChartSearch" type="search" placeholder="Search charts..." value="${esc(filters.search||'')}">
+    <label>Metric<select id="simpleChartMetric">${options(registry.metrics,filters.metric)}</select></label>
+    <label>Dimension<select id="simpleChartDimension">${options(registry.dimensions,filters.dimension)}</select></label>
+    <label>Chart type<select id="simpleChartType">${options(registry.chartTypes,filters.chartType)}</select></label>
+    <label>Aggregation<select id="simpleChartAggregation">${options(registry.aggregations,filters.aggregation)}</select></label>
+    <label>Source table<select id="simpleChartSource">${sourceOptions}</select></label>
+    <label>Confidence<select id="simpleChartConfidence">${options(['unknown','low','medium','high'],filters.confidence)}</select></label>
+  </div>`;
+}
+function candidateConfidence(candidate,ds){return candidate?.confidence||candidate?.transformation?.confidence||ds?.extractionConfidence||'unknown';}
+function renderCandidateMeta(candidate,ds,opts={}){
+  const pinned=(REPORT.meta?.pinnedChartCandidateIds||[]).includes(candidate.id);
+  const source=fileRec(candidate.sourceFileId||ds.sourceFileId);
+  if(opts.diagnostic){
+    return `<article class="chartCandidateCard diagnostic"><div><b>${esc(candidate.title||candidate.column||'Skipped candidate')}</b><span class="badge">Skipped</span></div><p>${esc(candidate.reason||candidate.validation?.reason||'Invalid candidate')}</p><small>${esc((candidate.columns||[candidate.column]).filter(Boolean).join(' · '))}</small></article>`;
+  }
+  return `<article class="chartCandidateCard">
+    <div class="chartCandidateTitle"><b>${esc(candidate.title)}</b><span class="badge">${esc(candidate.chartType)}</span></div>
+    <dl><div><dt>Dimension</dt><dd>${esc((candidate.dimensionKeys||[]).join(', ')||'—')}</dd></div><div><dt>Metric</dt><dd>${esc((candidate.metricKeys||[]).join(', ')||'Rows')}</dd></div><div><dt>Aggregation</dt><dd>${esc(candidate.aggregation||'none')}</dd></div><div><dt>Confidence</dt><dd>${esc(candidateConfidence(candidate,ds))}</dd></div></dl>
+    <div class="chartCandidateSource">${esc(source?.name||ds.name)} · ${esc(sourceAnchorText(candidate))}</div>
+    <div class="chartCandidateActions"><button class="btn small primary" data-simple-open-chart="${esc(candidate.id)}">Preview</button><button class="btn small adminOnly" data-pin-chart="${esc(candidate.id)}">${pinned?'Unpin':'Pin'}</button><button class="btn small" data-chart-source="${esc(ds.id)}">Source</button></div>
+  </article>`;
+}
+function renderRecommendedCandidate(candidate,ds){
+  const config=MRS_CHART_CANDIDATES.candidateToChartConfig(candidate);
+  const pinned=(REPORT.meta?.pinnedChartCandidateIds||[]).includes(candidate.id);
+  return `<article class="autoChartCard" title="${esc(candidate.title)}"><div class="widgetHead"><b>${esc(candidate.title)}</b><span class="badge">${esc(candidate.chartType)}</span></div><div class="widgetBody">${renderChart(config)}</div><div class="chartCandidateActions"><button class="btn small primary" data-simple-open-chart="${esc(candidate.id)}">Preview</button><button class="btn small adminOnly" data-pin-chart="${esc(candidate.id)}">${pinned?'Unpin':'Pin'}</button></div></article>`;
+}
+function selectedFamilyCandidate(family){
+  const selectedId=state.simpleChartFamilySelections?.[family.id];
+  return family.variants.find(candidate=>candidate.id===selectedId)||family.defaultCandidate||family.variants[0];
+}
+function renderCandidateFamily(family,ds){
+  const candidate=selectedFamilyCandidate(family),pinned=(REPORT.meta?.pinnedChartCandidateIds||[]).includes(candidate.id);
+  const source=fileRec(candidate.sourceFileId||ds.sourceFileId);
+  const variants=family.variants||[];
+  const selector=variants.length>1?`<label class="chartFamilyAggregation">Aggregation<select data-chart-family-aggregation="${esc(family.id)}">${variants.map(variant=>`<option value="${esc(variant.id)}" ${variant.id===candidate.id?'selected':''}>${esc(variant.aggregation||'none')}</option>`).join('')}</select></label>`:`<div><dt>Aggregation</dt><dd>${esc(candidate.aggregation||'none')}</dd></div>`;
+  return `<article class="chartCandidateCard chartCandidateFamily" data-chart-family="${esc(family.id)}">
+    <div class="chartCandidateTitle"><b>${esc(family.title)}</b><span class="badge">${esc(family.chartType)}</span></div>
+    <div class="chartFamilyVariantTitle">${esc(candidate.title)}</div>
+    <dl><div><dt>Dimension</dt><dd>${esc((candidate.dimensionKeys||[]).join(', ')||'—')}</dd></div><div><dt>Metric</dt><dd>${esc((candidate.metricKeys||[]).join(', ')||'Rows')}</dd></div>${selector}<div><dt>Confidence</dt><dd>${esc(candidateConfidence(candidate,ds))}</dd></div></dl>
+    <div class="chartCandidateSource">${esc(source?.name||ds.name)} · ${esc(sourceAnchorText(candidate))}</div>
+    <div class="chartCandidateActions"><span class="tiny">${fmt(variants.length)} variant${variants.length===1?'':'s'}</span><button class="btn small primary" data-simple-open-chart="${esc(candidate.id)}">Preview</button><button class="btn small adminOnly" data-pin-chart="${esc(candidate.id)}">${pinned?'Unpin':'Pin'}</button><button class="btn small" data-chart-source="${esc(ds.id)}">Source</button></div>
+  </article>`;
+}
+function renderSelectedChartPreview(ds){
+  const selectedId=state.simpleChartSelectedId;
+  if(!selectedId) return '';
+  const resolved=chartCandidateById(selectedId);
+  if(!resolved||resolved.ds?.id!==ds.id) return '';
+  const {candidate}=resolved,config=MRS_CHART_CANDIDATES.candidateToChartConfig(candidate);
+  const pinned=(REPORT.meta?.pinnedChartCandidateIds||[]).includes(candidate.id);
+  return `<section class="chartSelectedPreview" data-selected-chart-preview="${esc(candidate.id)}"><div class="zoneHead"><div><b>Selected preview</b><span class="tiny">${esc(candidate.title)}</span></div><button class="btn small" data-close-chart-preview="1">Close</button></div><article class="autoChartCard"><div class="widgetHead"><b>${esc(candidate.title)}</b><span class="badge">${esc(candidate.chartType)}</span><span class="pill">Confidence: ${esc(candidateConfidence(candidate,ds))}</span></div><div class="widgetBody">${renderChart(config)}</div><div class="chartCandidateActions"><button class="btn small" data-chart-source="${esc(ds.id)}">Source</button><button class="btn small adminOnly" data-pin-chart="${esc(candidate.id)}">${pinned?'Unpin':'Pin'}</button></div></article></section>`;
+}
+function renderChartRegistry(ds,analysis){
+  const registry=analysis.chartRegistry||{candidates:[],recommended:[],diagnostics:[],candidateCount:0};
+  const dashboardView=state.simpleChartDashboardView||'recommended';
+  const catalogOpen=Boolean(state.simpleChartCatalogOpen),catalogView=state.simpleChartCatalogView||'all';
+  const pinnedIds=REPORT.meta?.pinnedChartCandidateIds||[];
+  const dashboardResult=MRS_CHART_CANDIDATES.queryChartCandidates(registry,{view:dashboardView,page:1,pageSize:dashboardView==='recommended'?12:20,pinnedIds});
+  const allCount=registry.lazy?`~${fmt(registry.candidateCount||0)}`:fmt(registry.candidateCount||0);
+  const pinnedCount=registry.candidates?.filter(candidate=>pinnedIds.includes(candidate.id)).length||0;
+  const tabs=[['recommended','Recommended',fmt(registry.recommended?.length||0)],['all','All charts',allCount],['pinned','Pinned',fmt(pinnedCount)],['diagnostics','Diagnostics',fmt(registry.diagnosticCount||0)]];
+  const active=id=>(id==='all'||id==='diagnostics')?catalogOpen&&catalogView===id:!catalogOpen&&dashboardView===id;
+  const tabHtml=`<div class="chartRegistryTabs" role="tablist">${tabs.map(([id,label,count])=>`<button class="btn small ${active(id)?'primary':''}" role="tab" aria-selected="${active(id)}" data-chart-view="${id}">${esc(label)} <span>${esc(count)}</span></button>`).join('')}</div>`;
+  const dashboardEmpty=dashboardView==='pinned'?'Pin charts from Recommended or All charts to keep them here.':'No meaningful chart candidates detected for this table.';
+  const dashboard=`<section class="chartVisualWorkspace" data-chart-workspace="${esc(dashboardView)}"><div class="zoneHead"><b>${dashboardView==='pinned'?'Pinned charts':'Recommended charts'}</b><span class="tiny">actual rendered charts</span></div><div class="autoChartGrid">${dashboardResult.items.map(candidate=>renderRecommendedCandidate(candidate,ds)).join('')||`<div class="empty">${esc(dashboardEmpty)}</div>`}</div></section>`;
+  let catalog='';
+  if(catalogOpen){
+    const query={...(state.simpleChartFilters||{}),view:catalogView,page:state.simpleChartPage||1,pageSize:24,pinnedIds};
+    const result=catalogView==='all'?MRS_CHART_CANDIDATES.queryChartCandidateFamilies(registry,query):MRS_CHART_CANDIDATES.queryChartCandidates(registry,query);
+    const cards=catalogView==='all'?result.items.map(family=>renderCandidateFamily(family,ds)).join(''):result.items.map(item=>renderCandidateMeta(item,ds,{diagnostic:true})).join('');
+    const pager=result.total>result.pageSize?`<div class="chartRegistryPager"><span>Showing ${fmt(result.start)}–${fmt(result.end)} of ${fmt(result.total)} ${catalogView==='all'?'families':'diagnostics'}</span><div><button class="btn small" data-chart-page="${Math.max(1,result.page-1)}" ${result.page<=1?'disabled':''}>Previous</button><button class="btn small" data-chart-page="${Math.min(result.pageCount,result.page+1)}" ${result.page>=result.pageCount?'disabled':''}>Next</button></div></div>`:'';
+    const countNote=catalogView==='all'?`<span class="tiny">${fmt(result.rawTotal)} candidates · ${fmt(result.total)} families</span>`:'';
+    const lazyNote=registry.lazy&&catalogView==='all'?`<div class="hint">Approximately ${fmt(registry.candidateCount||0)} valid combinations are available. ${fmt(registry.materializedCandidateCount||0)} metadata records are materialized; use Metric, Dimension, or Search to create the rest on demand.</div>`:'';
+    catalog=`<section class="chartCatalog" data-chart-catalog="${esc(catalogView)}"><div class="zoneHead"><div><b>${catalogView==='all'?'Chart catalog':'Chart diagnostics'}</b>${countNote}</div><button class="btn small" data-close-chart-catalog="1">Close</button></div>${catalogView==='all'?chartRegistryFiltersHtml(registry,ds):''}${lazyNote}<div class="chartCandidateList">${cards||'<div class="empty">No candidates match these filters.</div>'}</div>${pager}</section>`;
+  }
+  return `${tabHtml}${renderSelectedChartPreview(ds)}${dashboard}${catalog}`;
+}
 function renderSimpleDashboard(ds){
   const analysis=analyzeTable(ds);
   const cards=tableSummaryCards(analysis);
-  const charts=autoChartConfigsForTable(ds,analysis);
   const insights=simpleInsightsForTable(analysis);
   const source=fileRec(ds.sourceFileId);
   analytics.innerHTML=`<div class="simpleDashboard" data-simple-dashboard>
+    ${analysisProgressHtml()}
     <div class="simpleDashboardHeader">
       <div>
         <div class="tiny">Active table</div>
@@ -7163,8 +7471,8 @@ function renderSimpleDashboard(ds){
     <div class="simpleSummaryCards">${cards.map(([label,value,sub])=>`<div class="simpleStat"><span>${esc(label)}</span><b>${esc(value)}</b><small>${esc(sub||'')}</small></div>`).join('')}</div>
     <div class="simpleDashboardSplit">
       <section class="simpleChartsPanel">
-        <div class="zoneHead"><b>Auto charts</b><span class="tiny">${charts.length}</span></div>
-        <div class="autoChartGrid">${charts.map(ch=>`<button class="autoChartCard" data-simple-open-chart="${esc(ch.id)}" title="${esc(ch.title)}"><div class="widgetHead"><b>${esc(ch.title)}</b><span class="badge">${esc(ch.type)}</span></div><div class="widgetBody">${renderChart(ch)}</div></button>`).join('')||'<div class="empty">No matching chart columns detected.</div>'}</div>
+        <div class="zoneHead"><b>Chart candidates</b><span class="tiny">${fmt(analysis.chartRegistry?.candidateCount||0)}</span></div>
+        ${renderChartRegistry(ds,analysis)}
       </section>
       <section class="simpleInsightsPanel">
         <div class="zoneHead"><b>Quick insights</b><span class="tiny">rule-based</span></div>
@@ -7174,24 +7482,75 @@ function renderSimpleDashboard(ds){
   </div>`;
 }
 function simpleChartById(id){
-  const parts=String(id||'').split(':');
-  if(parts[0]!=='auto') return null;
-  const dsId=parts[1], key=parts.slice(2).join(':');
-  const ds=dataset(dsId);
-  if(!ds) return null;
-  return autoChartConfigsForTable(ds).find(ch=>ch.autoKey===key) || null;
+  const resolved=chartCandidateById(id);
+  return resolved?MRS_CHART_CANDIDATES.candidateToChartConfig(resolved.candidate):null;
 }
 function openSimpleChartView(chartId){
-  const ch=simpleChartById(chartId);
-  if(!ch) return;
-  const ds=dataset(ch.datasetId);
+  const resolved=chartCandidateById(chartId);
+  if(!resolved) return;
+  const {candidate,ds,bundle}=resolved;
+  const ch=MRS_CHART_CANDIDATES.candidateToChartConfig(candidate);
   addTab('chart:'+ch.id,ch.title,'chart',ch.id);
   state.activeFile='chart:'+ch.id;
-  const rows=prepSeries(ch).map(item=>({label:item.label,value:item.value}));
-  reader.innerHTML=`<div class="previewToolbar"><b>${esc(ch.title)}</b><span class="pill">Auto chart</span><span class="pill">${esc(ds?.name||'Table')}</span><button class="btn small" id="chartOpenSource">Open table</button></div><div class="widget simpleChartLarge"><div class="widgetBody">${renderChart(ch)}</div></div><div class="simpleTableWrap"><table class="previewTable"><thead><tr><th>${esc(ch.x)}</th><th>${esc(ch.agg==='count'?'Rows':ch.y)}</th></tr></thead><tbody>${rows.map(row=>`<tr><td>${esc(row.label)}</td><td class="num">${esc(fmt(row.value))}</td></tr>`).join('')}</tbody></table></div>`;
+  const materialized=MRS_CHART_CANDIDATES.materializeChartCandidate(candidate,ds,bundle.profile);
+  let rows=[],columnsOut=[];
+  if(materialized.points){columnsOut=[...(candidate.metricKeys||[])];rows=materialized.points.slice(0,200).map(point=>({[columnsOut[0]]:point.x,[columnsOut[1]]:point.y,label:point.label}));}
+  else if(materialized.series){columnsOut=['series','period','value'];rows=materialized.series.flatMap(series=>series.items.map(item=>({series:series.name,period:item.label,value:item.value}))).slice(0,300);}
+  else {columnsOut=['label','value'];rows=(materialized.items||[]).map(item=>({label:item.label,value:item.value}));}
+  const confidence=candidateConfidence(candidate,ds);
+  reader.innerHTML=`<div class="previewToolbar"><b>${esc(ch.title)}</b><span class="pill">${esc(ch.type)}</span><span class="pill">Confidence: ${esc(confidence)}</span><span class="pill">${esc(ds?.name||'Table')}</span><button class="btn small" id="chartOpenSource">Source</button><button class="btn small adminOnly" id="chartPinBtn">${(REPORT.meta?.pinnedChartCandidateIds||[]).includes(candidate.id)?'Unpin':'Pin'}</button></div><div class="sourceAnchorBar">${esc(sourceAnchorText(candidate))}</div><div class="widget simpleChartLarge"><div class="widgetBody">${renderChart(ch)}</div></div><div class="simpleTableWrap"><table class="previewTable"><thead><tr>${columnsOut.map(column=>`<th>${esc(column)}</th>`).join('')}</tr></thead><tbody>${rows.map(row=>`<tr>${columnsOut.map(column=>`<td class="${Number.isFinite(row[column])?'num':''}">${esc(Number.isFinite(row[column])?fmt(row[column]):row[column]??'')}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
   $('chartOpenSource')?.addEventListener('click',()=>openDataset(ch.datasetId,ch.sourceFileId));
+  $('chartPinBtn')?.addEventListener('click',()=>{togglePinnedChartCandidate(candidate.id);openSimpleChartView(candidate.id);});
   renderReaderTabs();
   renderSide();
+}
+function togglePinnedChartCandidate(candidateId){
+  if(!guardAdmin()) return;
+  REPORT.meta=REPORT.meta||{};
+  const pins=new Set(REPORT.meta.pinnedChartCandidateIds||[]);
+  const stored=Array.isArray(REPORT.meta.pinnedChartCandidates)?REPORT.meta.pinnedChartCandidates:[];
+  if(pins.has(candidateId)){
+    pins.delete(candidateId);
+    REPORT.meta.pinnedChartCandidates=stored.filter(candidate=>candidate.id!==candidateId);
+  }else{
+    pins.add(candidateId);
+    const resolved=chartCandidateById(candidateId);
+    REPORT.meta.pinnedChartCandidates=resolved?[...stored.filter(candidate=>candidate.id!==candidateId),JSON.parse(JSON.stringify(resolved.candidate))]:stored;
+  }
+  REPORT.meta.pinnedChartCandidateIds=[...pins];
+  for(const bundle of analysisCache.values()) applyPinnedCandidateState(bundle);
+  schedulePersist();renderAnalytics();renderSide();
+}
+function togglePinnedDerivedTable(candidateId){
+  if(!guardAdmin()) return;
+  REPORT.meta=REPORT.meta||{};
+  const pins=new Set(REPORT.meta.pinnedDerivedTableIds||[]);
+  const stored=Array.isArray(REPORT.meta.pinnedDerivedTableCandidates)?REPORT.meta.pinnedDerivedTableCandidates:[];
+  if(pins.has(candidateId)){
+    pins.delete(candidateId);
+    REPORT.meta.pinnedDerivedTableCandidates=stored.filter(candidate=>candidate.id!==candidateId);
+  }else{
+    pins.add(candidateId);
+    const resolved=derivedTableCandidateById(candidateId);
+    REPORT.meta.pinnedDerivedTableCandidates=resolved?[...stored.filter(candidate=>candidate.id!==candidateId),JSON.parse(JSON.stringify(resolved.candidate))]:stored;
+  }
+  REPORT.meta.pinnedDerivedTableIds=[...pins];
+  for(const bundle of analysisCache.values()) applyPinnedCandidateState(bundle);
+  schedulePersist();renderSide();
+}
+function openDerivedTableView(candidateId){
+  const resolved=derivedTableCandidateById(candidateId);
+  if(!resolved||typeof MRS_DERIVED_TABLES.materializeDerivedTableCandidate!=='function') return;
+  const {candidate,ds,bundle}=resolved;
+  const materialized=MRS_DERIVED_TABLES.materializeDerivedTableCandidate(candidate,ds,bundle.profile);
+  addTab('derived:'+candidate.id,candidate.title,'derived-table',candidate.id);
+  state.activeFile='derived:'+candidate.id;
+  const columnsOut=materialized.columns.slice(0,80),visibleRows=materialized.rows.slice(0,100);
+  const pinned=(REPORT.meta?.pinnedDerivedTableIds||[]).includes(candidate.id);
+  reader.innerHTML=`<div class="previewToolbar"><b>${esc(candidate.title)}</b><span class="pill">Generated table</span><span class="pill">${fmt(materialized.rows.length)} rows</span><button class="btn small" id="derivedOpenSource">Source</button><button class="btn small adminOnly" id="derivedPinBtn">${pinned?'Unpin':'Pin'}</button></div><div class="sourceAnchorBar">${esc(sourceAnchorText(candidate))} · ${esc(candidate.candidateType)}</div><div class="simpleTableWrap"><table class="previewTable simplePreviewTable"><thead><tr>${columnsOut.map(column=>`<th>${esc(column)}</th>`).join('')}</tr></thead><tbody>${visibleRows.map(row=>`<tr>${columnsOut.map(column=>`<td class="${Number.isFinite(row?.[column])?'num':''}">${esc(Number.isFinite(row?.[column])?fmt(row[column]):row?.[column]??'')}</td>`).join('')}</tr>`).join('')}</tbody></table></div>${materialized.rows.length>visibleRows.length?`<div class="tiny">Showing ${fmt(visibleRows.length)} of ${fmt(materialized.rows.length)} rows.</div>`:''}`;
+  $('derivedOpenSource')?.addEventListener('click',()=>openDataset(ds.id,ds.sourceFileId));
+  $('derivedPinBtn')?.addEventListener('click',()=>{togglePinnedDerivedTable(candidate.id);openDerivedTableView(candidate.id);});
+  renderReaderTabs();renderSide();
 }
 
 function renderAnalytics(){
@@ -7202,7 +7561,7 @@ function renderAnalytics(){
     renderSimpleDashboard(simpleDs);
     return;
   }
-  analytics.innerHTML=renderSimpleEmptyState();
+  analytics.innerHTML=analysisProgressHtml()+renderSimpleEmptyState();
   return;
   if(!(REPORT.datasets||[]).length && !(REPORT.charts||[]).length && !(REPORT.tables||[]).length){
     analytics.innerHTML=renderFirstReportEmptyState();
@@ -7778,6 +8137,17 @@ function tableWidget(tb){
 }
 function prepSeries(ch){
   const ds=dataset(ch.datasetId); if(!ds) return [];
+  if(ch.candidateType&&typeof MRS_CHART_CANDIDATES.materializeChartCandidate==='function'){
+    const resolved=chartCandidateById(ch.id,ch.datasetId);
+    const candidate=resolved?.candidate||{
+      id:ch.id,datasetId:ch.datasetId,candidateType:ch.candidateType,chartType:ch.type,
+      dimensionKeys:ch.dimensionKeys||[ch.x].filter(Boolean),metricKeys:ch.metricKeys||[ch.y].filter(Boolean),
+      aggregation:ch.aggregation||ch.agg,sort:ch.sort,top:ch.top,transformation:ch.transformation||{},validation:ch.validation||{valid:true,warnings:[]}
+    };
+    const materialized=MRS_CHART_CANDIDATES.materializeChartCandidate(candidate,ds,resolved?.bundle?.profile||getDatasetAnalysis(ds).profile);
+    ch._materialized=materialized;
+    return materialized.items||[];
+  }
   const groups=new Map(); const counts=new Map();
   for(const r of ds.rows){if(state.compareOnly){const cid=r._companyId; if(cid!==state.compareA && cid!==state.compareB) continue;} let label=String(r[ch.x]??'').trim() || '—'; if(ch.x==='video_label' && r.full_title) label=String(r.full_title); const y = ch.agg==='count' ? 1 : num(r[ch.y]); groups.set(label,(groups.get(label)||0)+y); counts.set(label,(counts.get(label)||0)+1);}
   let arr=[...groups].map(([label,value])=>({label,value: ch.agg==='avg' ? value/(counts.get(label)||1) : value}));
@@ -7785,11 +8155,39 @@ function prepSeries(ch){
   const top=num(ch.top)||12; return arr.slice(0,top);
 }
 function renderChart(ch){
-  const arr=prepSeries(ch); if(!arr.length) return '<div class="empty">Немає даних для графіка</div>';
+  const arr=prepSeries(ch);
+  if(ch.candidateType==='metric_metric') return scatterSvg(ch._materialized?.points||[]);
+  if(ch.candidateType==='multi_series_timeline') return multiLineSvg(ch._materialized?.series||[]);
+  if(!arr.length) return '<div class="empty">Немає даних для графіка</div>';
   if(ch.type==='line') return lineSvg(arr);
   if(ch.type==='pie') return pieSvg(arr);
-  if(ch.type==='column') return columnSvg(arr);
+  if(ch.type==='column'||ch.type==='histogram') return columnSvg(arr);
   return barSvg(arr);
+}
+function scatterSvg(points){
+  const clean=(points||[]).filter(point=>Number.isFinite(point.x)&&Number.isFinite(point.y));
+  if(!clean.length) return '<div class="empty">No paired numeric points.</div>';
+  const shown=clean.slice(0,1200),w=520,h=250,pad=36;
+  const minX=Math.min(...shown.map(point=>point.x)),maxX=Math.max(...shown.map(point=>point.x));
+  const minY=Math.min(...shown.map(point=>point.y)),maxY=Math.max(...shown.map(point=>point.y));
+  const spanX=maxX-minX||1,spanY=maxY-minY||1;
+  const dots=shown.map(point=>{const x=pad+(point.x-minX)/spanX*(w-pad*2),y=h-pad-(point.y-minY)/spanY*(h-pad*2);return `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="3" fill="var(--brand)" fill-opacity=".58"><title>${esc(point.label||'')} ${esc(fmt(point.x))}, ${esc(fmt(point.y))}</title></circle>`;}).join('');
+  return `<svg class="svgChart" viewBox="0 0 ${w} ${h}" role="img"><line x1="${pad}" y1="${h-pad}" x2="${w-pad}" y2="${h-pad}" stroke="var(--line)"/><line x1="${pad}" y1="${pad}" x2="${pad}" y2="${h-pad}" stroke="var(--line)"/>${dots}<text x="${pad}" y="${h-8}" font-size="10" fill="var(--muted)">${esc(fmt(minX))}</text><text x="${w-pad}" y="${h-8}" text-anchor="end" font-size="10" fill="var(--muted)">${esc(fmt(maxX))}</text><text x="4" y="${pad}" font-size="10" fill="var(--muted)">${esc(fmt(maxY))}</text></svg>`;
+}
+function multiLineSvg(series){
+  const clean=(series||[]).filter(item=>item.items?.length);
+  if(!clean.length) return '<div class="empty">No compatible time series.</div>';
+  const w=520,h=260,pad=34,colors=['#315cf6','#16a3c7','#14b88a','#e79024'];
+  const labels=clean[0].items.map(item=>item.label);
+  const values=clean.flatMap(item=>item.items.map(point=>point.value)).filter(Number.isFinite);
+  const min=Math.min(...values,0),max=Math.max(...values,1),span=max-min||1;
+  const paths=clean.slice(0,4).map((item,seriesIndex)=>{
+    const points=item.items.map((point,index)=>{const x=pad+index*((w-pad*2)/Math.max(1,item.items.length-1)),y=h-pad-(point.value-min)/span*(h-pad*2);return [x,y,point];});
+    const path=points.map((point,index)=>(index?'L':'M')+point[0].toFixed(1)+' '+point[1].toFixed(1)).join(' ');
+    return `<path d="${path}" fill="none" stroke="${colors[seriesIndex%colors.length]}" stroke-width="2.5"/>${points.map(point=>`<circle cx="${point[0]}" cy="${point[1]}" r="2.5" fill="${colors[seriesIndex%colors.length]}"/>`).join('')}<text x="${pad+seriesIndex*125}" y="16" font-size="10" fill="${colors[seriesIndex%colors.length]}">${esc(short(item.name,18))}</text>`;
+  }).join('');
+  const ticks=labels.slice(0,12).map((label,index)=>{const sourceIndex=Math.round(index*(labels.length-1)/Math.max(1,Math.min(11,labels.length-1))),x=pad+sourceIndex*((w-pad*2)/Math.max(1,labels.length-1));return `<text x="${x}" y="${h-8}" text-anchor="middle" font-size="9" fill="var(--muted)">${esc(short(labels[sourceIndex],8))}</text>`;}).join('');
+  return `<svg class="svgChart" viewBox="0 0 ${w} ${h}" role="img"><line x1="${pad}" x2="${w-pad}" y1="${h-pad}" y2="${h-pad}" stroke="var(--line)"/>${paths}${ticks}</svg>`;
 }
 function openChartView(chartId){
   const ch=(REPORT.charts||[]).find(x=>x.id===chartId); if(!ch) return;
@@ -9020,14 +9418,25 @@ function renderSimpleProjectTree(){
   const documents=files.filter(file=>fileKind(file)==='document');
   const images=files.filter(file=>fileKind(file)==='image');
   const activeDs=getActiveTableDataset();
-  const autoCharts=activeDs?autoChartConfigsForTable(activeDs):[];
+  const activeBundle=activeDs?getDatasetAnalysis(activeDs):null;
+  const autoCharts=(activeBundle?.charts?.candidates||[]).filter(candidate=>match(candidate.title)||match((candidate.metricKeys||[]).join(' '))||match((candidate.dimensionKeys||[]).join(' ')));
+  const generatedTables=(activeBundle?.derivedTables?.candidates||[]).filter(candidate=>match(candidate.title)||match(candidate.candidateType));
+  const pinnedChartIds=new Set(REPORT.meta?.pinnedChartCandidateIds||[]);
+  const pinnedTableIds=new Set(REPORT.meta?.pinnedDerivedTableIds||[]);
+  const pinnedCharts=autoCharts.filter(candidate=>pinnedChartIds.has(candidate.id));
+  const pinnedTables=generatedTables.filter(candidate=>pinnedTableIds.has(candidate.id));
   const savedViews=(REPORT.meta?.simpleSavedViews||[]).filter(view=>match(view.name)||match(dataset(view.datasetId)?.name));
   const deleteFileButton=file=>`<button class="btn small ghost danger adminOnly simpleDeleteBtn" data-act="delete" data-target="emb-file" data-id="${esc(file.id)}" title="Delete file and tables created from it" aria-label="Delete ${esc(file.name||'file')}">&times;</button>`;
   const fileRows=renderSimpleTreeRows('files',files,file=>`<div class="item simpleTreeItem ${state.activeFile===`file:${file.id}`?'active':''}" data-type="emb-file" data-id="${esc(file.id)}"><div class="materialsIcon ${esc(materialFileIconClass(file))}">${esc(fileIcon(file))}</div><div class="itemName">${esc(file.name||'Untitled file')}<div class="itemMeta">${simpleFileMeta(file)}</div></div>${deleteFileButton(file)}</div>`);
   const tableRows=renderSimpleTreeRows('tables',tables,ds=>`<div class="item simpleTreeItem ${state.activeDataset===ds.id?'active':''}" data-type="dataset" data-id="${esc(ds.id)}"><div class="materialsIcon sheet">TBL</div><div class="itemName">${esc(ds.name||'Table')}<div class="itemMeta">${fmt(ds.rows?.length||0)} rows - ${fmt(columns(ds).length)} columns</div></div><button class="btn small ghost adminOnly simpleTreeAction" data-act="export-dataset" data-id="${esc(ds.id)}" title="Export CSV">CSV</button><button class="btn small ghost danger adminOnly simpleDeleteBtn" data-act="delete-dataset" data-id="${esc(ds.id)}" title="Delete table" aria-label="Delete ${esc(ds.name||'table')}">&times;</button></div>`,{limitAll:true});
   const docRows=renderSimpleTreeRows('documents',documents,file=>`<div class="item simpleTreeItem ${state.activeFile===`file:${file.id}`?'active':''}" data-type="emb-file" data-id="${esc(file.id)}"><div class="materialsIcon ${esc(materialFileIconClass(file))}">${esc(fileIcon(file))}</div><div class="itemName">${esc(file.name||'Document')}<div class="itemMeta">${simpleFileMeta(file)}</div></div>${deleteFileButton(file)}</div>`);
   const imageRows=renderSimpleTreeRows('images',images,file=>`<div class="item simpleTreeItem ${state.activeFile===`file:${file.id}`?'active':''}" data-type="emb-file" data-id="${esc(file.id)}"><div class="materialsIcon image">${esc(fileIcon(file))}</div><div class="itemName">${esc(file.name||'Image')}<div class="itemMeta">${simpleFileMeta(file)}</div></div>${deleteFileButton(file)}</div>`);
-  const chartRows=autoCharts.map(ch=>`<div class="item simpleTreeItem ${state.activeFile===`chart:${ch.id}`?'active':''}" data-type="simple-chart" data-id="${esc(ch.id)}"><div class="materialsIcon code">CH</div><div class="itemName">${esc(ch.title)}<div class="itemMeta">${esc(ch.x)} - ${esc(ch.agg==='count'?'rows':ch.y)}</div></div></div>`).join('');
+  const chartRows=renderSimpleTreeRows('auto-charts',autoCharts,ch=>`<div class="item simpleTreeItem ${state.activeFile===`chart:${ch.id}`?'active':''}" data-type="simple-chart" data-id="${esc(ch.id)}"><div class="materialsIcon code">CH</div><div class="itemName">${esc(ch.title)}<div class="itemMeta">${esc(ch.chartType)} · ${esc(ch.aggregation)} · score ${esc(ch.score)}</div></div></div>`);
+  const generatedRows=renderSimpleTreeRows('generated-tables',generatedTables,item=>`<div class="item simpleTreeItem ${state.activeFile===`derived:${item.id}`?'active':''}" data-type="generated-table" data-id="${esc(item.id)}"><div class="materialsIcon sheet">GEN</div><div class="itemName">${esc(item.title)}<div class="itemMeta">${esc(item.candidateType)} · score ${esc(item.score)}</div></div><button class="btn small ghost adminOnly simpleTreeAction" data-pin-derived="${esc(item.id)}" title="Pin generated table">${pinnedTableIds.has(item.id)?'★':'☆'}</button></div>`);
+  const pinnedRows=[
+    ...pinnedCharts.map(item=>`<div class="item simpleTreeItem" data-type="simple-chart" data-id="${esc(item.id)}"><div class="materialsIcon code">CH</div><div class="itemName">${esc(item.title)}<div class="itemMeta">Pinned chart</div></div></div>`),
+    ...pinnedTables.map(item=>`<div class="item simpleTreeItem" data-type="generated-table" data-id="${esc(item.id)}"><div class="materialsIcon sheet">GEN</div><div class="itemName">${esc(item.title)}<div class="itemMeta">Pinned table</div></div></div>`)
+  ].join('');
   const viewRows=savedViews.map(view=>`<div class="item simpleTreeItem" data-type="simple-saved-view" data-id="${esc(view.id)}"><div class="materialsIcon doc">VIEW</div><div class="itemName">${esc(view.name)}<div class="itemMeta">${esc(dataset(view.datasetId)?.name||'Missing table')}</div></div></div>`).join('');
   const exportRows=`<div class="simpleExportActions">
     <button class="btn small primary" data-simple-export="client-html">Export clean HTML report</button>
@@ -9045,7 +9454,9 @@ function renderSimpleProjectTree(){
     ${renderSimpleTreeGroup('Tables',tables.length,tableRows,{empty:'CSV, XLSX, JSON, and Markdown tables appear here.'})}
     ${renderSimpleTreeGroup('Documents',documents.length,docRows,{open:false,empty:'PDF, DOCX, Markdown, TXT, HTML, and JSON documents appear here.'})}
     ${renderSimpleTreeGroup('Images',images.length,imageRows,{open:false,empty:'Screenshots and image files appear here.'})}
-    ${renderSimpleTreeGroup('Auto charts',autoCharts.length,chartRows,{empty:'Select a table with category/numeric columns.'})}
+    ${renderSimpleTreeGroup('Generated tables',generatedTables.length,generatedRows,{open:false,empty:'No valid generated-table candidates.'})}
+    ${renderSimpleTreeGroup('Auto charts',autoCharts.length,chartRows,{empty:'No meaningful chart candidates detected.'})}
+    ${renderSimpleTreeGroup('Pinned',pinnedCharts.length+pinnedTables.length,pinnedRows,{open:false,empty:'Pin charts or generated tables for quick access.'})}
     ${renderSimpleTreeGroup('Saved views',savedViews.length,viewRows,{open:false,empty:'Save a table view after filtering or hiding columns.'})}
     ${renderSimpleTreeGroup('Exports',3,exportRows)}
     ${advanced}
@@ -9069,6 +9480,12 @@ function handleSimpleExportAction(action){
   }
 }
 async function onSideListClick(e){
+  const pinDerived=e.target.closest('[data-pin-derived]');
+  if(pinDerived&&sideList.contains(pinDerived)){
+    togglePinnedDerivedTable(pinDerived.dataset.pinDerived);
+    e.stopPropagation();
+    return;
+  }
   const simpleCleanup=e.target.closest('[data-simple-cleanup]');
   if(simpleCleanup && sideList.contains(simpleCleanup)){
     if(simpleCleanup.dataset.simpleCleanup==='demo') removeDemoProjectData();
@@ -9495,6 +9912,7 @@ async function onSideListClick(e){
   if(type==='dataset'){openDataset(id); return;}
   if(type==='chart'){openChartView(id); return;}
   if(type==='simple-chart'){openSimpleChartView(id); return;}
+  if(type==='generated-table'){openDerivedTableView(id); return;}
   if(type==='simple-saved-view'){applySimpleSavedView(id); return;}
   if(type==='fs-root'){const k='root:'+id; state.fsOpen[k]=!Boolean(state.fsOpen[k]); renderSide(); return;}
   if(type==='fs-folder'){state.fsOpen[id]=!Boolean(state.fsOpen[id]); renderSide(); return;}
@@ -9550,7 +9968,9 @@ function removeDemoProjectData(){
 function removeDatasetsByIds(datasetIds){
   const dsSet=new Set(datasetIds||[]);
   if(!dsSet.size) return;
+  dsSet.forEach(id=>analysisCache.delete(id));
   REPORT.datasets=(REPORT.datasets||[]).filter(d=>!dsSet.has(d.id));
+  REPORT.extractedTables=(REPORT.extractedTables||[]).map(table=>dsSet.has(table.datasetId)?{...table,datasetId:''}:table);
   REPORT.charts=(REPORT.charts||[]).filter(ch=>!dsSet.has(ch.datasetId) && !dsSet.has(ch.sourceDatasetId));
   REPORT.tables=(REPORT.tables||[]).filter(tb=>!dsSet.has(tb.datasetId) && !dsSet.has(tb.sourceDatasetId));
   if(dsSet.has(state.activeDataset)) state.activeDataset=REPORT.datasets[0]?.id||null;
@@ -9562,6 +9982,9 @@ function deleteEmbeddedFileById(fileId){
   if(!confirmI18n(`Видалити файл "${file.name}" з проєкту?`)) return;
   const dsIds=(REPORT.datasets||[]).filter(d=>String(d.sourceFileId||'')===id).map(d=>d.id);
   removeDatasetsByIds(dsIds);
+  const documentIds=new Set((REPORT.documents||[]).filter(documentModel=>String(documentModel.fileId||'')===id).map(documentModel=>documentModel.id));
+  REPORT.documents=(REPORT.documents||[]).filter(documentModel=>!documentIds.has(documentModel.id));
+  REPORT.extractedTables=(REPORT.extractedTables||[]).filter(table=>!documentIds.has(table.documentId));
   REPORT.files=(REPORT.files||[]).filter(f=>f.id!==id);
   REPORT.charts=(REPORT.charts||[]).filter(ch=>String(ch.sourceFileId||'')!==id);
   REPORT.tables=(REPORT.tables||[]).filter(tb=>String(tb.sourceFileId||'')!==id);
@@ -9583,7 +10006,10 @@ function deleteEmbeddedFolderByKey(folderKey){
   const fileSet=new Set(fileIds);
   const dsIds=(REPORT.datasets||[]).filter(d=>fileSet.has(String(d.sourceFileId||''))).map(d=>d.id);
   removeDatasetsByIds(dsIds);
+  const documentIds=new Set((REPORT.documents||[]).filter(documentModel=>fileSet.has(String(documentModel.fileId||''))).map(documentModel=>documentModel.id));
   REPORT.files=(REPORT.files||[]).filter(f=>!fileSet.has(f.id));
+  REPORT.documents=(REPORT.documents||[]).filter(documentModel=>!documentIds.has(documentModel.id));
+  REPORT.extractedTables=(REPORT.extractedTables||[]).filter(table=>!documentIds.has(table.documentId));
   REPORT.charts=(REPORT.charts||[]).filter(ch=>!fileSet.has(String(ch.sourceFileId||'')));
   REPORT.tables=(REPORT.tables||[]).filter(tb=>!fileSet.has(String(tb.sourceFileId||'')));
   refresh();
@@ -10055,33 +10481,28 @@ function simpleCellHtml(value, type){
   return esc(short(text,160));
 }
 function renderColumnTypeBadges(analysis){
-  return `<div class="simpleColumnTypes">${analysis.columns.map(col=>`<span class="columnTypeBadge" title="${esc(col.name)}">${esc(short(col.name,18))}<b>${esc(col.type)}</b></span>`).join('')}</div>`;
+  const limit=120,shown=analysis.columns.slice(0,limit);
+  return `<div class="simpleColumnTypes">${shown.map(col=>`<span class="columnTypeBadge" title="${esc(col.name)} · ${esc(col.analyticalRole||'unknown')}">${esc(short(col.name,18))}<b>${esc(col.physicalType||col.type)}</b></span>`).join('')}${analysis.columns.length>limit?`<span class="hint">+${fmt(analysis.columns.length-limit)} more columns</span>`:''}</div>`;
 }
 function renderSimpleRowDetails(row, analysis){
   if(!row) return '<div class="empty">Select a row to inspect details.</div>';
-  const names=analysis.names;
-  const used=new Set();
-  const pick=(patterns)=>{
-    const picked=[];
-    for(const pattern of patterns){
-      const found=names.find(name=>!used.has(name) && (pattern instanceof RegExp ? pattern.test(compactColumnName(name)) : compactColumnName(name)===compactColumnName(pattern)));
-      if(found){
-        const value=row?.[found];
-        if(value!==''&&value!==null&&value!==undefined){used.add(found); picked.push([found,value]);}
-      }
-    }
-    return picked;
-  };
-  const groups=[
-    ['Company',pick(['company','company_name','brand','name','source_site','website','url','seo_domain','domain','city_region'])],
-    ['Classification',pick(['segment','subsegment','category','priority','verification_status','status','seo_threat_level'])],
-    ['SEO',pick([/seo_total_estimated_traffic/,/seo_threat_score/,/seo_organic_count/,/seo_paid_count/,/seo_featured_snippet_count/,/seo_local_pack_count/,/seo_organic_etv/,/seo_paid_etv/,/seo_/])],
-    ['Notes',pick(['why_relevant','outreach_angle','next_action','notes','description','summary'])],
-    ['Technical',pick(['row_number','id',/task_id/,/dataforseo/,/run_date/,/created/,/updated/,/cost/,/scan/])]
-  ].filter(([,items])=>items.length);
-  const remaining=names.filter(name=>!used.has(name)).filter(name=>row?.[name]!==''&&row?.[name]!==null&&row?.[name]!==undefined).slice(0,8).map(name=>[name,row?.[name]]);
-  if(remaining.length) groups.push(['Other fields',remaining]);
+  const labels={identifier:'Identifiers',dimension:'Dimensions',category:'Categories',metric:'Metrics',timeline:'Timeline',description:'Descriptions',url:'Links',domain:'Domains',boolean:'Boolean',json:'JSON',unknown:'Other fields'};
+  const grouped=new Map();
+  for(const column of analysis.columns){
+    const value=row?.[column.name];
+    if(value===''||value===null||value===undefined) continue;
+    const role=column.analyticalRole||'unknown';
+    if(!grouped.has(role)) grouped.set(role,[]);
+    grouped.get(role).push([column.name,value]);
+  }
+  const order=['identifier','dimension','category','metric','timeline','url','domain','boolean','description','json','unknown'];
+  const groups=order.filter(role=>grouped.has(role)).map(role=>[labels[role],grouped.get(role).slice(0,18)]);
   return `<div class="rowDetailsGrid">${groups.map(([title,items])=>`<section class="rowDetailGroup"><h4>${esc(title)}</h4>${items.map(([key,value])=>`<div class="rowDetail"><span>${esc(key)}</span><b>${simpleCellHtml(value,(analysis.columns.find(c=>c.name===key)||{}).type||'text')}</b></div>`).join('')}</section>`).join('')}</div>`;
+}
+function renderDataQualitySummary(analysis,ds){
+  const quality=analysis.quality||{};
+  const shown=analysis.columns.slice(0,100);
+  return `<details class="dataQualityPanel"><summary><b>Data quality & column profile</b><span>${fmt(quality.highMissingColumnCount||0)} high-missing · ${fmt(quality.ambiguousColumnCount||0)} ambiguous</span></summary><div class="sourceAnchorBar">${esc(sourceAnchorText(ds))} · Confidence: ${esc(ds.extractionConfidence||'unknown')}</div><div class="simpleTableWrap"><table class="previewTable"><thead><tr><th>Column</th><th>Physical type</th><th>Role</th><th>Non-empty</th><th>Missing</th><th>Distinct</th><th>Confidence</th></tr></thead><tbody>${shown.map(column=>`<tr><td>${esc(column.name)}</td><td>${esc(column.physicalType||column.type)}</td><td>${esc(column.analyticalRole||'unknown')}</td><td class="num">${fmt(column.nonEmptyCount||0)}</td><td class="num">${esc(((column.nullRate||0)*100).toFixed(1))}%</td><td class="num">${esc(column.distinctCountAtLeast?`≥${column.distinctCountAtLeast}`:column.distinctCount||0)}</td><td>${esc(column.confidence||'unknown')}</td></tr>`).join('')}</tbody></table></div>${analysis.columns.length>shown.length?`<div class="hint">Showing ${fmt(shown.length)} of ${fmt(analysis.columns.length)} column profiles.</div>`:''}</details>`;
 }
 function renderSimpleTablePreview(ds, opts={}){
   const analysis=analyzeTable(ds);
@@ -10100,8 +10521,9 @@ function renderSimpleTablePreview(ds, opts={}){
     const options=simpleColumnValueOptions(analysis.rows,col.name).map(([label,count])=>`<option value="${esc(label)}" ${current===label?'selected':''}>${esc(short(label,42))} (${fmt(count)})</option>`).join('');
     return `<label class="simpleFilter"><span>${esc(col.name)}</span><select class="select" data-simple-filter="${esc(col.name)}"><option value="">All</option>${options}</select></label>`;
   }).join('');
-  const sortOptions=analysis.columns.map(col=>`<option value="${esc(col.name)}" ${viewState.sortCol===col.name?'selected':''}>${esc(col.name)}</option>`).join('');
-  const columnChecks=analysis.columns.map(col=>{
+  const controlColumns=analysis.columns.slice(0,200);
+  const sortOptions=controlColumns.map(col=>`<option value="${esc(col.name)}" ${viewState.sortCol===col.name?'selected':''}>${esc(col.name)}</option>`).join('');
+  const columnChecks=controlColumns.map(col=>{
     const checked=!viewState.hiddenCols.includes(col.name);
     return `<label class="check simpleColumnCheck"><input type="checkbox" data-simple-column="${esc(col.name)}" ${checked?'checked':''}><span>${esc(col.name)} <small>${esc(col.type)}</small></span></label>`;
   }).join('');
@@ -10124,6 +10546,7 @@ function renderSimpleTablePreview(ds, opts={}){
     </div>
     <div class="simpleFilterBar">${filterHtml||'<span class="hint">No compact category/status filters detected.</span>'}</div>
     ${renderColumnTypeBadges(analysis)}
+    ${renderDataQualitySummary(analysis,ds)}
     <div class="hint simpleRowLimit">${esc(rowLimitText)}</div>
     <div class="simpleContentGrid">
       <div class="simpleTableWrap"><table class="previewTable simplePreviewTable"><thead><tr>${visible.map(col=>`<th><button class="tableSortButton" data-simple-sort="${esc(col.name)}">${esc(col.name)} <small>${esc(col.type)}</small></button></th>`).join('')}</tr></thead><tbody>${shown.map(item=>`<tr data-simple-row="${item.index}" class="${item.index===viewState.selectedRowIndex?'selected':''}">${visible.map(col=>`<td class="${col.type==='number'?'num':''}">${simpleCellHtml(item.row?.[col.name],col.type)}</td>`).join('')}</tr>`).join('')||`<tr><td colspan="${Math.max(1,visible.length)}"><div class="empty">No rows match the current filters.</div></td></tr>`}</tbody></table></div>
@@ -10188,8 +10611,40 @@ function openDataset(id, sourceFileId, editMode=false){
   renderReaderTabs();
 }
 function refreshSideOnly(){renderSide();}
+function documentForFile(fileId){return (REPORT.documents||[]).find(documentModel=>String(documentModel.fileId||'')===String(fileId||''))||null;}
+function renderPdfDiagnostics(documentModel){
+  if(documentModel?.extension!=='pdf') return '';
+  const info=documentModel.metadata?.pdfDiagnostics||{};
+  const codes=new Set((documentModel.warnings||[]).map(warning=>warning.code||String(warning)));
+  let summary='PDF analysis status is available below.';
+  if(codes.has('PDFJS_FILE_PROTOCOL_UNSUPPORTED')) summary='PDF structured analysis requires the app to be served over HTTP/HTTPS in this build. PDF preview remains available.';
+  else if([...codes].some(code=>/^PDFJS_MODULE_/.test(code))) summary='PDF analysis could not start because the local PDF.js module failed to load.';
+  else if(codes.has('PDFJS_WORKER_LOAD_FAILED')) summary='PDF analysis could not start because the PDF worker failed to load.';
+  else if(codes.has('PDF_SCANNED_NO_OCR')) summary='PDF preview is available, but no usable native text layer was found. OCR is not enabled in this build.';
+  else if(codes.has('PDF_TEXT_CORRUPTED')) summary='The PDF opened, but its native text layer is too corrupted for trusted automatic table extraction.';
+  else if((info.nativeTextPages||0)>0&&!(info.tablesDetected||0)) summary='PDF opened successfully. Native text was extracted, but no reliable table was detected. The document remains available for preview.';
+  else if(documentModel.extractionStatus==='complete'||documentModel.extractionStatus==='partial') summary='PDF analysis complete.';
+  else if(documentModel.extractionStatus==='cancelled') summary='PDF analysis was cancelled.';
+  const build=REPORT.meta?.buildFingerprint;
+  const rows=[
+    ['Preview',info.previewAvailable===false?'unavailable':'available'],['PDF.js',info.pdfJsStatus||'unknown'],['Worker',info.workerStatus||'unknown'],
+    ['Protocol',info.protocol||location.protocol||'unknown'],['Module URL',info.moduleUrl||info.modulePath||'unknown'],['Worker URL',info.workerUrl||info.workerPath||'unknown'],
+    ['Pages',`${fmt(info.pagesProcessed||0)} / ${fmt(info.pageCount||documentModel.metadata?.pageCount||0)}`],['Native text pages',fmt(info.nativeTextPages||0)],
+    ['Corrupted pages',fmt(info.corruptedTextPages||0)],['Tables detected',fmt(info.tablesDetected||0)],['Datasets created',fmt(info.datasetsCreated||0)],
+    ['Chart candidates',fmt(info.chartCandidatesCreated||0)],['Confidence',info.extractionConfidence||documentModel.extractionConfidence||'unknown'],
+    ...(info.errorStage?[['Error stage',info.errorStage]]:[]),...(info.errorName?[['Error name',info.errorName]]:[]),...(info.errorMessage?[['Error',info.errorMessage]]:[]),
+    ...(build?[['Build',`${build.version||'unknown'} · ${build.commit?String(build.commit).slice(0,8):'local'} · ${build.timestamp||'unknown'}`]]:[])
+  ];
+  return `<section class="pdfDiagnostics" data-pdf-diagnostics data-testid="pdf-diagnostics"><div class="documentOverviewHead"><div><b>PDF analysis</b><span class="pill">${esc(documentModel.extractionStatus)}</span></div></div><p>${esc(summary)}</p><dl>${rows.map(([label,value])=>`<div><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>`).join('')}</dl>${info.errorCode?`<div class="documentWarnings"><span data-testid="pdf-error-code">Code: ${esc(info.errorCode)}</span></div><div class="toolbarRow"><button class="btn small" data-retry-pdf="${esc(documentModel.fileId)}" data-testid="pdf-retry">Retry PDF analysis</button><button class="btn small" data-copy-pdf-diagnostics>Copy diagnostics</button></div>`:''}</section>`;
+}
+function renderDocumentOverview(fileRecord){
+  const documentModel=documentForFile(fileRecord?.id);
+  if(!documentModel) return '';
+  const tables=(documentModel.tables||[]).filter(table=>table.datasetId);
+  const warnings=(documentModel.warnings||[]).slice(0,8);
+  return `${renderPdfDiagnostics(documentModel)}<section class="documentOverview"><div class="documentOverviewHead"><div><b>Extraction</b><span class="pill">${esc(documentModel.extractionStatus)}</span><span class="pill">Confidence: ${esc(documentModel.extractionConfidence)}</span></div><span>${fmt(tables.length)} extracted tables</span></div>${warnings.length?`<div class="documentWarnings">${warnings.map(warning=>`<span>${esc(warning.code||warning)}${warning.message?`: ${warning.message}`:''}</span>`).join('')}</div>`:''}<div class="extractedTableList">${tables.map(table=>`<button class="btn small" data-open-extracted-dataset="${esc(table.datasetId)}"><b>${esc(table.title||'Table')}</b><span>${fmt(table.rowCount||0)} rows · ${fmt(table.columnCount||0)} columns · ${esc(sourceAnchorText(table))}</span></button>`).join('')||'<span class="hint">No structured tables were promoted from this document.</span>'}</div>${documentModel.extractionStatus==='preview_only'?'<div class="hint">Structured extraction is unavailable or low-confidence. OCR is not enabled.</div>':''}</section>`;
+}
 async function openFile(id){const f=fileRec(id); if(!f) return; addTab('file:'+id,f.name,'file',id); state.activeFile='file:'+id; const ext=(f.ext||'').toLowerCase(); const jsonDataset=ext==='json'?REPORT.datasets.find(d=>d.sourceFileId===f.id):null; let html='';
-  if(f.isData && !(ext==='json' && f.contentText)){const ds=REPORT.datasets.find(d=>d.sourceFileId===f.id); if(ds){openDataset(ds.id,f.id); return;}}
   if(['md','txt','csv','tsv','json'].includes(ext) || (f.contentText && !['docx','html'].includes(ext))){html=renderTextFile(f,jsonDataset);}
   else if(ext==='docx'){html=await renderDocxFile(f);}
   else if(['png','jpg','jpeg','webp','gif'].includes(ext) && f.contentBase64){html=`<img alt="${esc(f.name)}" src="data:${esc(f.type)};base64,${f.contentBase64}" style="max-width:100%;border-radius:12px;border:1px solid var(--line)">`;}
@@ -10202,9 +10657,12 @@ async function openFile(id){const f=fileRec(id); if(!f) return; addTab('file:'+i
     }
   }
   else {html=`<div class="empty"><b>${esc(f.name)}</b><br>Файл збережено всередині звіту.<br><br><button class="btn" id="downloadFileBtn">Завантажити файл</button></div>`;}
-  reader.innerHTML = translateText(`<div class="previewToolbar"><b>${esc(f.name)}</b><span class="pill">${esc(ext||'file')}</span><span class="pill">${bytes(f.size||0)}</span></div>${html}`);
+  reader.innerHTML = translateText(`<div class="previewToolbar"><b>${esc(f.name)}</b><span class="pill">${esc(ext||'file')}</span><span class="pill">${bytes(f.size||0)}</span></div>${renderDocumentOverview(f)}${html}`);
   $('downloadFileBtn')?.addEventListener('click',()=>downloadStoredFile(f)); $('openJsonDatasetBtn')?.addEventListener('click',()=>{if(jsonDataset) openDataset(jsonDataset.id,f.id);}); refreshSideOnly(); renderReaderTabs();
   $('pickDocxBtn')?.addEventListener('click',()=>pickAndRenderDocx(f));
+  reader.querySelectorAll('[data-open-extracted-dataset]').forEach(button=>button.addEventListener('click',()=>openDataset(button.dataset.openExtractedDataset,f.id)));
+  reader.querySelector('[data-retry-pdf]')?.addEventListener('click',event=>retryPdfAnalysis(event.currentTarget.dataset.retryPdf));
+  reader.querySelector('[data-copy-pdf-diagnostics]')?.addEventListener('click',()=>navigator.clipboard?.writeText(JSON.stringify(documentForFile(f.id)?.metadata?.pdfDiagnostics||{},null,2)));
 }
 function renderTextFile(f, relatedDataset=null){let text=f.contentText||''; const ext=(f.ext||'').toLowerCase(); if(ext==='json') return renderJsonPreview(text,{dataset:relatedDataset}); if(ext==='csv' || ext==='tsv'){const rows=parseCsv(text, ext==='tsv' ? '\t' : undefined).slice(0,80); if(rows.length){const head=rows[0]; return `<table class="previewTable"><thead><tr>${head.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.slice(1).map(r=>`<tr>${head.map((_,i)=>`<td>${esc(r[i]??'')}</td>`).join('')}</tr>`).join('')}</tbody></table>`;}} if(ext==='md') return markdownLite(text); return `<pre class="mono">${esc(text)}</pre>`;}
 function renderJsonPreview(raw, opts={}){
@@ -11016,9 +11474,9 @@ function openImportedDataset(dsId, showDashboardNotice=false){
 function showImportSuccess(ds){
   showNotice(`Таблицю "${ds.name}" імпортовано: ${ds.rows.length} рядків, ${columns(ds).length} колонок.`,'success');
   openModal('Дані додано',`<div class="hintBox"><b>${esc(ds.name)}</b><br>${ds.rows.length} рядків · ${columns(ds).length} колонок</div>`,`<button class="btn" id="importDone">Готово</button><button class="btn" id="importOpen">Відкрити таблицю</button><button class="btn primary adminOnly" id="importReport">Показати авто-звіт</button>`);
-  $('importDone').onclick=closeModal;
-  $('importOpen').onclick=()=>openImportedDataset(ds.id,false);
-  $('importReport').onclick=()=>openImportedDataset(ds.id,true);
+  $('importDone')?.addEventListener('click',closeModal);
+  $('importOpen')?.addEventListener('click',()=>openImportedDataset(ds.id,false));
+  $('importReport')?.addEventListener('click',()=>openImportedDataset(ds.id,true));
 }
 
 function dataQuality(ds){const cols=columns(ds).map(c=>c.name); let missing=0; for(const r of (ds?.rows||[]).slice(0,500)){for(const c of cols){const v=r[c]; if(v===null||v===undefined||String(v).trim()==='') missing++;}} return {missing};}
@@ -11028,11 +11486,275 @@ function guessY(ds){const nums=numberCols(ds); const preferred=['roi','roas','ct
 function autoReport(dsId){const ds=dataset(dsId); if(!ds){toast('Спочатку додай таблицю');return;} state.activeDataset=ds.id; const x=guessX(ds); const nums=numberCols(ds); if(!x||!nums.length){toast('Потрібна хоча б 1 текстова і 1 числова колонка');return;} const preferred=['roi','ctr','traffic','conversions','cpc','seo']; const picked=[]; for(const p of preferred){const n=nums.find(c=>c.toLowerCase()===p || c.toLowerCase().includes(p)); if(n&&!picked.includes(n)) picked.push(n);} nums.forEach(n=>{if(picked.length<4&&!picked.includes(n)) picked.push(n)}); let made=0; for(const y of picked.slice(0,4)){if(!REPORT.charts.some(c=>c.datasetId===ds.id&&c.x===x&&c.y===y)){const ch={id:uid('ch'),title:`${y} по ${x}`,type:/date|дата|month|місяць|time/i.test(x)?'line':'bar',datasetId:ds.id,x,y,agg:'sum',sort:'desc',top:10,sourceFileId:ds.sourceFileId||''}; inheritSourceMeta(ch, ds); ch._baseTitle=ch.title; REPORT.charts.push(ch); made++;}}
   const cols=[x,...picked.slice(0,5)].filter(Boolean); if(!REPORT.tables.some(t=>t.datasetId===ds.id&&((t._baseTitle||t.title)==='Авто-таблиця'))){const tb={id:uid('tb'),title:'Авто-таблиця',datasetId:ds.id,columns:cols,top:20,sourceFileId:ds.sourceFileId||''}; inheritSourceMeta(tb, ds); tb._baseTitle=tb.title; REPORT.tables.push(tb);}
   refresh(); openDataset(ds.id,ds.sourceFileId); toast(made?`Авто-звіт створено: ${made} графік(и)`:'Авто-звіт уже є');}
-function saveDatasetEdits(dsId){const ds=dataset(dsId); const table=$('readerDataTable'); if(!ds||!table) return; const cols=[...table.querySelectorAll('thead th')].map(th=>th.textContent); table.querySelectorAll('tbody tr').forEach(tr=>{const idx=Number(tr.dataset.row); if(!ds.rows[idx]) return; tr.querySelectorAll('td').forEach((td,i)=>{const c=cols[i]; const raw=td.textContent.trim(); ds.rows[idx][c]=isNum(raw)?num(raw):raw;});}); ds.columns=inferColumns(ds.rows); refresh(); openDataset(ds.id,ds.sourceFileId,false); toast('Дані збережено, графіки оновлено');}
+function saveDatasetEdits(dsId){const ds=dataset(dsId); const table=$('readerDataTable'); if(!ds||!table) return; const cols=[...table.querySelectorAll('thead th')].map(th=>th.textContent); table.querySelectorAll('tbody tr').forEach(tr=>{const idx=Number(tr.dataset.row); if(!ds.rows[idx]) return; tr.querySelectorAll('td').forEach((td,i)=>{const c=cols[i]; const raw=td.textContent.trim(); ds.rows[idx][c]=isNum(raw)?num(raw):raw;});}); ds.updatedAt=new Date().toISOString();invalidateDatasetAnalysis(ds.id);ds.columns=inferColumns(ds.rows);getDatasetAnalysis(ds,{refresh:true}); refresh(); openDataset(ds.id,ds.sourceFileId,false); toast('Дані збережено, графіки оновлено');}
 
 function quickChart(dsId){const ds=dataset(dsId); const ch=autoChartConfig(dsId); if(!ch.x||!ch.y){toast('Потрібна текстова і числова колонка'); return;} inheritSourceMeta(ch, ds); ch._baseTitle=ch.title; REPORT.charts.push(ch); refresh(); openDataset(ch.datasetId,ch.sourceFileId); toast('Швидкий графік створено');}
 function quickChartFromTable(tb){const ds=dataset(tb.datasetId); if(!ds){toast('Таблицю-джерело не знайдено'); return;} const selected=(tb.columns&&tb.columns.length?tb.columns:columns(ds).map(c=>c.name)); const metas=columns(ds); const isNumber=c=>metas.find(m=>m.name===c)?.type==='number'; const y=selected.find(isNumber) || numberCols(ds)[0]; const x=selected.find(c=>!isNumber(c)) || textCols(ds)[0]; if(!x||!y){toast('Для графіка потрібна 1 текстова і 1 числова колонка'); return;} const ch={id:uid('ch'),title:`${y} по ${x}`,type:'bar',datasetId:ds.id,x,y,agg:'sum',top:10,sort:'desc',sourceFileId:tb.sourceFileId||ds.sourceFileId||''}; inheritSourceMeta(ch, ds); ch._baseTitle=ch.title; REPORT.charts.push(ch); refresh(); openDataset(ds.id,ch.sourceFileId); toast('Графік створено з таблички');}
-async function handleFiles(fileList){if(!guardAdmin()) {toast('Редагування вимкнено'); return;} const files=[...fileList]; if(files.length>MAX_IMPORT_FILES){showNotice(`За один раз можна додати не більше ${MAX_IMPORT_FILES} файлів.`,'error');return;} const before=new Set((REPORT.datasets||[]).map(d=>d.id)); let count=0; for(const file of files){try{await addFile(file); count++;}catch(e){console.warn('[import] skipped:',file?.name,e?.message||e);showNotice(e?.message||`Не вдалося додати ${file?.name||'файл'}.`,'error');}} refresh(); const added=(REPORT.datasets||[]).filter(d=>!before.has(d.id)); if(added.length===1) showImportSuccess(added[0]); else if(added.length>1) showNotice(`Додано ${added.length} таблиць із ${count} файлів.`,'success'); else if(count) showNotice(`Додано файлів: ${count}.`,'success');}
+function removeDocumentExtraction(fileId){
+  const documentIds=new Set((REPORT.documents||[]).filter(documentModel=>String(documentModel.fileId||'')===String(fileId||'')).map(documentModel=>documentModel.id));
+  const datasetIds=(REPORT.datasets||[]).filter(ds=>documentIds.has(ds.sourceDocumentId)).map(ds=>ds.id);
+  if(datasetIds.length) removeDatasetsByIds(datasetIds);
+  REPORT.documents=(REPORT.documents||[]).filter(documentModel=>!documentIds.has(documentModel.id));
+  REPORT.extractedTables=(REPORT.extractedTables||[]).filter(table=>!documentIds.has(table.documentId));
+}
+function shouldPromoteExtractedTable(table,documentModel){
+  if(documentModel?.extension!=='pdf') return {promote:true,state:'accepted',reasons:[]};
+  const detection=table?.detection||{},state=detection.promotionState||(detection.accepted===false?'needs_review':'accepted');
+  const rejected=detection.accepted===false||state!=='accepted'||detection.confidence==='low';
+  return {promote:!rejected,state:rejected?state:'accepted',reasons:[...(detection.rejectionReasons||[])]};
+}
+function wideTimelineDerivedDataset(source,table,columnNames){
+  if(!source?.rows?.length||columnNames.length<3||typeof MRS_ANALYSIS.quarterInfo!=='function') return null;
+  const periodColumns=columnNames.filter(name=>MRS_ANALYSIS.quarterInfo(name)||/^(?:19|20)\d{2}(?:[-/.](?:0?[1-9]|1[0-2]))?$/.test(name));
+  const labelColumn=columnNames.find(name=>!periodColumns.includes(name));if(periodColumns.length<2||!labelColumn)return null;
+  const rows=[];for(const row of source.rows){const metric=String(row[labelColumn]??'').trim();if(!metric)continue;for(const period of periodColumns){const parsed=MRS_ANALYSIS.parseLocaleAwareNumber(row[period],{});if(parsed.valid)rows.push({Metric:metric,Period:period,Value:parsed.value});}}
+  if(rows.length<4)return null;
+  return {id:stableId('ds-wide-long',source.id),name:`${source.name} · timeline`,sourceFileId:source.sourceFileId,sourceDocumentId:source.sourceDocumentId,sourceTableId:source.sourceTableId,sourceAnchor:{...(source.sourceAnchor||{})},sourceKind:'derived_table',generatedFrom:source.sourceTableId,transformation:'wide_to_long_timeline',periodColumns,labelColumn,createdAt:new Date().toISOString(),rows,columns:inferColumns(rows),extractionConfidence:source.extractionConfidence,warnings:[]};
+}
+async function ingestDocumentModel(documentModel,options={}){
+  if(!documentModel) return [];
+  normalizeDocumentState(REPORT);
+  removeDocumentExtraction(documentModel.fileId);
+  const datasets=[];
+  const tableRefs=[];
+  const sourceTables=documentModel.tables||[];
+  for(let tableIndex=0;tableIndex<sourceTables.length;tableIndex+=1){
+    if(options.signal?.aborted){documentModel.extractionStatus='partial';documentModel.extractionConfidence='low';documentModel.warnings.push({code:'ANALYSIS_CANCELLED'});break;}
+    const table=sourceTables[tableIndex];
+    const rows=Array.isArray(table.rows)?table.rows:[];
+    const columnNames=(table.columns||[]).map(column=>typeof column==='string'?column:column.name).filter(Boolean);
+    const promotion=shouldPromoteExtractedTable(table,documentModel);
+    if(!promotion.promote){
+      tableRefs.push({id:table.id,datasetId:'',title:table.title,kind:table.kind,rowCount:rows.length,columnCount:columnNames.length,sourceAnchor:{...(table.sourceAnchor||{})},detection:{...(table.detection||{}),promotionState:promotion.state,rejectionReasons:promotion.reasons}});
+      continue;
+    }
+    if(!rows.length||columnNames.length<2){
+      tableRefs.push({id:table.id,datasetId:'',title:table.title,kind:table.kind,rowCount:rows.length,columnCount:columnNames.length,sourceAnchor:table.sourceAnchor,detection:table.detection});
+      continue;
+    }
+    const dsId=stableId('ds',table.id);
+    const ds={
+      id:dsId,name:table.title||`Table ${datasets.length+1}`,sourceFileId:table.sourceFileId||documentModel.fileId,
+      sourceDocumentId:documentModel.id,sourceTableId:table.id,sourceAnchor:{...(table.sourceAnchor||{})},
+      extractionConfidence:table.detection?.confidence||documentModel.extractionConfidence||'unknown',
+      warnings:[...(table.detection?.warnings||[])],createdAt:table.createdAt||new Date().toISOString(),updatedAt:new Date().toISOString(),
+      rows,columns:inferColumns(rows)
+    };
+    REPORT.datasets.push(ds);datasets.push(ds);
+    const derived=wideTimelineDerivedDataset(ds,table,columnNames);if(derived){REPORT.datasets.push(derived);datasets.push(derived);}
+    const metadata={
+      id:table.id,documentId:documentModel.id,sourceFileId:ds.sourceFileId,datasetId:ds.id,title:table.title,kind:table.kind,
+      rowCount:rows.length,columnCount:columnNames.length,columns:columnNames,sourceAnchor:{...(table.sourceAnchor||{})},
+      detection:{...(table.detection||{})},profileId:null,createdAt:table.createdAt||new Date().toISOString(),updatedAt:new Date().toISOString()
+    };
+    REPORT.extractedTables.push(metadata);tableRefs.push(metadata);
+    if(options.jobId) updateAnalysisJob(options.jobId,{status:'processing',stage:'profiling_tables',progress:(tableIndex+1)/Math.max(1,sourceTables.length),processed:tableIndex+1,total:sourceTables.length,cancelable:true,controller:options.controller});
+    if(tableIndex%4===3) await new Promise(resolve=>setTimeout(resolve,0));
+  }
+  const storedDocument={...documentModel,tables:tableRefs,updatedAt:new Date().toISOString()};
+  REPORT.documents.push(storedDocument);
+  for(const ds of datasets){
+    if((ds.rows?.length||0)>=1500) await analyzeDatasetAsync(ds,{jobId:uid('analysis')});
+    else getDatasetAnalysis(ds,{refresh:true});
+  }
+  const pdfDiagnostics=storedDocument.metadata?.pdfDiagnostics;
+  if(pdfDiagnostics){
+    pdfDiagnostics.tablesDetected=sourceTables.length;
+    pdfDiagnostics.tablesAccepted=tableRefs.filter(table=>table.datasetId).length;
+    pdfDiagnostics.tablesRejected=tableRefs.filter(table=>!table.datasetId).length;
+    pdfDiagnostics.datasetsCreated=datasets.length;
+    pdfDiagnostics.datasetsSkipped=tableRefs.filter(table=>!table.datasetId).length;
+    pdfDiagnostics.chartCandidatesCreated=datasets.reduce((sum,ds)=>sum+(getDatasetAnalysis(ds).charts?.candidateCount||0),0);
+    pdfDiagnostics.recommendedChartsCreated=datasets.reduce((sum,ds)=>sum+(getDatasetAnalysis(ds).charts?.recommended?.length||0),0);
+    if(pdfDiagnostics.tablesAccepted>0&&!pdfDiagnostics.chartCandidatesCreated) storedDocument.warnings.push({code:'PDF_TABLES_WITHOUT_CHART_CANDIDATES',message:'Accepted PDF tables produced no valid chart candidates.'});
+    pdfDiagnostics.extractionStatus=storedDocument.extractionStatus;
+    pdfDiagnostics.extractionConfidence=storedDocument.extractionConfidence;
+    pdfDiagnostics.warningCodes=(storedDocument.warnings||[]).map(warning=>warning.code||String(warning));
+  }
+  if(options.activate!==false&&datasets.length) state.activeDataset=datasets[0].id;
+  return datasets;
+}
+function xlsxDocumentFromSheets(fileRecord,sheets){
+  const documentModel=MRS_DOCUMENT_EXTRACT.createDocumentModel({
+    fileId:fileRecord.id,fileName:fileRecord.name,extension:'xlsx',mimeType:fileRecord.type,
+    extractionStatus:'processing',extractionConfidence:'unknown',metadata:{sheetCount:sheets.length,title:fileRecord.name}
+  });
+  (sheets||[]).forEach(sheet=>{
+    const sheetDocument=MRS_DOCUMENT_EXTRACT.documentFromMatrix({
+      id:documentModel.id,fileId:fileRecord.id,fileName:fileRecord.name,extension:'xlsx',mimeType:fileRecord.type,
+      matrix:sheet.matrix,sheetName:sheet.name,kind:'native_table',method:'xlsx_region'
+    });
+    documentModel.tables.push(...sheetDocument.tables.map((table,index)=>({...table,id:stableId('table',documentModel.id,sheet.name,index),documentId:documentModel.id,sourceFileId:fileRecord.id})));
+    documentModel.textBlocks.push(...sheetDocument.textBlocks);
+    documentModel.warnings.push(...sheetDocument.warnings);
+    if(sheet.mergedCells?.length) documentModel.metadata.mergedCells=documentModel.metadata.mergedCells||{},documentModel.metadata.mergedCells[sheet.name]=sheet.mergedCells;
+  });
+  documentModel.extractionStatus=documentModel.tables.length?'complete':'needs_review';
+  documentModel.extractionConfidence=documentModel.tables.some(table=>table.detection?.confidence==='high')?'high':(documentModel.tables.length?'medium':'low');
+  return documentModel;
+}
+function pdfAssetError(asset,result){
+  if(result.status===404) return asset==='module'?'PDFJS_MODULE_ASSET_NOT_FOUND':'PDFJS_WORKER_ASSET_NOT_FOUND';
+  if(!result.javascript) return asset==='module'?'PDFJS_MODULE_BAD_MIME':'PDFJS_WORKER_LOAD_FAILED';
+  return asset==='module'?'PDFJS_MODULE_IMPORT_FAILED':'PDFJS_WORKER_LOAD_FAILED';
+}
+async function inspectPdfJsAssets(options={}){
+  if(pdfJsRuntime.preflight&&!options.forceRetry) return pdfJsRuntime.preflight;
+  const moduleUrl=new URL(PDFJS_MODULE_SRC,document.baseURI).href,workerUrl=new URL(PDFJS_WORKER_SRC,document.baseURI).href;
+  const inspect=async url=>{
+    try{
+      const response=await fetch(url,{method:'HEAD',cache:options.forceRetry?'reload':'default',credentials:'same-origin'});
+      const contentType=response.headers.get('content-type')||'';
+      return {url,status:response.status,contentType,ok:response.ok,javascript:/^(?:text|application)\/(?:javascript|ecmascript)\b/i.test(contentType)};
+    }catch(error){return {url,status:0,contentType:'',ok:false,javascript:false,errorName:error?.name||'Error',errorMessage:String(error?.message||error)};}
+  };
+  const [module,worker]=await Promise.all([inspect(moduleUrl),inspect(workerUrl)]);
+  const result={module,worker,timestamp:new Date().toISOString()};
+  if(module.ok&&module.javascript&&worker.ok&&worker.javascript) pdfJsRuntime.preflight=result;
+  return result;
+}
+async function loadPdfJs(options={}){
+  const forceRetry=Boolean(options.forceRetry),maxAttempts=Math.max(1,Number(options.maxAttempts)||2);
+  if(forceRetry){pdfJsRuntime.promise=null;pdfJsRuntime.status='idle';pdfJsRuntime.lastError=null;pdfJsRuntime.preflight=null;}
+  if(pdfJsRuntime.status==='loaded'&&pdfJsRuntime.promise) return pdfJsRuntime.promise;
+  if(pdfJsRuntime.promise) return pdfJsRuntime.promise;
+  const protocol=location.protocol,moduleUrl=new URL(PDFJS_MODULE_SRC,document.baseURI).href,workerUrl=new URL(PDFJS_WORKER_SRC,document.baseURI).href;
+  if(protocol==='file:'){
+    pdfJsLoadDiagnostics={stage:'protocol',status:'failed',code:'PDFJS_FILE_PROTOCOL_UNSUPPORTED',protocol,baseURI:document.baseURI,moduleUrl,workerUrl,modulePath:PDFJS_MODULE_SRC,workerPath:PDFJS_WORKER_SRC,attemptCount:pdfJsRuntime.attempts,errorName:'UnsupportedProtocolError',errorMessage:'PDF structured analysis requires HTTP/HTTPS in this build. PDF preview remains available.'};
+    pdfJsRuntime.status='failed';pdfJsRuntime.diagnostics=pdfJsLoadDiagnostics;return null;
+  }
+  pdfJsRuntime.status='loading';pdfJsRuntime.attempts+=1;
+  pdfJsRuntime.promise=(async()=>{
+    pdfJsLoadDiagnostics={
+      stage:'asset_preflight',status:'loading',code:null,errorName:null,errorMessage:null,reason:options.reason||'pdf_import',attemptCount:pdfJsRuntime.attempts,
+      protocol:location.protocol,baseURI:document.baseURI,moduleUrl,workerUrl,
+      modulePath:PDFJS_MODULE_SRC,workerPath:PDFJS_WORKER_SRC
+    };
+    try{
+      const assets=await inspectPdfJsAssets({forceRetry});
+      for(const [asset,result] of Object.entries({module:assets.module,worker:assets.worker})){
+        if(!result.ok||!result.javascript){const error=new Error(result.errorMessage||`${asset} asset returned HTTP ${result.status||0} with Content-Type ${result.contentType||'unknown'}`);error.code=pdfAssetError(asset,result);error.stage=`${asset}_preflight`;error.asset=result;throw error;}
+      }
+      const pdfjs=await import(moduleUrl);
+      if(pdfjs.GlobalWorkerOptions) pdfjs.GlobalWorkerOptions.workerSrc=workerUrl;
+      pdfJsLoadDiagnostics={...pdfJsLoadDiagnostics,status:'loaded',stage:'module_import',moduleLoadStatus:'loaded',workerLoadStatus:'configured',assets,code:null,errorName:null,errorMessage:null};
+      pdfJsRuntime.status='loaded';pdfJsRuntime.diagnostics=pdfJsLoadDiagnostics;
+      return pdfjs;
+    }catch(error){
+      pdfJsLoadDiagnostics={
+        ...pdfJsLoadDiagnostics,status:'failed',stage:error?.stage||'module_import',code:error?.code||'PDFJS_MODULE_IMPORT_FAILED',moduleLoadStatus:'failed',workerLoadStatus:'unknown',httpStatus:error?.asset?.status||null,contentType:error?.asset?.contentType||null,
+        errorName:error?.name||'Error',errorMessage:String(error?.message||error||'PDF.js module import failed.')
+      };
+      pdfJsRuntime.status='failed';pdfJsRuntime.lastError=error;pdfJsRuntime.diagnostics=pdfJsLoadDiagnostics;pdfJsRuntime.promise=null;
+      console.warn('[pdf] local PDF.js unavailable:',error?.message||error);
+      return null;
+    }
+  })();
+  const result=await pdfJsRuntime.promise;
+  if(!result&&pdfJsRuntime.attempts<maxAttempts&&options.automaticRetry!==false) return loadPdfJs({...options,forceRetry:true,automaticRetry:false});
+  return result;
+}
+async function retryPdfAnalysis(fileId){
+  const file=fileRec(fileId);if(!file||String(file.ext).toLowerCase()!=='pdf'||!file.contentBase64) return;
+  const bin=atob(file.contentBase64),bytesView=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)bytesView[i]=bin.charCodeAt(i);
+  const pdfjsLib=await loadPdfJs({forceRetry:true,reason:'manual_retry',maxAttempts:1,automaticRetry:false});
+  const documentModel=await MRS_DOCUMENT_EXTRACT.extractPdfDocument(bytesView.buffer,{fileId:file.id,fileName:file.name,mimeType:file.type,pdfjsLib,pdfJsStatus:pdfjsLib?'loaded':'failed',pdfJsLoaderDiagnostics:pdfJsLoadDiagnostics,previewAvailable:true,pdfJsModulePath:PDFJS_MODULE_SRC,pdfJsWorkerPath:PDFJS_WORKER_SRC});
+  await ingestDocumentModel(documentModel,{activate:true});refresh();await openFile(file.id);schedulePersist();
+}
+async function extractAndIngestFileDocument(fileRecord,options={}){
+  const ext=String(fileRecord?.ext||'').toLowerCase();
+  const input={...options,fileId:fileRecord.id,fileName:fileRecord.name,mimeType:fileRecord.type};
+  if(ext==='docx'){
+    input.JSZip=await ensureJSZip();
+    input.assertSafeArchive=assertSafeArchive;
+  }
+  if(ext==='pdf'){
+    input.pdfjsLib=await loadPdfJs();
+    input.pdfJsLoaderDiagnostics=pdfJsLoadDiagnostics;
+    input.pdfJsStatus=input.pdfjsLib?'loaded':'failed';
+    input.workerStatus='unknown';
+    input.previewAvailable=Boolean(fileRecord.contentBase64);
+    input.pdfJsModulePath=PDFJS_MODULE_SRC;
+    input.pdfJsWorkerPath=PDFJS_WORKER_SRC;
+  }
+  const jobId=uid('analysis');
+  let controller=null;
+  if(ext==='pdf'||ext==='docx'){
+    controller=new AbortController();
+    input.signal=controller.signal;
+    updateAnalysisJob(jobId,{kind:ext,label:fileRecord.name,status:'processing',stage:ext==='pdf'?'loading_pdf':'extracting_docx',progress:0,processed:0,total:0,cancelable:true,controller});
+  }
+  if(ext==='pdf'){
+    input.onProgress=progress=>updateAnalysisJob(jobId,{kind:'pdf',label:fileRecord.name,status:'processing',stage:progress.stage,progress:progress.progress,processed:progress.processed,total:progress.total,cancelable:true,controller});
+  }
+  const documentModel=await MRS_DOCUMENT_EXTRACT.extractDocumentFromFile(fileRecord,input);
+  const datasets=await ingestDocumentModel(documentModel,{activate:options.activate,jobId:(ext==='pdf'||ext==='docx')?jobId:'',controller,signal:ext==='docx'?controller?.signal:null});
+  if(ext==='pdf'||ext==='docx'){
+    updateAnalysisJob(jobId,{status:documentModel.extractionStatus==='failed'?'failed':(documentModel.extractionStatus==='cancelled'?'cancelled':'complete'),stage:documentModel.extractionStatus,progress:1,cancelable:false});
+    setTimeout(()=>{analysisJobs.delete(jobId);if(analytics?.isConnected)renderAnalytics();},700);
+  }
+  return {documentModel,datasets};
+}
+async function readTextFileWithBom(file){
+  const buffer=await file.arrayBuffer(),bytesView=new Uint8Array(buffer);
+  if(bytesView[0]===0xff&&bytesView[1]===0xfe) return new TextDecoder('utf-16le').decode(buffer);
+  if(bytesView[0]===0xfe&&bytesView[1]===0xff) return new TextDecoder('utf-16be').decode(buffer);
+  return new TextDecoder('utf-8').decode(buffer).replace(/^\ufeff/,'');
+}
+async function addUniversalFile(file){
+  assertSafeImportFile(file);
+  const ext=extFromName(file.name),id=uid('file'),co=company(state.activeCompany),companyId=co?.id||'';
+  const companyPath=co?`companies/${co.folder}/`:'data/',importedAt=new Date().toISOString();
+  const fileMeta={size:file.size||0,lastModified:file.lastModified||0,createdAt:importedAt,updatedAt:importedAt};
+  const textExtensions=new Set(['csv','tsv','json','md','markdown','txt','html','htm']);
+  let text='',arrayBuffer=null,jsonValue=null;
+  if(textExtensions.has(ext)) text=await readTextFileWithBom(file); else arrayBuffer=await file.arrayBuffer();
+  if(ext==='json'){
+    try{
+      jsonValue=JSON.parse(String(text||'').replace(/^\ufeff/,''));
+      if(jsonValue&&Array.isArray(jsonValue.datasets)){
+        REPORT=stripLegacyTrueSavageDemoPack(stripLegacyCaspianPack(normalizeReport(jsonValue)));
+        analysisCache.clear();state.activeDataset=REPORT.datasets[0]?.id||null;state.openTabs=[];initState();toast('Проєкт JSON завантажено');return;
+      }
+    }catch(error){jsonValue=null;}
+  }
+  const rec={id,name:file.name,path:companyPath+file.name,folder:co?.name||(textExtensions.has(ext)?'Дані':'Файли'),companyId,ext,type:file.type||mimeFromExt(ext),...fileMeta,isData:false};
+  if(textExtensions.has(ext)) rec.contentText=text; else rec.contentBase64=abToBase64(arrayBuffer);
+  REPORT.files.push(rec);
+  try{
+    let result={datasets:[],documentModel:null};
+    if(ext==='xlsx'){
+      const sheets=await parseXlsx(arrayBuffer),documentModel=xlsxDocumentFromSheets(rec,sheets);
+      const datasets=await ingestDocumentModel(documentModel);
+      result={documentModel,datasets};
+    }else if(['csv','tsv','json','md','markdown','txt','html','htm','docx','pdf','png','jpg','jpeg','webp','gif','bmp','svg'].includes(ext)){
+      result=await extractAndIngestFileDocument(rec,{text,arrayBuffer,value:jsonValue,activate:true});
+    }
+    rec.isData=Boolean(result.datasets?.length);
+    if((ext==='md'||ext==='markdown')&&/YT_VIDEO_VISUALIZATION_/i.test(file.name)){
+      const parsed=parseVisualizationMarkdown(text,file.name,co?.name||inferAuthorHintFromPath(companyPath+file.name,''));
+      if(parsed){
+        const dsName=(co?.name||'YouTube')+' · Video Metrics';
+        let legacy=(REPORT.datasets||[]).find(ds=>ds.name===dsName&&ds.sourceKind==='markdown-visualization-compat');
+        if(!legacy){legacy={id:uid('ds'),name:dsName,sourceFileId:id,sourceDocumentId:result.documentModel?.id||'',sourceKind:'markdown-visualization-compat',createdAt:importedAt,rows:[],columns:[],sourceAnchor:{section:'Visualization metrics'},extractionConfidence:'medium',warnings:[]};REPORT.datasets.push(legacy);}
+        const rowKey=row=>String(row.full_title||row.video_label||'').trim().toLowerCase(),byLabel=new Map((legacy.rows||[]).map(row=>[rowKey(row),row]));
+        byLabel.set(rowKey(parsed),parsed);legacy.rows=[...byLabel.values()];legacy.updatedAt=new Date().toISOString();legacy.columns=inferColumns(legacy.rows);
+        invalidateDatasetAnalysis(legacy.id);getDatasetAnalysis(legacy,{refresh:true});ensureVideoMetricsWidgets(legacy,id);
+        if(!result.datasets?.length) state.activeDataset=legacy.id;
+      }
+    }
+    const tableCount=result.datasets?.length||0;
+    if(tableCount) toast(`${file.name}: ${tableCount} table${tableCount===1?'':'s'} detected`);
+    else if(result.documentModel?.extractionStatus==='preview_only') toast(`${file.name}: preview only`);
+    else toast(`Файл додано: ${file.name}`);
+  }catch(error){
+    console.warn('[extract] failed:',file.name,error?.message||error);
+    const documentModel=MRS_DOCUMENT_EXTRACT.previewOnlyDocument({fileId:id,fileName:file.name,extension:ext,mimeType:rec.type},{code:'EXTRACTION_FAILED',message:String(error?.message||error)});
+    documentModel.extractionStatus='failed';await ingestDocumentModel(documentModel,{activate:false});
+    showNotice(`${file.name}: ${error?.message||'structured extraction failed'}`,'error');
+  }
+}
+async function handleFiles(fileList){if(!guardAdmin()) {toast('Редагування вимкнено'); return;} const files=[...fileList]; if(files.length>MAX_IMPORT_FILES){showNotice(`За один раз можна додати не більше ${MAX_IMPORT_FILES} файлів.`,'error');return;} const before=new Set((REPORT.datasets||[]).map(d=>d.id)); let count=0; for(const file of files){try{await addUniversalFile(file); count++;}catch(e){console.warn('[import] skipped:',file?.name,e?.message||e);showNotice(e?.message||`Не вдалося додати ${file?.name||'файл'}.`,'error');}} refresh(); const added=(REPORT.datasets||[]).filter(d=>!before.has(d.id)); if(added.length===1) showImportSuccess(added[0]); else if(added.length>1) showNotice(`Додано ${added.length} таблиць із ${count} файлів.`,'success'); else if(count) showNotice(`Додано файлів: ${count}.`,'success');}
 async function addFile(file){assertSafeImportFile(file); const ext=(file.name.split('.').pop()||'').toLowerCase(); const id=uid('file'); const co=company(state.activeCompany); const companyId=co?.id||''; const companyPath=co?('companies/'+co.folder+'/'):'data/'; const importedAt=new Date().toISOString(); const fileMeta={size:file.size||0,lastModified:file.lastModified||0,createdAt:importedAt,updatedAt:importedAt}; if(['csv','tsv'].includes(ext)){const text=await file.text(); const matrix=parseCsv(text, ext==='tsv'?'\t':undefined); const rows=rowsFromMatrix(matrix); const rec={id,name:file.name,path:companyPath+file.name,folder:co?.name||'Дані',companyId,ext,type:file.type||'text/csv',...fileMeta,isData:true,contentText:text}; REPORT.files.push(rec); const ds={id:uid('ds'),name:file.name.replace(/\.[^.]+$/,''),sourceFileId:id,createdAt:importedAt,rows,columns:inferColumns(rows)}; REPORT.datasets.push(ds); state.activeDataset=ds.id; toast(`Додано таблицю: ${file.name}`); return;}
   if(ext==='json'){const text=await file.text(); let rows=[]; let obj=null; try{obj=JSON.parse(text); if(obj && Array.isArray(obj.datasets)){REPORT=stripLegacyTrueSavageDemoPack(stripLegacyCaspianPack(normalizeReport(obj))); state.activeDataset=REPORT.datasets[0]?.id||null; state.openTabs=[]; initState(); toast('Проєкт JSON завантажено'); return;} rows=jsonRows(obj);}catch(e){toast('JSON не прочитався');} const rec={id,name:file.name,path:companyPath+file.name,folder:co?.name||'Дані',companyId,ext,type:file.type||'application/json',...fileMeta,isData:rows.length>0,contentText:text}; REPORT.files.push(rec); if(rows.length){const ds={id:uid('ds'),name:file.name.replace(/\.[^.]+$/,''),sourceFileId:id,createdAt:importedAt,rows,columns:inferColumns(rows)}; REPORT.datasets.push(ds); state.activeDataset=ds.id; toast(`Додано JSON-таблицю: ${file.name}`);} return;}
   if(ext==='xlsx'){const ab=await file.arrayBuffer(); const b64=abToBase64(ab); const rec={id,name:file.name,path:companyPath+file.name,folder:co?.name||'Дані',companyId,ext,type:file.type||'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',...fileMeta,isData:true,contentBase64:b64}; REPORT.files.push(rec); try{const sheets=await parseXlsx(ab); let added=0; for(const sh of sheets){if(sh.rows.length){REPORT.datasets.push({id:uid('ds'),name:file.name.replace(/\.[^.]+$/,'')+' / '+sh.name,sourceFileId:id,createdAt:importedAt,rows:sh.rows,columns:inferColumns(sh.rows)}); added++;}} if(added){state.activeDataset=REPORT.datasets[REPORT.datasets.length-1].id; toast(`Excel прочитано: ${added} лист(ів)`);} else toast('Excel відкрито, але таблиць не знайдено');}catch(e){console.error(e); toast('Не вдалося прочитати .xlsx');} return;}
@@ -11754,13 +12476,12 @@ async function structuredDatasetsFromFile(file, ext){
   assertSafeImportFile(file);
   const base=pathName(file?.name||'file').replace(new RegExp(`\\.${ext}$`,'i'),'');
   if(ext==='csv' || ext==='tsv'){
-    const text=await file.text();
-    const matrix=parseCsv(text, ext==='tsv' ? '\t' : undefined);
-    const rows=rowsFromMatrix(matrix);
-    return rows.length ? [{name:base, rows, sheetName:'', text}] : [];
+    const text=await readTextFileWithBom(file);
+    const documentModel=MRS_DOCUMENT_EXTRACT.extractDelimitedDocument(text,{fileId:'',fileName:file.name,delimiter:ext==='tsv'?'\t':undefined,kind:'csv_table'});
+    return documentModel.tables.map((table,index)=>({name:documentModel.tables.length>1?`${base} / Table ${index+1}`:base,rows:table.rows,sheetName:'',text,sourceAnchor:table.sourceAnchor,extractionConfidence:table.detection?.confidence||'unknown'}));
   }
   if(ext==='json'){
-    const text=await file.text();
+    const text=await readTextFileWithBom(file);
     let obj=null;
     try{
       obj=JSON.parse(text);
@@ -11770,15 +12491,13 @@ async function structuredDatasetsFromFile(file, ext){
     if(obj && Array.isArray(obj.datasets)){
       return [];
     }
-    const rows=jsonRows(obj);
-    return rows.length ? [{name:base, rows, sheetName:'', text}] : [];
+    const documentModel=MRS_DOCUMENT_EXTRACT.extractJsonDocument(obj,{fileId:'',fileName:file.name});
+    return documentModel.tables.map(table=>({name:`${base} / ${table.sourceAnchor?.jsonPath||'data'}`,rows:table.rows,sheetName:'',text,sourceAnchor:table.sourceAnchor,extractionConfidence:table.detection?.confidence||'unknown'}));
   }
   if(ext==='xlsx'){
     const ab=await file.arrayBuffer();
     const sheets=await parseXlsx(ab);
-    return sheets
-      .filter(s=>Array.isArray(s.rows) && s.rows.length)
-      .map(s=>({name:`${base} / ${s.name}`, rows:s.rows, sheetName:s.name, text:''}));
+    return sheets.flatMap(sheet=>(sheet.tables||[]).filter(table=>table.rows?.length).map((table,index)=>({name:`${base} / ${sheet.name}${sheet.tables.length>1?` / Table ${index+1}`:''}`,rows:table.rows,sheetName:sheet.name,text:'',sourceAnchor:{sheet:sheet.name,startRow:table.headerRow+1,endRow:table.endRow+1,startColumn:table.startColumn+1,endColumn:table.endColumn+1},extractionConfidence:table.confidence||'unknown'})));
   }
   return [];
 }
@@ -11813,7 +12532,12 @@ async function syncStructuredDataFromFsRoots(force=false, opts={}){
           ds.sourceRootId=root.id;
           ds.sourcePath=relNorm;
           ds.sourceSheetName=spec.sheetName||'';
+          ds.sourceAnchor={...(spec.sourceAnchor||{}),path:relNorm};
+          ds.extractionConfidence=spec.extractionConfidence||'unknown';
+          ds.warnings=[];
           ds.generated=true;
+          ds.updatedAt=new Date().toISOString();
+          invalidateDatasetAnalysis(ds.id);
           liveDatasetIds.add(ds.id);
           datasets++;
         }
@@ -11861,6 +12585,9 @@ async function parseXlsx(ab){
     }
   }
 
+  const styles=await parseXlsxStyles(zip,parseXml);
+  const workbookPr=workbook.getElementsByTagName('workbookPr')[0];
+  const date1904=/^(?:1|true)$/i.test(String(workbookPr?.getAttribute('date1904')||''));
   const sheets=[];
   const sheetNodes=[...workbook.getElementsByTagName('sheet')];
   if(sheetNodes.length>200) throw new Error('XLSX містить забагато аркушів.');
@@ -11880,6 +12607,8 @@ async function parseXlsx(ab){
     const matrix=[];
     for(const rowEl of rowNodes){
       const arr=[];
+      const declaredRow=Math.max(1,Number(rowEl.getAttribute('r'))||matrix.length+1);
+      while(matrix.length<declaredRow-1) matrix.push([]);
       const cells=[...rowEl.getElementsByTagName('c')];
       totalCells+=cells.length;
       if(totalCells>MAX_SHEET_CELLS) throw new Error('XLSX містить забагато клітинок.');
@@ -11887,16 +12616,112 @@ async function parseXlsx(ab){
         const ref=c.getAttribute('r')||'';
         const idx=colIndex(ref.replace(/\d/g,''));
         if(idx<0 || idx>=MAX_SHEET_COLUMNS) throw new Error(`Аркуш ${name} містить завеликий індекс колонки.`);
-        arr[idx]=cellValue(c,shared);
+        arr[idx]=cellValue(c,shared,styles,{date1904});
       }
-      matrix.push(arr.map(v=>v??''));
+      matrix[declaredRow-1]=arr.map(v=>v??'');
     }
-    sheets.push({name,rows:rowsFromMatrix(matrix)});
+    const detected=typeof MRS_TABLE_DETECTION.detectTablesInMatrix==='function'
+      ? MRS_TABLE_DETECTION.detectTablesInMatrix(matrix)
+      : {tables:matrix.length?[{rows:rowsFromMatrix(matrix),headers:matrix[0]||[],headerRow:0,endRow:matrix.length-1,startColumn:0,endColumn:Math.max(0,...matrix.map(row=>row.length-1)),confidence:'unknown',score:0,warnings:[]}]:[],textBlocks:[],warnings:[]};
+    const mergeRefs=[...doc.getElementsByTagName('mergeCell')].map(node=>node.getAttribute('ref')).filter(Boolean);
+    sheets.push({name,matrix,rows:detected.tables[0]?.rows||[],tables:detected.tables,textBlocks:detected.textBlocks||[],warnings:detected.warnings||[],mergedCells:mergeRefs});
   }
   return sheets;
 }
 function colIndex(letters){let n=0; letters=(letters||'A').toUpperCase(); for(let i=0;i<letters.length;i++) n=n*26+(letters.charCodeAt(i)-64); return n-1;}
-function cellValue(c,shared){const t=c.getAttribute('t'); const v=c.getElementsByTagName('v')[0]?.textContent ?? ''; if(t==='s') return shared[Number(v)] ?? ''; if(t==='b') return v==='1'?'TRUE':'FALSE'; if(t==='inlineStr') return [...c.getElementsByTagName('t')].map(x=>x.textContent).join(''); return isNum(v)?num(v):v;}
+async function parseXlsxStyles(zip,parseXml){
+  const builtIn={
+    5:{kind:'currency',currency:'USD'},6:{kind:'currency',currency:'USD'},7:{kind:'currency',currency:'USD'},8:{kind:'currency',currency:'USD'},
+    37:{kind:'number',negativeStyle:'parentheses'},38:{kind:'number',negativeStyle:'parentheses'},39:{kind:'number',negativeStyle:'parentheses'},40:{kind:'number',negativeStyle:'parentheses'},
+    41:{kind:'number',negativeStyle:'parentheses'},42:{kind:'currency',currency:'USD',negativeStyle:'parentheses'},43:{kind:'number',negativeStyle:'parentheses'},44:{kind:'currency',currency:'USD',negativeStyle:'parentheses'},
+    9:{kind:'percent'},10:{kind:'percent'},
+    14:{kind:'date'},15:{kind:'date'},16:{kind:'date'},17:{kind:'date'},18:{kind:'date'},19:{kind:'date'},20:{kind:'date'},21:{kind:'date'},22:{kind:'date'},
+    45:{kind:'duration'},46:{kind:'duration'},47:{kind:'duration'}
+  };
+  const xml=await safeZipText(zip,'xl/styles.xml');
+  if(!xml) return {xfs:[],numFmts:new Map(),builtIn};
+  const doc=parseXml(xml,'styles.xml');
+  const numFmts=new Map();
+  for(const numFmt of doc.getElementsByTagName('numFmt')){
+    const id=Number(numFmt.getAttribute('numFmtId'));
+    const code=numFmt.getAttribute('formatCode')||'';
+    if(Number.isFinite(id)) numFmts.set(id,code);
+  }
+  const xfs=[];
+  const cellXfs=doc.getElementsByTagName('cellXfs')[0];
+  if(cellXfs){
+    for(const xf of cellXfs.getElementsByTagName('xf')){
+      const id=Number(xf.getAttribute('numFmtId'));
+      const code=numFmts.get(id)||'';
+      xfs.push({numFmtId:id,formatCode:code,...classifyXlsxNumberFormat(id,code,builtIn)});
+    }
+  }
+  return {xfs,numFmts,builtIn};
+}
+function classifyXlsxNumberFormat(numFmtId,formatCode='',builtIn={}){
+  if(builtIn[numFmtId]) return builtIn[numFmtId];
+  const cleaned=String(formatCode||'')
+    .replace(/"[^"]*"/g,'')
+    .replace(/\\./g,'')
+    .replace(/\[[^\]]+\]/g,'')
+    .toLowerCase();
+  if(!cleaned) return {kind:'general'};
+  if(/%/.test(cleaned)) return {kind:'percent'};
+  if(/[ymd]/.test(cleaned) && /[ymdhHsS:/.-]/.test(cleaned)) return {kind:'date'};
+  if(/[hHsS]/.test(cleaned) && /\[h+\]|:/.test(cleaned)) return {kind:'duration'};
+  const currency=currencyFromXlsxFormat(formatCode);
+  const negativeStyle=/;\s*(?:\[[^\]]+\])?\s*\(/.test(String(formatCode||''))?'parentheses':null;
+  if(currency) return {kind:'currency',currency,negativeStyle};
+  return {kind:'number',negativeStyle};
+}
+function currencyFromXlsxFormat(formatCode=''){
+  const text=String(formatCode||'');
+  const bracketed=text.match(/\[\$([A-Z]{3})-[0-9a-f]+\]/i);
+  if(bracketed) return bracketed[1].toUpperCase();
+  if(/\[\$-[0-9a-f]+\]/i.test(text)) return 'USD';
+  if(/\$|USD/i.test(text)) return 'USD';
+  if(/€|EUR/i.test(text)) return 'EUR';
+  if(/₴|UAH|грн/i.test(text)) return 'UAH';
+  if(/£|GBP/i.test(text)) return 'GBP';
+  if(/¥|JPY/i.test(text)) return 'JPY';
+  if(/₹|INR/i.test(text)) return 'INR';
+  return null;
+}
+function excelSerialDate(value,date1904=false){
+  const serial=Number(value);
+  if(!Number.isFinite(serial)) return null;
+  const whole=Math.floor(serial);
+  const fraction=serial-whole;
+  const epoch=date1904?Date.UTC(1904,0,1):Date.UTC(1899,11,30);
+  const date=new Date(epoch+whole*86400000+Math.round(fraction*86400000));
+  if(!Number.isFinite(date.getTime())) return null;
+  return date.toISOString().slice(0,fraction?'19':'10');
+}
+function formatXlsxNumericValue(raw,style={},options={}){
+  if(!isNum(raw)) return raw;
+  const value=num(raw);
+  if(style.kind==='date') return excelSerialDate(value,options.date1904) || value;
+  if(style.kind==='percent') return `${Number((value*100).toFixed(10))}%`;
+  if(style.kind==='currency'){
+    const symbol={USD:'$',EUR:'€',UAH:'₴',GBP:'£',JPY:'¥',INR:'₹'}[style.currency||'']||'';
+    const abs=Math.abs(value);
+    const formatted=`${symbol}${abs}`;
+    if(value<0) return style.negativeStyle==='parentheses'?`(${formatted})`:`-${formatted}`;
+    return formatted;
+  }
+  return value;
+}
+function cellValue(c,shared,styles={},options={}){
+  const t=c.getAttribute('t');
+  const v=c.getElementsByTagName('v')[0]?.textContent ?? '';
+  if(t==='s') return shared[Number(v)] ?? '';
+  if(t==='b') return v==='1'?'TRUE':'FALSE';
+  if(t==='inlineStr') return [...c.getElementsByTagName('t')].map(x=>x.textContent).join('');
+  if(t==='str') return v;
+  const styleIndex=Number(c.getAttribute('s'));
+  const style=Number.isFinite(styleIndex)?styles.xfs?.[styleIndex]:null;
+  return style?formatXlsxNumericValue(v,style,options):(isNum(v)?num(v):v);
+}
 function abToBase64(ab){let binary=''; const bytes=new Uint8Array(ab); const chunk=0x8000; for(let i=0;i<bytes.length;i+=chunk){binary+=String.fromCharCode.apply(null,bytes.subarray(i,i+chunk));} return btoa(binary);}
 function extFromName(name){return (String(name||'').split('.').pop()||'').toLowerCase();}
 function mimeFromExt(ext){
@@ -12405,10 +13230,27 @@ function bind(){
   $('companyNameInput')?.addEventListener('input',e=>{REPORT.meta=REPORT.meta||{}; REPORT.meta.companyName=String(e.target.value||'').trim(); renderReportTitle(); schedulePersist();});
   renderReportTitle();
   analytics.addEventListener('click',e=>{
+    const cancelAnalysis=e.target.closest('[data-cancel-analysis]');
+    if(cancelAnalysis){cancelAnalysisJob(cancelAnalysis.dataset.cancelAnalysis);return;}
+    const chartView=e.target.closest('[data-chart-view]');
+    if(chartView){
+      const view=chartView.dataset.chartView||'recommended';
+      if(view==='all'||view==='diagnostics'){state.simpleChartCatalogOpen=true;state.simpleChartCatalogView=view;}
+      else {state.simpleChartDashboardView=view;state.simpleChartCatalogOpen=false;}
+      state.simpleChartPage=1;renderAnalytics();return;
+    }
+    if(e.target.closest('[data-close-chart-catalog]')){state.simpleChartCatalogOpen=false;state.simpleChartPage=1;renderAnalytics();return;}
+    if(e.target.closest('[data-close-chart-preview]')){state.simpleChartSelectedId=null;renderAnalytics();return;}
+    const chartPage=e.target.closest('[data-chart-page]');
+    if(chartPage){state.simpleChartPage=Math.max(1,Number(chartPage.dataset.chartPage)||1);renderAnalytics();return;}
+    const pinChart=e.target.closest('[data-pin-chart]');
+    if(pinChart){togglePinnedChartCandidate(pinChart.dataset.pinChart);return;}
+    const chartSource=e.target.closest('[data-chart-source]');
+    if(chartSource){openDataset(chartSource.dataset.chartSource);return;}
     const simpleExport=e.target.closest('[data-simple-export]');
     if(simpleExport){handleSimpleExportAction(simpleExport.dataset.simpleExport);return;}
     const simpleChart=e.target.closest('[data-simple-open-chart]');
-    if(simpleChart){openSimpleChartView(simpleChart.dataset.simpleOpenChart);return;}
+    if(simpleChart){state.simpleChartSelectedId=simpleChart.dataset.simpleOpenChart;renderAnalytics();return;}
     const firstReportAction=e.target.closest('[data-first-report-action]');
     if(firstReportAction){performFirstReportAction(firstReportAction.dataset.firstReportAction);return;}
     if(e.target.closest('[data-first-report-upload]')){openDataModal();return;}
@@ -12422,6 +13264,40 @@ function bind(){
     const b=e.target.closest('[data-open-widget]');
     if(!b) return;
     openSimpleWidgetView(b.dataset.openWidget);
+  });
+  analytics.addEventListener('input',e=>{
+    if(e.target.id!=='simpleChartSearch') return;
+    state.simpleChartFilters=state.simpleChartFilters||{};
+    state.simpleChartFilters.search=e.target.value||'';
+    state.simpleChartPage=1;
+    if(chartRegistryRenderTimer) clearTimeout(chartRegistryRenderTimer);
+    chartRegistryRenderTimer=setTimeout(()=>{
+      chartRegistryRenderTimer=null;
+      renderAnalytics();
+      const input=$('simpleChartSearch');
+      if(input){input.focus();input.setSelectionRange(input.value.length,input.value.length);}
+    },180);
+  });
+  analytics.addEventListener('change',e=>{
+    const familyId=e.target.dataset?.chartFamilyAggregation;
+    if(familyId){state.simpleChartFamilySelections=state.simpleChartFamilySelections||{};state.simpleChartFamilySelections[familyId]=e.target.value;renderAnalytics();return;}
+    const map={simpleChartMetric:'metric',simpleChartDimension:'dimension',simpleChartType:'chartType',simpleChartAggregation:'aggregation',simpleChartSource:'sourceTable',simpleChartConfidence:'confidence'};
+    const key=map[e.target.id];
+    if(!key) return;
+    state.simpleChartFilters=state.simpleChartFilters||{};
+    if(key==='sourceTable'){
+      const selected=dataset(e.target.value);
+      if(selected){
+        state.activeDataset=selected.id;
+        state.simpleChartFilters={...state.simpleChartFilters,sourceTable:selected.id,metric:'all',dimension:'all',chartType:'all',aggregation:'all'};
+        state.simpleChartPage=1;
+        renderAnalytics();
+      }
+      return;
+    }
+    state.simpleChartFilters[key]=e.target.value||'all';
+    state.simpleChartPage=1;
+    renderAnalytics();
   });
   setupFileDropZones(); window.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault(); saveHtml();} if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault(); search.focus();}}); window.addEventListener('beforeunload', persistNow); setupResizers(); setupWorkspacePanelDrag(); tryAutoReconnectFs();
   document.addEventListener('click',e=>{
@@ -12441,6 +13317,7 @@ function bind(){
   }, 500);
 }
 bind(); refresh();
+hydrateReportFromIndexedDb();
 reader.innerHTML=`<div class="empty">${t('emptyReader')}</div>`;
 state.openTabs=[];
 state.activeFile=null;
