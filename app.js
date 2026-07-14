@@ -153,7 +153,7 @@ const PDFJS_MODULE_SRC = 'vendor/pdfjs/pdf.min.mjs';
 const PDFJS_WORKER_SRC = 'vendor/pdfjs/pdf.worker.min.mjs';
 const analysisCache = new Map();
 const analysisJobs = new Map();
-const pdfJsRuntime = {promise:null,status:'idle',attempts:0,lastError:null,diagnostics:null,preflight:null};
+const pdfJsRuntime = {promise:null,status:'idle',attempts:0,lastError:null,diagnostics:null};
 let pdfJsLoadDiagnostics = null;
 let indexedDbWarningShown = false;
 let persistTimer = null;
@@ -11593,29 +11593,9 @@ function xlsxDocumentFromSheets(fileRecord,sheets){
   documentModel.extractionConfidence=documentModel.tables.some(table=>table.detection?.confidence==='high')?'high':(documentModel.tables.length?'medium':'low');
   return documentModel;
 }
-function pdfAssetError(asset,result){
-  if(result.status===404) return asset==='module'?'PDFJS_MODULE_ASSET_NOT_FOUND':'PDFJS_WORKER_ASSET_NOT_FOUND';
-  if(!result.javascript) return asset==='module'?'PDFJS_MODULE_BAD_MIME':'PDFJS_WORKER_LOAD_FAILED';
-  return asset==='module'?'PDFJS_MODULE_IMPORT_FAILED':'PDFJS_WORKER_LOAD_FAILED';
-}
-async function inspectPdfJsAssets(options={}){
-  if(pdfJsRuntime.preflight&&!options.forceRetry) return pdfJsRuntime.preflight;
-  const moduleUrl=new URL(PDFJS_MODULE_SRC,document.baseURI).href,workerUrl=new URL(PDFJS_WORKER_SRC,document.baseURI).href;
-  const inspect=async url=>{
-    try{
-      const response=await fetch(url,{method:'HEAD',cache:options.forceRetry?'reload':'default',credentials:'same-origin'});
-      const contentType=response.headers.get('content-type')||'';
-      return {url,status:response.status,contentType,ok:response.ok,javascript:/^(?:text|application)\/(?:javascript|ecmascript)\b/i.test(contentType)};
-    }catch(error){return {url,status:0,contentType:'',ok:false,javascript:false,errorName:error?.name||'Error',errorMessage:String(error?.message||error)};}
-  };
-  const [module,worker]=await Promise.all([inspect(moduleUrl),inspect(workerUrl)]);
-  const result={module,worker,timestamp:new Date().toISOString()};
-  if(module.ok&&module.javascript&&worker.ok&&worker.javascript) pdfJsRuntime.preflight=result;
-  return result;
-}
 async function loadPdfJs(options={}){
   const forceRetry=Boolean(options.forceRetry),maxAttempts=Math.max(1,Number(options.maxAttempts)||2);
-  if(forceRetry){pdfJsRuntime.promise=null;pdfJsRuntime.status='idle';pdfJsRuntime.lastError=null;pdfJsRuntime.preflight=null;}
+  if(forceRetry){pdfJsRuntime.promise=null;pdfJsRuntime.status='idle';pdfJsRuntime.lastError=null;}
   if(pdfJsRuntime.status==='loaded'&&pdfJsRuntime.promise) return pdfJsRuntime.promise;
   if(pdfJsRuntime.promise) return pdfJsRuntime.promise;
   const protocol=location.protocol,moduleUrl=new URL(PDFJS_MODULE_SRC,document.baseURI).href,workerUrl=new URL(PDFJS_WORKER_SRC,document.baseURI).href;
@@ -11626,18 +11606,14 @@ async function loadPdfJs(options={}){
   pdfJsRuntime.status='loading';pdfJsRuntime.attempts+=1;
   pdfJsRuntime.promise=(async()=>{
     pdfJsLoadDiagnostics={
-      stage:'asset_preflight',status:'loading',code:null,errorName:null,errorMessage:null,reason:options.reason||'pdf_import',attemptCount:pdfJsRuntime.attempts,
+      stage:'module_import',status:'loading',code:null,errorName:null,errorMessage:null,reason:options.reason||'pdf_import',attemptCount:pdfJsRuntime.attempts,
       protocol:location.protocol,baseURI:document.baseURI,moduleUrl,workerUrl,
       modulePath:PDFJS_MODULE_SRC,workerPath:PDFJS_WORKER_SRC
     };
     try{
-      const assets=await inspectPdfJsAssets({forceRetry});
-      for(const [asset,result] of Object.entries({module:assets.module,worker:assets.worker})){
-        if(!result.ok||!result.javascript){const error=new Error(result.errorMessage||`${asset} asset returned HTTP ${result.status||0} with Content-Type ${result.contentType||'unknown'}`);error.code=pdfAssetError(asset,result);error.stage=`${asset}_preflight`;error.asset=result;throw error;}
-      }
       const pdfjs=await import(moduleUrl);
       if(pdfjs.GlobalWorkerOptions) pdfjs.GlobalWorkerOptions.workerSrc=workerUrl;
-      pdfJsLoadDiagnostics={...pdfJsLoadDiagnostics,status:'loaded',stage:'module_import',moduleLoadStatus:'loaded',workerLoadStatus:'configured',assets,code:null,errorName:null,errorMessage:null};
+      pdfJsLoadDiagnostics={...pdfJsLoadDiagnostics,status:'loaded',stage:'module_import',moduleLoadStatus:'loaded',workerLoadStatus:'configured',code:null,errorName:null,errorMessage:null};
       pdfJsRuntime.status='loaded';pdfJsRuntime.diagnostics=pdfJsLoadDiagnostics;
       return pdfjs;
     }catch(error){

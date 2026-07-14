@@ -46,7 +46,8 @@ for (const id of ['clientReportBtn', 'saveHtmlBtn', 'saveClientPackageBtn', 'exp
 assert.match(appSource, /const BROWSER_ONLY_MODE = true/, 'hosted UI must be locked to browser-only mode');
 assert.match(appSource, /if\(BROWSER_ONLY_MODE\)/, 'network API calls must have a browser-only guard');
 assert.doesNotMatch(appSource, /fetch\s*\(\s*['"`]https?:\/\//, 'standalone UI must not call external services');
-assert.match(appSource, /fetch\(url,\{method:'HEAD'.*credentials:'same-origin'/, 'PDF asset preflight must remain a same-origin HEAD request');
+assert.match(appSource, /const pdfjs=await import\(moduleUrl\)/, 'PDF extraction must import the local PDF.js module directly');
+assert.doesNotMatch(appSource, /fetch\(url,\{method:'HEAD'/, 'PDF extraction must not use a CSP-blocked asset preflight request');
 assert.match(appSource, /function replaceTranslatedPhrase\(text, from, to\)/, 'translation replacements must use phrase boundaries');
 assert.doesNotMatch(appSource, /text=text\.split\(from\)\.join\(to\)/, 'translation must not replace words inside product names like Marketing');
 assert.match(appSource, /function renderSimpleDashboard\(ds\)/, 'default UI must render summary cards and auto charts');
