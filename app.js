@@ -116,9 +116,9 @@ const REPORT_SECTION_DEFINITIONS = [
 ];
 const REPORT_STORAGE_KEY = `marketing_report_studio_v8:${location.pathname}:report`;
 const LANG_STORAGE_KEY = `marketing_report_studio_v8:${location.pathname}:lang`;
-const LOCALSTORAGE_MAX_BYTES = 4 * 1024 * 1024;
+const LOCALSTORAGE_MAX_BYTES = 100 * 1024 * 1024;
 const MAX_IMPORT_FILES = 500;
-const MAX_IMPORT_FILE_BYTES = 40 * 1024 * 1024;
+const MAX_IMPORT_FILE_BYTES = 100 * 1024 * 1024;
 const MAX_TEXT_IMPORT_BYTES = 20 * 1024 * 1024;
 const MAX_ARCHIVE_ENTRIES = 2000;
 const MAX_ARCHIVE_UNCOMPRESSED_BYTES = 96 * 1024 * 1024;
