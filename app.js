@@ -7396,7 +7396,7 @@ function renderCandidateMeta(candidate,ds,opts={}){
 function renderRecommendedCandidate(candidate,ds){
   const config=MRS_CHART_CANDIDATES.candidateToChartConfig(candidate);
   const pinned=(REPORT.meta?.pinnedChartCandidateIds||[]).includes(candidate.id);
-  return `<article class="autoChartCard" title="${esc(candidate.title)}"><div class="widgetHead"><b>${esc(candidate.title)}</b><span class="badge">${esc(candidate.chartType)}</span></div><div class="widgetBody">${renderChart(config)}</div><div class="chartCandidateActions"><button class="btn small primary" data-simple-open-chart="${esc(candidate.id)}">Preview</button><button class="btn small adminOnly" data-pin-chart="${esc(candidate.id)}">${pinned?'Unpin':'Pin'}</button></div></article>`;
+  return `<article class="autoChartCard" title="${esc(candidate.title)}"><div class="widgetHead"><b>${esc(candidate.title)}</b><span class="badge">${esc(candidate.chartType)}</span></div><div class="chartExplain">${esc(chartExplanation(config))}</div><div class="widgetBody">${renderChart(config)}</div><div class="chartCandidateActions"><button class="btn small primary" data-simple-open-chart="${esc(candidate.id)}">Preview</button><button class="btn small adminOnly" data-pin-chart="${esc(candidate.id)}">${pinned?'Unpin':'Pin'}</button></div></article>`;
 }
 function selectedFamilyCandidate(family){
   const selectedId=state.simpleChartFamilySelections?.[family.id];
@@ -7422,7 +7422,7 @@ function renderSelectedChartPreview(ds){
   if(!resolved||resolved.ds?.id!==ds.id) return '';
   const {candidate}=resolved,config=MRS_CHART_CANDIDATES.candidateToChartConfig(candidate);
   const pinned=(REPORT.meta?.pinnedChartCandidateIds||[]).includes(candidate.id);
-  return `<section class="chartSelectedPreview" data-selected-chart-preview="${esc(candidate.id)}"><div class="zoneHead"><div><b>Selected preview</b><span class="tiny">${esc(candidate.title)}</span></div><button class="btn small" data-close-chart-preview="1">Close</button></div><article class="autoChartCard"><div class="widgetHead"><b>${esc(candidate.title)}</b><span class="badge">${esc(candidate.chartType)}</span><span class="pill">Confidence: ${esc(candidateConfidence(candidate,ds))}</span></div><div class="widgetBody">${renderChart(config)}</div><div class="chartCandidateActions"><button class="btn small" data-chart-source="${esc(ds.id)}">Source</button><button class="btn small adminOnly" data-pin-chart="${esc(candidate.id)}">${pinned?'Unpin':'Pin'}</button></div></article></section>`;
+  return `<section class="chartSelectedPreview" data-selected-chart-preview="${esc(candidate.id)}"><div class="zoneHead"><div><b>Selected preview</b><span class="tiny">${esc(candidate.title)}</span></div><button class="btn small" data-close-chart-preview="1">Close</button></div><article class="autoChartCard"><div class="widgetHead"><b>${esc(candidate.title)}</b><span class="badge">${esc(candidate.chartType)}</span><span class="pill">Confidence: ${esc(candidateConfidence(candidate,ds))}</span></div><div class="chartExplain">${esc(chartExplanation(config))}</div><div class="widgetBody">${renderChart(config)}</div><div class="chartCandidateActions"><button class="btn small" data-chart-source="${esc(ds.id)}">Source</button><button class="btn small adminOnly" data-pin-chart="${esc(candidate.id)}">${pinned?'Unpin':'Pin'}</button></div></article></section>`;
 }
 function renderChartRegistry(ds,analysis){
   const registry=analysis.chartRegistry||{candidates:[],recommended:[],diagnostics:[],candidateCount:0};
@@ -8091,6 +8091,33 @@ function renderComparePanel(ds, compOpts){
   const rows=nums.map(n=>{const av=num(ra[n]), bv=num(rb[n]), diff=av-bv; const sign=diff>0?'+':''; return `<tr><td>${esc(n)}</td><td>${fmt(av)}</td><td>${fmt(bv)}</td><td>${sign}${fmt(diff)}</td></tr>`}).join('');
   return `<div class="compareBox"><div class="compareHead"><b>Порівняти</b><select id="compareA" class="select">${companies.map(c=>`<option value="${esc(c.id)}" ${c.id===state.compareA?'selected':''}>${esc(c.name)}</option>`).join('')}</select><span>з</span><select id="compareB" class="select">${companies.map(c=>`<option value="${esc(c.id)}" ${c.id===state.compareB?'selected':''}>${esc(c.name)}</option>`).join('')}</select><label class="pill"><input id="compareOnly" type="checkbox" ${state.compareOnly?'checked':''}> тільки ці на графіках</label></div><table class="compareMini"><thead><tr><th>Метрика</th><th>${esc(a?.name||'A')}</th><th>${esc(b?.name||'B')}</th><th>Різниця</th></tr></thead><tbody>${rows||'<tr><td colspan="4">Немає числових колонок</td></tr>'}</tbody></table></div>`;
 }
+function chartUnitHint(name){
+  const t=String(name||'').toLowerCase();
+  if(/%|percent|відсот|частк|share|rate|ctr|roi|roas|er public|рівень/.test(t)) return 'відсотки (%)';
+  if(/грн|uah|₴|revenue|дохід|прибут|profit|вируч|вартість|ціна|price|cost|cpc|млн/.test(t)) return /млн/.test(t)?'мільйони грошових одиниць':'грошові одиниці';
+  if(/views|перегляд|traffic|visit|sessions|клік|click|конверс|conversions|ліди|leads|кількість|count/.test(t)) return 'кількість';
+  if(/score|оцінк|rating|бал/.test(t)) return 'бали/оцінка';
+  return 'числове значення з таблиці';
+}
+function chartExplanation(ch){
+  const ds=dataset(ch?.datasetId);
+  const metric=ch?.y||ch?.metricKeys?.[0]||'метрика';
+  const dimension=ch?.x||ch?.dimensionKeys?.[0]||'категорія';
+  const agg=ch?.agg||ch?.aggregation||'sum';
+  const aggText={sum:'сума',avg:'середнє',count:'кількість',none:'значення'}[agg]||agg;
+  return `${chartTitleHint(ch?.title)} Показано ${aggText} «${metric}» за «${dimension}»; цифри подані як ${chartUnitHint(metric)}. Джерело: ${ds?.name||'таблиця'}.`;
+}
+function moveChartBefore(fromId,toId){
+  if(!fromId||!toId||fromId===toId) return;
+  const charts=REPORT.charts||[], from=charts.findIndex(ch=>ch.id===fromId), to=charts.findIndex(ch=>ch.id===toId);
+  if(from<0||to<0) return;
+  const [item]=charts.splice(from,1); charts.splice(from<to?to-1:to,0,item); refresh();
+}
+function moveChartBy(id,delta){
+  const charts=REPORT.charts||[], index=charts.findIndex(ch=>ch.id===id), next=index+delta;
+  if(index<0||next<0||next>=charts.length) return;
+  const [item]=charts.splice(index,1); charts.splice(next,0,item); refresh();
+}
 function chartTitleHint(title){
   const t=localizedChartTitle(title).toLowerCase();
   if(/перегляди по дослідження/.test(t)) return 'Сумарна кількість переглядів для кожного дослідження.';
@@ -8123,10 +8150,14 @@ function chartTitleHint(title){
 }
 function chartWidget(ch){
   const el=document.createElement('div'); el.className='widget chartAuto'; el.dataset.id=ch.id;
-  const hint=chartTitleHint(ch.title);
-  el.innerHTML=translateText(`<div class="widgetHead"><b title="${esc(hint)}">${esc(ch.title)}</b><span class="badge">${esc(ch.type)}</span><button class="btn small ghost" data-act="open" title="Відкрити великий графік">⤢</button><button class="btn small ghost adminOnly" data-act="edit">✎</button><button class="btn small ghost adminOnly" data-act="del">×</button></div><div class="widgetBody"></div>`);
+  if(isAdmin()){el.draggable=true; el.title='Перетягни графік, щоб змінити порядок';}
+  const hint=chartExplanation(ch);
+  el.innerHTML=translateText(`<div class="widgetHead"><b title="${esc(hint)}">${esc(ch.title)}</b><span class="badge">${esc(ch.type)}</span><button class="btn small ghost adminOnly" data-act="up" title="Пересунути вліво/вище">↑</button><button class="btn small ghost adminOnly" data-act="down" title="Пересунути вправо/нижче">↓</button><button class="btn small ghost" data-act="open" title="Відкрити великий графік">⤢</button><button class="btn small ghost adminOnly" data-act="edit">✎</button><button class="btn small ghost adminOnly" data-act="del">×</button></div><div class="chartExplain">${esc(hint)}</div><div class="widgetBody"></div>`);
   el.querySelector('.widgetBody').innerHTML = renderChart(ch);
-  el.addEventListener('click',e=>{const act=e.target.closest('button')?.dataset.act; if(act==='del'){if(!guardAdmin()) return; REPORT.charts=REPORT.charts.filter(x=>x.id!==ch.id); refresh(); e.stopPropagation(); return;} if(act==='edit'){if(!guardAdmin()) return; openChartModal(ch); e.stopPropagation(); return;} if(act==='open'){openChartView(ch.id); e.stopPropagation(); return;} openChartView(ch.id);});
+  el.addEventListener('dragstart',e=>{if(!isAdmin()){e.preventDefault();return;} e.dataTransfer.setData('text/plain',ch.id); e.dataTransfer.effectAllowed='move';});
+  el.addEventListener('dragover',e=>{if(isAdmin()) e.preventDefault();});
+  el.addEventListener('drop',e=>{if(!guardAdmin()) return; const from=e.dataTransfer.getData('text/plain'); moveChartBefore(from,ch.id); e.preventDefault(); e.stopPropagation();});
+  el.addEventListener('click',e=>{const act=e.target.closest('button')?.dataset.act; if(act==='del'){if(!guardAdmin()) return; REPORT.charts=REPORT.charts.filter(x=>x.id!==ch.id); refresh(); e.stopPropagation(); return;} if(act==='edit'){if(!guardAdmin()) return; openChartModal(ch); e.stopPropagation(); return;} if(act==='up'||act==='down'){if(!guardAdmin()) return; moveChartBy(ch.id,act==='up'?-1:1); e.stopPropagation(); return;} if(act==='open'){openChartView(ch.id); e.stopPropagation(); return;} openChartView(ch.id);});
   return el;
 }
 function tableWidget(tb){
@@ -8196,7 +8227,7 @@ function openChartView(chartId){
   state.activeFile='chart:'+ch.id;
   const rows=prepSeries(ch).map(x=>({k:x.label,v:x.value}));
   const cols=[ch.x,ch.y].filter(Boolean);
-  reader.innerHTML=translateText(`<div class="previewToolbar"><b>📈 ${esc(ch.title)}</b><span class="pill">${esc(ch.type)}</span><span class="pill">${rows.length} точок</span><button class="btn small" id="chartOpenSource">Джерело</button></div><div class="widget" style="min-height:420px"><div class="widgetBody">${renderChart(ch)}</div></div><div style="margin-top:10px;overflow:auto"><table class="previewTable"><thead><tr>${cols.map(c=>`<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${rows.slice(0,50).map(r=>`<tr>${cols.map(c=>`<td class="${c===ch.y?'num':''}">${esc(c===ch.y?fmt(r.v):r.k)}</td>`).join('')}</tr>`).join('')||'<tr><td>Немає даних</td><td></td></tr>'}</tbody></table></div>`);
+  reader.innerHTML=translateText(`<div class="previewToolbar"><b>📈 ${esc(ch.title)}</b><span class="pill">${esc(ch.type)}</span><span class="pill">${rows.length} точок</span><button class="btn small" id="chartOpenSource">Джерело</button></div><div class="hintBox">${esc(chartExplanation(ch))}</div><div class="widget" style="min-height:420px"><div class="widgetBody">${renderChart(ch)}</div></div><div style="margin-top:10px;overflow:auto"><table class="previewTable"><thead><tr>${cols.map(c=>`<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${rows.slice(0,50).map(r=>`<tr>${cols.map(c=>`<td class="${c===ch.y?'num':''}">${esc(c===ch.y?fmt(r.v):r.k)}</td>`).join('')}</tr>`).join('')||'<tr><td>Немає даних</td><td></td></tr>'}</tbody></table></div>`);
   $('chartOpenSource')?.addEventListener('click',()=>openDataset(ch.datasetId,ch.sourceFileId));
   renderReaderTabs(); renderSide();
 }
@@ -11480,10 +11511,10 @@ function showImportSuccess(ds){
 }
 
 function dataQuality(ds){const cols=columns(ds).map(c=>c.name); let missing=0; for(const r of (ds?.rows||[]).slice(0,500)){for(const c of cols){const v=r[c]; if(v===null||v===undefined||String(v).trim()==='') missing++;}} return {missing};}
-function autoChartConfig(dsId){const ds=dataset(dsId); const x=guessX(ds); const y=guessY(ds); const type=(x&&/date|дата|month|місяць|time/i.test(x))?'line':'bar'; return {id:uid('ch'),title:y&&x?`${y} по ${x}`:t('newChart'),type,datasetId:ds?.id||state.activeDataset,x:x||'',y:y||'',agg:'sum',sort:type==='line'?'none':'desc',top:10,sourceFileId:ds?.sourceFileId||''};}
-function guessX(ds){const cols=columns(ds); const names=cols.map(c=>c.name); return names.find(n=>/brand|name|competitor|компан|бренд|назва|client|клієнт/i.test(n)) || cols.find(c=>c.type!=='number')?.name || names[0] || '';}
-function guessY(ds){const nums=numberCols(ds); const preferred=['roi','roas','ctr','traffic','conversions','seo','cpc']; return preferred.map(p=>nums.find(n=>n.toLowerCase()===p || n.toLowerCase().includes(p))).find(Boolean) || nums[0] || '';}
-function autoReport(dsId){const ds=dataset(dsId); if(!ds){toast('Спочатку додай таблицю');return;} state.activeDataset=ds.id; const x=guessX(ds); const nums=numberCols(ds); if(!x||!nums.length){toast('Потрібна хоча б 1 текстова і 1 числова колонка');return;} const preferred=['roi','ctr','traffic','conversions','cpc','seo']; const picked=[]; for(const p of preferred){const n=nums.find(c=>c.toLowerCase()===p || c.toLowerCase().includes(p)); if(n&&!picked.includes(n)) picked.push(n);} nums.forEach(n=>{if(picked.length<4&&!picked.includes(n)) picked.push(n)}); let made=0; for(const y of picked.slice(0,4)){if(!REPORT.charts.some(c=>c.datasetId===ds.id&&c.x===x&&c.y===y)){const ch={id:uid('ch'),title:`${y} по ${x}`,type:/date|дата|month|місяць|time/i.test(x)?'line':'bar',datasetId:ds.id,x,y,agg:'sum',sort:'desc',top:10,sourceFileId:ds.sourceFileId||''}; inheritSourceMeta(ch, ds); ch._baseTitle=ch.title; REPORT.charts.push(ch); made++;}}
+function autoChartConfig(dsId){const ds=dataset(dsId); const x=guessX(ds); const y=guessY(ds); const type=(x&&/date|дата|month|місяць|time|year|рік|період|period|quarter|квартал/i.test(x))?'line':'bar'; return {id:uid('ch'),title:y&&x?`${y} по ${x}`:t('newChart'),type,datasetId:ds?.id||state.activeDataset,x:x||'',y:y||'',agg:'sum',sort:type==='line'?'none':'desc',top:10,sourceFileId:ds?.sourceFileId||''};}
+function guessX(ds){const cols=columns(ds); const names=cols.map(c=>c.name); return names.find(n=>/^(year|рік|год|period|період)$/i.test(n)) || names.find(n=>/date|дата|month|місяць|quarter|квартал|year|рік|період|period/i.test(n)) || names.find(n=>/brand|name|competitor|компан|бренд|назва|client|клієнт/i.test(n)) || cols.find(c=>c.type!=='number')?.name || names[0] || '';}
+function guessY(ds){const nums=numberCols(ds).filter(n=>n!==guessX(ds)); const preferred=['revenue','дохід','profit','прибут','roi','roas','ctr','traffic','conversions','seo','cpc']; return preferred.map(p=>nums.find(n=>n.toLowerCase()===p || n.toLowerCase().includes(p))).find(Boolean) || nums[0] || '';}
+function autoReport(dsId){const ds=dataset(dsId); if(!ds){toast('Спочатку додай таблицю');return;} state.activeDataset=ds.id; const x=guessX(ds); const nums=numberCols(ds).filter(n=>n!==x); if(!x||!nums.length){toast('Потрібна хоча б 1 колонка-підпис і 1 числова колонка');return;} const preferred=['revenue','дохід','profit','прибут','roi','ctr','traffic','conversions','cpc','seo']; const picked=[]; for(const p of preferred){const n=nums.find(c=>c.toLowerCase()===p || c.toLowerCase().includes(p)); if(n&&!picked.includes(n)) picked.push(n);} nums.forEach(n=>{if(picked.length<8&&!picked.includes(n)) picked.push(n)}); let made=0; const timeline=/date|дата|month|місяць|time|year|рік|період|period|quarter|квартал/i.test(x); for(const y of picked.slice(0,8)){if(!REPORT.charts.some(c=>c.datasetId===ds.id&&c.x===x&&c.y===y)){const ch={id:uid('ch'),title:`${y} по ${x}`,type:timeline?'line':'bar',datasetId:ds.id,x,y,agg:'sum',sort:timeline?'none':'desc',top:timeline?50:15,sourceFileId:ds.sourceFileId||''}; inheritSourceMeta(ch, ds); ch._baseTitle=ch.title; REPORT.charts.push(ch); made++;}}
   const cols=[x,...picked.slice(0,5)].filter(Boolean); if(!REPORT.tables.some(t=>t.datasetId===ds.id&&((t._baseTitle||t.title)==='Авто-таблиця'))){const tb={id:uid('tb'),title:'Авто-таблиця',datasetId:ds.id,columns:cols,top:20,sourceFileId:ds.sourceFileId||''}; inheritSourceMeta(tb, ds); tb._baseTitle=tb.title; REPORT.tables.push(tb);}
   refresh(); openDataset(ds.id,ds.sourceFileId); toast(made?`Авто-звіт створено: ${made} графік(и)`:'Авто-звіт уже є');}
 function saveDatasetEdits(dsId){const ds=dataset(dsId); const table=$('readerDataTable'); if(!ds||!table) return; const cols=[...table.querySelectorAll('thead th')].map(th=>th.textContent); table.querySelectorAll('tbody tr').forEach(tr=>{const idx=Number(tr.dataset.row); if(!ds.rows[idx]) return; tr.querySelectorAll('td').forEach((td,i)=>{const c=cols[i]; const raw=td.textContent.trim(); ds.rows[idx][c]=isNum(raw)?num(raw):raw;});}); ds.updatedAt=new Date().toISOString();invalidateDatasetAnalysis(ds.id);ds.columns=inferColumns(ds.rows);getDatasetAnalysis(ds,{refresh:true}); refresh(); openDataset(ds.id,ds.sourceFileId,false); toast('Дані збережено, графіки оновлено');}
