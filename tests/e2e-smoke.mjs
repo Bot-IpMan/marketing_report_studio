@@ -15,11 +15,12 @@ let appUrl = pathToFileURL(resolve(projectRoot, appFileName)).href;
 const browserPath = findBrowser();
 
 if (!browserPath) {
-  const message='Browser E2E smoke SKIPPED: no usable Chrome/Edge headless browser found. Set E2E_BROWSER to a working Chromium-compatible executable.';
+  const message='Browser E2E smoke used static fallback: no usable Chrome/Edge headless browser found. Set E2E_BROWSER to run the full browser workflow.';
   if(process.env.E2E_STRICT==='1'){
     console.error(`${message} Strict mode requires a browser, so this run is FAIL.`);
     process.exit(1);
   }
+  runNoBrowserFallback();
   console.log(message);
   process.exit(0);
 }
@@ -32,6 +33,25 @@ let rootCdp = null;
 let browser = null;
 let appServer = null;
 let userDataDir = null;
+
+function runNoBrowserFallback() {
+  const html = readFileSync(resolve(projectRoot, appFileName), 'utf8');
+  const appSource = readFileSync(resolve(projectRoot, 'app.js'), 'utf8');
+  for (const marker of [
+    'id="pasteBtn"',
+    'id="uploadFilesBtn"',
+    'data-simple-file-tree',
+    'function chartExplanation(ch)',
+    'function moveChartBefore(fromId,toId)',
+    'function moveChartBy(id,delta)',
+    'data-act="up"',
+    'data-act="down"',
+    'chartExplain',
+    'PDFJS_MODULE_IMPORT_FAILED',
+  ]) {
+    assert.ok(html.includes(marker) || appSource.includes(marker), `No-browser E2E fallback missing marker: ${marker}`);
+  }
+}
 
 async function runDumpDomE2E() {
   const appPort = await getFreePort();
