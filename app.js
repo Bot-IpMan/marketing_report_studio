@@ -7396,7 +7396,8 @@ function renderCandidateMeta(candidate,ds,opts={}){
 function renderRecommendedCandidate(candidate,ds){
   const config=MRS_CHART_CANDIDATES.candidateToChartConfig(candidate);
   const pinned=(REPORT.meta?.pinnedChartCandidateIds||[]).includes(candidate.id);
-  return `<article class="autoChartCard" title="${esc(candidate.title)}"><div class="widgetHead"><b>${esc(candidate.title)}</b><span class="badge">${esc(candidate.chartType)}</span></div><div class="chartExplain">${esc(chartExplanation(config))}</div><div class="widgetBody">${renderChart(config)}</div><div class="chartCandidateActions"><button class="btn small primary" data-simple-open-chart="${esc(candidate.id)}">Preview</button><button class="btn small adminOnly" data-pin-chart="${esc(candidate.id)}">${pinned?'Unpin':'Pin'}</button></div></article>`;
+  const title=shortChartTitle(candidate.title);
+  return `<article class="autoChartCard" title="${esc(title)}"><div class="widgetHead"><b>${esc(title)}</b><span class="badge">${esc(candidate.chartType)}</span></div><div class="widgetBody">${renderChart(config)}</div><div class="chartCandidateActions"><button class="btn small primary" data-simple-open-chart="${esc(candidate.id)}">Preview</button><button class="btn small adminOnly" data-pin-chart="${esc(candidate.id)}">${pinned?'Unpin':'Pin'}</button></div></article>`;
 }
 function selectedFamilyCandidate(family){
   const selectedId=state.simpleChartFamilySelections?.[family.id];
@@ -7422,7 +7423,8 @@ function renderSelectedChartPreview(ds){
   if(!resolved||resolved.ds?.id!==ds.id) return '';
   const {candidate}=resolved,config=MRS_CHART_CANDIDATES.candidateToChartConfig(candidate);
   const pinned=(REPORT.meta?.pinnedChartCandidateIds||[]).includes(candidate.id);
-  return `<section class="chartSelectedPreview" data-selected-chart-preview="${esc(candidate.id)}"><div class="zoneHead"><div><b>Selected preview</b><span class="tiny">${esc(candidate.title)}</span></div><button class="btn small" data-close-chart-preview="1">Close</button></div><article class="autoChartCard"><div class="widgetHead"><b>${esc(candidate.title)}</b><span class="badge">${esc(candidate.chartType)}</span><span class="pill">Confidence: ${esc(candidateConfidence(candidate,ds))}</span></div><div class="chartExplain">${esc(chartExplanation(config))}</div><div class="widgetBody">${renderChart(config)}</div><div class="chartCandidateActions"><button class="btn small" data-chart-source="${esc(ds.id)}">Source</button><button class="btn small adminOnly" data-pin-chart="${esc(candidate.id)}">${pinned?'Unpin':'Pin'}</button></div></article></section>`;
+  const title=shortChartTitle(candidate.title);
+  return `<section class="chartSelectedPreview" data-selected-chart-preview="${esc(candidate.id)}"><div class="zoneHead"><div><b>Selected preview</b><span class="tiny">${esc(title)}</span></div><button class="btn small" data-close-chart-preview="1">Close</button></div><article class="autoChartCard"><div class="widgetHead"><b>${esc(title)}</b><span class="badge">${esc(candidate.chartType)}</span><span class="pill">Confidence: ${esc(candidateConfidence(candidate,ds))}</span></div><div class="widgetBody">${renderChart(config)}</div><div class="chartCandidateActions"><button class="btn small" data-chart-source="${esc(ds.id)}">Source</button><button class="btn small adminOnly" data-pin-chart="${esc(candidate.id)}">${pinned?'Unpin':'Pin'}</button></div></article></section>`;
 }
 function renderChartRegistry(ds,analysis){
   const registry=analysis.chartRegistry||{candidates:[],recommended:[],diagnostics:[],candidateCount:0};
@@ -8090,6 +8092,25 @@ function renderComparePanel(ds, compOpts){
   const nums=numberCols(ds).slice(0,6);
   const rows=nums.map(n=>{const av=num(ra[n]), bv=num(rb[n]), diff=av-bv; const sign=diff>0?'+':''; return `<tr><td>${esc(n)}</td><td>${fmt(av)}</td><td>${fmt(bv)}</td><td>${sign}${fmt(diff)}</td></tr>`}).join('');
   return `<div class="compareBox"><div class="compareHead"><b>Порівняти</b><select id="compareA" class="select">${companies.map(c=>`<option value="${esc(c.id)}" ${c.id===state.compareA?'selected':''}>${esc(c.name)}</option>`).join('')}</select><span>з</span><select id="compareB" class="select">${companies.map(c=>`<option value="${esc(c.id)}" ${c.id===state.compareB?'selected':''}>${esc(c.name)}</option>`).join('')}</select><label class="pill"><input id="compareOnly" type="checkbox" ${state.compareOnly?'checked':''}> тільки ці на графіках</label></div><table class="compareMini"><thead><tr><th>Метрика</th><th>${esc(a?.name||'A')}</th><th>${esc(b?.name||'B')}</th><th>Різниця</th></tr></thead><tbody>${rows||'<tr><td colspan="4">Немає числових колонок</td></tr>'}</tbody></table></div>`;
+}
+function shortChartTitle(title){
+  const raw=String(title||'').trim();
+  const localized=localizedChartTitle(raw);
+  const rowsBy=raw.match(/^Rows by (.+)$/i);
+  if(rowsBy) return translateText(`Кількість за ${rowsBy[1]}`);
+  const shareBy=raw.match(/^Share by (.+)$/i);
+  if(shareBy) return translateText(`Частка за ${shareBy[1]}`);
+  const topBy=raw.match(/^Top (.+) by (.+)$/i);
+  if(topBy) return translateText(`${topBy[1]} за ${topBy[2]}`);
+  const bottomBy=raw.match(/^Bottom (.+) by (.+)$/i);
+  if(bottomBy) return translateText(`${bottomBy[1]} за ${bottomBy[2]}`);
+  const byAgg=raw.match(/^(.+) by (.+) \((.+)\)$/i);
+  if(byAgg) return translateText(`${byAgg[1]} за ${byAgg[2]}`);
+  const overAgg=raw.match(/^(.+) over (.+) \((.+)\)$/i);
+  if(overAgg) return translateText(`${overAgg[1]} за ${overAgg[2]}`);
+  const nonEmpty=raw.match(/^Non-empty (.+) records by (.+)$/i);
+  if(nonEmpty) return translateText(`Заповнені ${nonEmpty[1]} за ${nonEmpty[2]}`);
+  return localized;
 }
 function chartUnitHint(name){
   const t=String(name||'').toLowerCase();
