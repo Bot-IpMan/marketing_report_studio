@@ -147,6 +147,8 @@ const MRS_CHART_CANDIDATES = (typeof window!=='undefined' && window.MRSChartCand
 const MRS_DERIVED_TABLES = (typeof window!=='undefined' && window.MRSDerivedTables) || {};
 const MRS_TABLE_DETECTION = (typeof window!=='undefined' && window.MRSTableDetection) || {};
 const MRS_DOCUMENT_EXTRACT = (typeof window!=='undefined' && window.MRSDocumentExtract) || {};
+const MRS_PROVIDER_RESULTS = (typeof window!=='undefined' && window.MRSProviderResults) || {};
+const MRS_PROVIDER_MARKDOWN = (typeof window!=='undefined' && window.MRSProviderMarkdown) || {};
 const MRS_STORAGE = (typeof window!=='undefined' && window.MRSStorage) || {};
 const ANALYSIS_WORKER_SRC = 'src/workers/analysis.worker.js';
 const PDFJS_MODULE_SRC = 'vendor/pdfjs/pdf.min.mjs';
@@ -6763,6 +6765,10 @@ function normalizeDocumentState(reportData){
   const report=reportData&&typeof reportData==='object'?reportData:{};
   report.documents=Array.isArray(report.documents)?report.documents:[];
   report.extractedTables=Array.isArray(report.extractedTables)?report.extractedTables:[];
+  report.generatedReports=Array.isArray(report.generatedReports)?report.generatedReports:[];
+  report.generatedReports=report.generatedReports.filter(item=>item&&typeof item==='object').map(item=>({
+    ...item,id:String(item.id||uid('generated')),title:String(item.title||'Generated report.md'),format:String(item.format||'markdown'),content:String(item.content||''),jobId:String(item.jobId||''),target:String(item.target||''),sourceArtifactIds:Array.isArray(item.sourceArtifactIds)?item.sourceArtifactIds.map(String):[],warnings:Array.isArray(item.warnings)?item.warnings:[]
+  }));
   const statuses=new Set(['not_started','processing','complete','partial','preview_only','needs_review','failed','cancelled']);
   const confidences=new Set(['unknown','low','medium','high']);
   for(const documentModel of report.documents){
@@ -9467,6 +9473,7 @@ function renderSimpleProjectTree(){
   const match=s=>!q || String(s||'').toLowerCase().includes(q);
   const files=(REPORT.files||[]).filter(file=>match(file.name)||match(file.path)||match(file.folder));
   const tables=(REPORT.datasets||[]).filter(ds=>match(ds.name));
+  const generatedReports=(REPORT.generatedReports||[]).filter(report=>match(report.title)||match(report.target)||match(report.jobId));
   const documents=files.filter(file=>fileKind(file)==='document');
   const images=files.filter(file=>fileKind(file)==='image');
   const activeDs=getActiveTableDataset();
@@ -9485,6 +9492,7 @@ function renderSimpleProjectTree(){
   const imageRows=renderSimpleTreeRows('images',images,file=>`<div class="item simpleTreeItem ${state.activeFile===`file:${file.id}`?'active':''}" data-type="emb-file" data-id="${esc(file.id)}"><div class="materialsIcon image">${esc(fileIcon(file))}</div><div class="itemName">${esc(file.name||'Image')}<div class="itemMeta">${simpleFileMeta(file)}</div></div>${deleteFileButton(file)}</div>`);
   const chartRows=renderSimpleTreeRows('auto-charts',autoCharts,ch=>`<div class="item simpleTreeItem ${state.activeFile===`chart:${ch.id}`?'active':''}" data-type="simple-chart" data-id="${esc(ch.id)}"><div class="materialsIcon code">CH</div><div class="itemName">${esc(ch.title)}<div class="itemMeta">${esc(ch.chartType)} · ${esc(ch.aggregation)} · score ${esc(ch.score)}</div></div></div>`);
   const generatedRows=renderSimpleTreeRows('generated-tables',generatedTables,item=>`<div class="item simpleTreeItem ${state.activeFile===`derived:${item.id}`?'active':''}" data-type="generated-table" data-id="${esc(item.id)}"><div class="materialsIcon sheet">GEN</div><div class="itemName">${esc(item.title)}<div class="itemMeta">${esc(item.candidateType)} · score ${esc(item.score)}</div></div><button class="btn small ghost adminOnly simpleTreeAction" data-pin-derived="${esc(item.id)}" title="Pin generated table">${pinnedTableIds.has(item.id)?'★':'☆'}</button></div>`);
+  const generatedReportRows=renderSimpleTreeRows('generated-reports',generatedReports,report=>`<div class="item simpleTreeItem" data-generated-report="${esc(report.id)}"><div class="materialsIcon doc">MD</div><div class="itemName">${esc(report.title)}<div class="itemMeta">${esc(report.target||report.jobId||'provider audit')} · deterministic</div></div><button class="btn small ghost" data-download-generated-report="${esc(report.id)}" title="Download Markdown">MD</button></div>`);
   const pinnedRows=[
     ...pinnedCharts.map(item=>`<div class="item simpleTreeItem" data-type="simple-chart" data-id="${esc(item.id)}"><div class="materialsIcon code">CH</div><div class="itemName">${esc(item.title)}<div class="itemMeta">Pinned chart</div></div></div>`),
     ...pinnedTables.map(item=>`<div class="item simpleTreeItem" data-type="generated-table" data-id="${esc(item.id)}"><div class="materialsIcon sheet">GEN</div><div class="itemName">${esc(item.title)}<div class="itemMeta">Pinned table</div></div></div>`)
@@ -9507,6 +9515,7 @@ function renderSimpleProjectTree(){
     ${renderSimpleTreeGroup('Documents',documents.length,docRows,{open:false,empty:'PDF, DOCX, Markdown, TXT, HTML, and JSON documents appear here.'})}
     ${renderSimpleTreeGroup('Images',images.length,imageRows,{open:false,empty:'Screenshots and image files appear here.'})}
     ${renderSimpleTreeGroup('Generated tables',generatedTables.length,generatedRows,{open:false,empty:'No valid generated-table candidates.'})}
+    ${renderSimpleTreeGroup('Generated reports',generatedReports.length,generatedReportRows,{open:true,empty:'No generated Markdown reports.'})}
     ${renderSimpleTreeGroup('Auto charts',autoCharts.length,chartRows,{empty:'No meaningful chart candidates detected.'})}
     ${renderSimpleTreeGroup('Pinned',pinnedCharts.length+pinnedTables.length,pinnedRows,{open:false,empty:'Pin charts or generated tables for quick access.'})}
     ${renderSimpleTreeGroup('Saved views',savedViews.length,viewRows,{open:false,empty:'Save a table view after filtering or hiding columns.'})}
@@ -9532,6 +9541,10 @@ function handleSimpleExportAction(action){
   }
 }
 async function onSideListClick(e){
+  const generatedDownload=e.target.closest('[data-download-generated-report]');
+  if(generatedDownload&&sideList.contains(generatedDownload)){downloadGeneratedReport(generatedDownload.dataset.downloadGeneratedReport);e.stopPropagation();return;}
+  const generatedReport=e.target.closest('[data-generated-report]');
+  if(generatedReport&&sideList.contains(generatedReport)){openGeneratedReport(generatedReport.dataset.generatedReport);e.stopPropagation();return;}
   const pinDerived=e.target.closest('[data-pin-derived]');
   if(pinDerived&&sideList.contains(pinDerived)){
     togglePinnedDerivedTable(pinDerived.dataset.pinDerived);
@@ -11755,7 +11768,7 @@ async function addUniversalFile(file){
       const sheets=await parseXlsx(arrayBuffer),documentModel=xlsxDocumentFromSheets(rec,sheets);
       const datasets=await ingestDocumentModel(documentModel);
       result={documentModel,datasets};
-    }else if(['csv','tsv','json','md','markdown','txt','html','htm','docx','pdf','png','jpg','jpeg','webp','gif','bmp','svg'].includes(ext)){
+    }else if(['csv','tsv','json','md','markdown','txt','html','htm','docx','pdf','png','jpg','jpeg','webp','gif','bmp','svg'].includes(ext) && !(ext==='json'&&typeof MRS_PROVIDER_RESULTS.isProviderResultArtifact==='function'&&MRS_PROVIDER_RESULTS.isProviderResultArtifact(jsonValue))){
       result=await extractAndIngestFileDocument(rec,{text,arrayBuffer,value:jsonValue,activate:true});
     }
     rec.isData=Boolean(result.datasets?.length);
@@ -11782,7 +11795,37 @@ async function addUniversalFile(file){
     showNotice(`${file.name}: ${error?.message||'structured extraction failed'}`,'error');
   }
 }
-async function handleFiles(fileList){if(!guardAdmin()) {toast('Редагування вимкнено'); return;} const files=[...fileList]; if(files.length>MAX_IMPORT_FILES){showNotice(`За один раз можна додати не більше ${MAX_IMPORT_FILES} файлів.`,'error');return;} const before=new Set((REPORT.datasets||[]).map(d=>d.id)); let count=0; for(const file of files){try{await addUniversalFile(file); count++;}catch(e){console.warn('[import] skipped:',file?.name,e?.message||e);showNotice(e?.message||`Не вдалося додати ${file?.name||'файл'}.`,'error');}} refresh(); const added=(REPORT.datasets||[]).filter(d=>!before.has(d.id)); if(added.length===1) showImportSuccess(added[0]); else if(added.length>1) showNotice(`Додано ${added.length} таблиць із ${count} файлів.`,'success'); else if(count) showNotice(`Додано файлів: ${count}.`,'success');}
+function rebuildProviderResultAudits(){
+  if(typeof MRS_PROVIDER_RESULTS.collectProviderArtifacts!=='function'||typeof MRS_PROVIDER_RESULTS.buildNormalizedAudit!=='function'||typeof MRS_PROVIDER_MARKDOWN.buildAuditMarkdown!=='function') return {bundles:0,datasets:0};
+  const artifacts=MRS_PROVIDER_RESULTS.collectProviderArtifacts(REPORT.files||[]);
+  const groups=MRS_PROVIDER_RESULTS.groupArtifacts(artifacts),created=[];
+  for(const group of groups){
+    const audit=MRS_PROVIDER_RESULTS.buildNormalizedAudit(group);
+    if(!audit) continue;
+    const groupId=audit.bundleId;
+    REPORT.datasets=(REPORT.datasets||[]).filter(ds=>ds.sourceKind!=='provider-result-adapter'||ds.artifactGroupId!==groupId);
+    REPORT.charts=(REPORT.charts||[]).filter(chart=>chart.sourceKind!=='provider-result-adapter'||chart.artifactGroupId!==groupId);
+    for(const [key,rows] of Object.entries(audit.providerDatasets||{})){
+      if(!rows.length) continue;
+      const ds={id:stableId('ds-provider',groupId,key),name:`Audit · ${key.replace(/_/g,' ')}`,sourceKind:'provider-result-adapter',artifactGroupId:groupId,jobId:audit.jobId,target:audit.target,sourceFileId:rows[0].sourceFileId||'',sourceArtifactIds:[...audit.sourceArtifactIds],sourceAnchor:{kind:key},createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),rows,columns:inferColumns(rows),warnings:[...audit.warnings]};
+      REPORT.datasets.push(ds); created.push(ds); getDatasetAnalysis(ds,{refresh:true});
+      const numeric=columns(ds).filter(column=>column.type==='number').map(column=>column.name).filter(name=>/^value_number$|^score$|^pages$|^count$/i.test(name));
+      const dimension=columns(ds).map(column=>column.name).find(name=>/metric|provider|impact|category|form_factor/i.test(name));
+      if(dimension&&numeric.length){
+        const y=numeric[0],chart={id:stableId('ch-provider',groupId,key,y),title:`Audit · ${key.replace(/_/g,' ')}`,type:'bar',datasetId:ds.id,x:dimension,y,agg:'sum',sort:'desc',top:15,sourceFileId:ds.sourceFileId,sourceKind:'provider-result-adapter',artifactGroupId:groupId,jobId:audit.jobId,target:audit.target,sourceArtifactIds:[...audit.sourceArtifactIds]};
+        REPORT.charts.push(chart);
+      }
+    }
+    const report=MRS_PROVIDER_MARKDOWN.buildAuditMarkdown(audit,{generatedAt:new Date().toISOString()});
+    REPORT.generatedReports=(REPORT.generatedReports||[]).filter(item=>item.artifactGroupId!==groupId);
+    REPORT.generatedReports.push({...report,artifactGroupId:groupId,sourceFileId:audit.sourceArtifactIds[0]||'',autoRegenerate:true});
+  }
+  return {bundles:groups.length,datasets:created.length};
+}
+function downloadGeneratedReport(id){const report=(REPORT.generatedReports||[]).find(item=>item.id===id);if(!report)return;const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([report.content],{type:'text/markdown;charset=utf-8'}));a.download=(report.title||'Executive report.md').replace(/[\\/:*?"<>|]+/g,'_');a.click();URL.revokeObjectURL(a.href);}
+async function copyGeneratedReport(id){const report=(REPORT.generatedReports||[]).find(item=>item.id===id);if(!report)return;try{await navigator.clipboard.writeText(report.content);toast('Markdown скопійовано');}catch(error){toast('Копіювання недоступне у цьому браузері');}}
+function openGeneratedReport(id){const report=(REPORT.generatedReports||[]).find(item=>item.id===id);if(!report)return;openModal(report.title,`<div class="hintBox">Детермінований локальний звіт · ${esc(report.target||report.jobId||'audit')}</div><pre style="white-space:pre-wrap;max-height:60vh;overflow:auto">${esc(report.content)}</pre>`,`<button class="btn" id="generatedCopy">Copy</button><button class="btn" id="generatedDownload">Download .md</button><button class="btn primary" id="generatedRegenerate">Regenerate</button>`);$('generatedCopy').onclick=()=>copyGeneratedReport(id);$('generatedDownload').onclick=()=>downloadGeneratedReport(id);$('generatedRegenerate').onclick=()=>{rebuildProviderResultAudits();refresh();closeModal();toast('Звіт регенеровано');};}
+async function handleFiles(fileList){if(!guardAdmin()) {toast('Редагування вимкнено'); return;} const files=[...fileList]; if(files.length>MAX_IMPORT_FILES){showNotice(`За один раз можна додати не більше ${MAX_IMPORT_FILES} файлів.`,'error');return;} const before=new Set((REPORT.datasets||[]).map(d=>d.id)); let count=0; for(const file of files){try{await addUniversalFile(file); count++;}catch(e){console.warn('[import] skipped:',file?.name,e?.message||e);showNotice(e?.message||`Не вдалося додати ${file?.name||'файл'}.`,'error');}} const audits=rebuildProviderResultAudits(); refresh(); const added=(REPORT.datasets||[]).filter(d=>!before.has(d.id)); if(audits.bundles) showNotice(`Нормалізовано provider audit: ${audits.bundles} bundle(s), ${audits.datasets} datasets.`,'success'); else if(added.length===1) showImportSuccess(added[0]); else if(added.length>1) showNotice(`Додано ${added.length} таблиць із ${count} файлів.`,'success'); else if(count) showNotice(`Додано файлів: ${count}.`,'success');}
 async function addFile(file){assertSafeImportFile(file); const ext=(file.name.split('.').pop()||'').toLowerCase(); const id=uid('file'); const co=company(state.activeCompany); const companyId=co?.id||''; const companyPath=co?('companies/'+co.folder+'/'):'data/'; const importedAt=new Date().toISOString(); const fileMeta={size:file.size||0,lastModified:file.lastModified||0,createdAt:importedAt,updatedAt:importedAt}; if(['csv','tsv'].includes(ext)){const text=await file.text(); const matrix=parseCsv(text, ext==='tsv'?'\t':undefined); const rows=rowsFromMatrix(matrix); const rec={id,name:file.name,path:companyPath+file.name,folder:co?.name||'Дані',companyId,ext,type:file.type||'text/csv',...fileMeta,isData:true,contentText:text}; REPORT.files.push(rec); const ds={id:uid('ds'),name:file.name.replace(/\.[^.]+$/,''),sourceFileId:id,createdAt:importedAt,rows,columns:inferColumns(rows)}; REPORT.datasets.push(ds); state.activeDataset=ds.id; toast(`Додано таблицю: ${file.name}`); return;}
   if(ext==='json'){const text=await file.text(); let rows=[]; let obj=null; try{obj=JSON.parse(text); if(obj && Array.isArray(obj.datasets)){REPORT=stripLegacyTrueSavageDemoPack(stripLegacyCaspianPack(normalizeReport(obj))); state.activeDataset=REPORT.datasets[0]?.id||null; state.openTabs=[]; initState(); toast('Проєкт JSON завантажено'); return;} rows=jsonRows(obj);}catch(e){toast('JSON не прочитався');} const rec={id,name:file.name,path:companyPath+file.name,folder:co?.name||'Дані',companyId,ext,type:file.type||'application/json',...fileMeta,isData:rows.length>0,contentText:text}; REPORT.files.push(rec); if(rows.length){const ds={id:uid('ds'),name:file.name.replace(/\.[^.]+$/,''),sourceFileId:id,createdAt:importedAt,rows,columns:inferColumns(rows)}; REPORT.datasets.push(ds); state.activeDataset=ds.id; toast(`Додано JSON-таблицю: ${file.name}`);} return;}
   if(ext==='xlsx'){const ab=await file.arrayBuffer(); const b64=abToBase64(ab); const rec={id,name:file.name,path:companyPath+file.name,folder:co?.name||'Дані',companyId,ext,type:file.type||'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',...fileMeta,isData:true,contentBase64:b64}; REPORT.files.push(rec); try{const sheets=await parseXlsx(ab); let added=0; for(const sh of sheets){if(sh.rows.length){REPORT.datasets.push({id:uid('ds'),name:file.name.replace(/\.[^.]+$/,'')+' / '+sh.name,sourceFileId:id,createdAt:importedAt,rows:sh.rows,columns:inferColumns(sh.rows)}); added++;}} if(added){state.activeDataset=REPORT.datasets[REPORT.datasets.length-1].id; toast(`Excel прочитано: ${added} лист(ів)`);} else toast('Excel відкрито, але таблиць не знайдено');}catch(e){console.error(e); toast('Не вдалося прочитати .xlsx');} return;}
