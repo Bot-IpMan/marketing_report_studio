@@ -1376,7 +1376,7 @@ function replaceTranslatedPhrase(text, from, to){
   if(!source) return text;
   const escaped=escapeRegExp(source);
   if(/^[\p{L}\p{N}]+$/u.test(source)){
-    return String(text).replace(new RegExp(`(^|[^\p{L}\p{N}])(${escaped})(?=$|[^\p{L}\p{N}])`, 'gu'), `$1${to}`);
+    return String(text).replace(new RegExp(`(^|[^\\p{L}\\p{N}])(${escaped})(?=$|[^\\p{L}\\p{N}])`, 'gu'), `$1${to}`);
   }
   return String(text).split(source).join(to);
 }
@@ -7414,9 +7414,12 @@ function renderCandidateFamily(family,ds){
   const source=fileRec(candidate.sourceFileId||ds.sourceFileId);
   const variants=family.variants||[];
   const selector=variants.length>1?`<label class="chartFamilyAggregation">Aggregation<select data-chart-family-aggregation="${esc(family.id)}">${variants.map(variant=>`<option value="${esc(variant.id)}" ${variant.id===candidate.id?'selected':''}>${esc(variant.aggregation||'none')}</option>`).join('')}</select></label>`:`<div><dt>Aggregation</dt><dd>${esc(candidate.aggregation||'none')}</dd></div>`;
+  const config=MRS_CHART_CANDIDATES.candidateToChartConfig(candidate);
+  const miniChart=`<div class="chartFamilyMiniChart">${renderChart(config)}</div>`;
   return `<article class="chartCandidateCard chartCandidateFamily" data-chart-family="${esc(family.id)}">
     <div class="chartCandidateTitle"><b>${esc(family.title)}</b><span class="badge">${esc(family.chartType)}</span></div>
     <div class="chartFamilyVariantTitle">${esc(candidate.title)}</div>
+    ${miniChart}
     <dl><div><dt>Dimension</dt><dd>${esc((candidate.dimensionKeys||[]).join(', ')||'—')}</dd></div><div><dt>Metric</dt><dd>${esc((candidate.metricKeys||[]).join(', ')||'Rows')}</dd></div>${selector}<div><dt>Confidence</dt><dd>${esc(candidateConfidence(candidate,ds))}</dd></div></dl>
     <div class="chartCandidateSource">${esc(source?.name||ds.name)} · ${esc(sourceAnchorText(candidate))}</div>
     <div class="chartCandidateActions"><span class="tiny">${fmt(variants.length)} variant${variants.length===1?'':'s'}</span><button class="btn small primary" data-simple-open-chart="${esc(candidate.id)}">Preview</button><button class="btn small adminOnly" data-pin-chart="${esc(candidate.id)}">${pinned?'Unpin':'Pin'}</button><button class="btn small" data-chart-source="${esc(ds.id)}">Source</button></div>
@@ -7462,6 +7465,7 @@ function renderSimpleDashboard(ds){
   const cards=tableSummaryCards(analysis);
   const insights=simpleInsightsForTable(analysis);
   const source=fileRec(ds.sourceFileId);
+  const isCrawl=ds.name?.includes('crawl pages');
   analytics.innerHTML=`<div class="simpleDashboard" data-simple-dashboard>
     ${analysisProgressHtml()}
     <div class="simpleDashboardHeader">
@@ -7477,6 +7481,15 @@ function renderSimpleDashboard(ds){
       </div>
     </div>
     <div class="simpleSummaryCards">${cards.map(([label,value,sub])=>`<div class="simpleStat"><span>${esc(label)}</span><b>${esc(value)}</b><small>${esc(sub||'')}</small></div>`).join('')}</div>
+    ${isCrawl ? `
+    <details class="simpleChartRegistrySummary" open>
+      <summary><b>Chart registry</b><span class="tiny">${fmt(analysis.chartRegistry?.candidateCount||0)} candidates · ${fmt(analysis.chartRegistry?.materializedCandidateCount||0)} materialized · ${fmt(analysis.derivedTableRegistry?.candidateCount||0)} derived tables</span></summary>
+      <div class="simpleRegistryStats">
+        <div class="simpleRegistryStat"><span>Recommended</span><b>${fmt(analysis.chartRegistry?.recommended?.length||0)}</b></div>
+        <div class="simpleRegistryStat"><span>Generated tables</span><b>${fmt(analysis.derivedTableRegistry?.candidateCount||0)}</b></div>
+      </div>
+    </details>
+    ` : ''}
     <div class="simpleDashboardSplit">
       <section class="simpleChartsPanel">
         <div class="zoneHead"><b>Chart candidates</b><span class="tiny">${fmt(analysis.chartRegistry?.candidateCount||0)}</span></div>
@@ -10051,6 +10064,7 @@ function deleteEmbeddedFileById(fileId){
   REPORT.documents=(REPORT.documents||[]).filter(documentModel=>!documentIds.has(documentModel.id));
   REPORT.extractedTables=(REPORT.extractedTables||[]).filter(table=>!documentIds.has(table.documentId));
   REPORT.files=(REPORT.files||[]).filter(f=>f.id!==id);
+  rebuildProviderResultAudits();
   REPORT.charts=(REPORT.charts||[]).filter(ch=>String(ch.sourceFileId||'')!==id);
   REPORT.tables=(REPORT.tables||[]).filter(tb=>String(tb.sourceFileId||'')!==id);
   if(state.activeFile===`file:${id}`) state.activeFile=null;
@@ -10073,6 +10087,7 @@ function deleteEmbeddedFolderByKey(folderKey){
   removeDatasetsByIds(dsIds);
   const documentIds=new Set((REPORT.documents||[]).filter(documentModel=>fileSet.has(String(documentModel.fileId||''))).map(documentModel=>documentModel.id));
   REPORT.files=(REPORT.files||[]).filter(f=>!fileSet.has(f.id));
+  rebuildProviderResultAudits();
   REPORT.documents=(REPORT.documents||[]).filter(documentModel=>!documentIds.has(documentModel.id));
   REPORT.extractedTables=(REPORT.extractedTables||[]).filter(table=>!documentIds.has(table.documentId));
   REPORT.charts=(REPORT.charts||[]).filter(ch=>!fileSet.has(String(ch.sourceFileId||'')));
@@ -10487,11 +10502,30 @@ function defaultHiddenColumnsForTable(cols){
     return key==='seo_scan' || /(^|_)task_id$/.test(key) || /dataforseo.*task/.test(key) || key==='raw_html' || key==='raw_json';
   });
 }
+function autoDetectHiddenColumns(rows, cols){
+  if(!rows || !rows.length || !cols || !cols.length) return [];
+  const hidden=[];
+  const rowCount=rows.length;
+  for(const col of cols){
+    const values=rows.map(r=>r?.[col.name]).filter(v=>v!==null && v!==undefined && v!=='');
+    if(values.length===0){
+      hidden.push(col.name);
+      continue;
+    }
+    const distinct=new Set(values.map(v=>String(v).trim()));
+    if(distinct.size<=1){
+      hidden.push(col.name);
+    }
+  }
+  return hidden;
+}
 function simpleTableState(ds){
   const store=simpleTableStore();
   if(!store[ds.id]){
-    const cols=analyzeTable(ds).columns;
-    store[ds.id]={search:'',filters:{},sortCol:'',sortDir:'desc',hiddenCols:defaultHiddenColumnsForTable(cols),selectedRowIndex:null};
+    const analysis=analyzeTable(ds);
+    const autoHidden=autoDetectHiddenColumns(analysis.rows,analysis.columns);
+    const defaultHidden=defaultHiddenColumnsForTable(analysis.columns);
+    store[ds.id]={search:'',filters:{},sortCol:'',sortDir:'desc',hiddenCols:[...new Set([...defaultHidden,...autoHidden])],selectedRowIndex:null};
   }
   store[ds.id].filters=store[ds.id].filters||{};
   store[ds.id].hiddenCols=Array.isArray(store[ds.id].hiddenCols)?store[ds.id].hiddenCols:[];
@@ -10536,14 +10570,18 @@ function cellDisplay(value, type){
   if(type==='number') return fmt(value);
   return String(value);
 }
-function simpleCellHtml(value, type){
+function simpleCellHtml(value, type, opts={}){
   const text=cellDisplay(value,type);
   if(!text) return '';
   if((type==='url'||type==='domain') && looksLikeDomainValue(text)){
     const href=/^https?:\/\//i.test(text)?text:`https://${text}`;
     return `<a href="${esc(href)}" target="_blank" rel="noopener noreferrer">${esc(short(text,70))}</a>`;
   }
-  return esc(short(text,160));
+  const maxLen=opts.maxLen ?? 500;
+  const isTruncated=text.length>maxLen;
+  const displayText=isTruncated ? text.slice(0,maxLen) : text;
+  const truncatedAttr=isTruncated ? ' data-truncated="true"' : '';
+  return `<span${truncatedAttr}>${esc(displayText)}</span>`;
 }
 function renderColumnTypeBadges(analysis){
   const limit=120,shown=analysis.columns.slice(0,limit);
@@ -10562,7 +10600,7 @@ function renderSimpleRowDetails(row, analysis){
   }
   const order=['identifier','dimension','category','metric','timeline','url','domain','boolean','description','json','unknown'];
   const groups=order.filter(role=>grouped.has(role)).map(role=>[labels[role],grouped.get(role).slice(0,18)]);
-  return `<div class="rowDetailsGrid">${groups.map(([title,items])=>`<section class="rowDetailGroup"><h4>${esc(title)}</h4>${items.map(([key,value])=>`<div class="rowDetail"><span>${esc(key)}</span><b>${simpleCellHtml(value,(analysis.columns.find(c=>c.name===key)||{}).type||'text')}</b></div>`).join('')}</section>`).join('')}</div>`;
+  return `<div class="rowDetailsGrid">${groups.map(([title,items])=>`<section class="rowDetailGroup"><h4>${esc(title)}</h4>${items.map(([key,value])=>`<div class="rowDetail"><span>${esc(key)}</span><b>${simpleCellHtml(value,(analysis.columns.find(c=>c.name===key)||{}).type||'text',{maxLen:1000})}</b></div>`).join('')}</section>`).join('')}</div>`;
 }
 function renderDataQualitySummary(analysis,ds){
   const quality=analysis.quality||{};
@@ -10593,29 +10631,37 @@ function renderSimpleTablePreview(ds, opts={}){
     return `<label class="check simpleColumnCheck"><input type="checkbox" data-simple-column="${esc(col.name)}" ${checked?'checked':''}><span>${esc(col.name)} <small>${esc(col.type)}</small></span></label>`;
   }).join('');
   const rowLimitText=applied.rows.length>renderLimit?`Showing first ${renderLimit} of ${fmt(applied.rows.length)} filtered rows.`:`Showing ${fmt(applied.rows.length)} filtered rows.`;
+  const showAdvanced=viewState.showAdvanced===true;
+  const showRowDetails=viewState.showRowDetails!==false;
   reader.innerHTML=`<div class="simpleTableShell" data-simple-table>
     <div class="previewToolbar simpleTableTop">
       <b>${esc(ds.name||'Table')}</b>
       <span class="pill">${fmt(analysis.rows.length)} rows</span>
       <span class="pill">${fmt(analysis.columns.length)} columns</span>
       <span class="pill">${fmt(applied.rows.length)} after filters</span>
-      <button class="btn small" id="simpleExportCsv">Export table CSV</button>
+      <div class="spacer"></div>
+      <button class="btn small ghost" id="simpleToggleAdvanced" title="${showAdvanced?'Hide advanced controls':'Show advanced controls'}">${showAdvanced?'⌄ Advanced':'⌃ Advanced'}</button>
+      <button class="btn small" id="simpleExportCsv">Export CSV</button>
       <button class="btn small" id="simpleSaveView">Save view</button>
       <button class="btn small" id="simpleResetTable">Reset</button>
     </div>
     <div class="simpleTableControls">
-      <input id="simpleTableSearch" class="select" placeholder="Search visible columns..." value="${esc(viewState.search||'')}">
+      <input id="simpleTableSearch" class="select" placeholder="Search..." value="${esc(viewState.search||'')}">
       <label class="simpleSort"><span>Sort</span><select class="select" id="simpleSortCol"><option value="">None</option>${sortOptions}</select></label>
       <button class="btn small" id="simpleSortDir">${viewState.sortDir==='asc'?'Asc':'Desc'}</button>
       <details class="simpleColumnPicker"><summary class="btn small">Columns (${visible.length}/${analysis.columns.length})</summary><div class="checks">${columnChecks}</div></details>
+      ${showRowDetails?'<label class="check"><input type="checkbox" id="simpleToggleRowDetails" checked><span>Row details</span></label>':'<label class="check"><input type="checkbox" id="simpleToggleRowDetails"><span>Row details</span></label>'}
     </div>
-    <div class="simpleFilterBar">${filterHtml||'<span class="hint">No compact category/status filters detected.</span>'}</div>
-    ${renderColumnTypeBadges(analysis)}
-    ${renderDataQualitySummary(analysis,ds)}
+    <details class="simpleAdvancedPanel" ${showAdvanced?'open':''}>
+      <summary><b>Advanced</b><span class="tiny">Filters, quality, column types</span></summary>
+      <div class="simpleFilterBar">${filterHtml||'<span class="hint">No compact category/status filters detected.</span>'}</div>
+      ${renderColumnTypeBadges(analysis)}
+      ${renderDataQualitySummary(analysis,ds)}
+    </details>
     <div class="hint simpleRowLimit">${esc(rowLimitText)}</div>
-    <div class="simpleContentGrid">
-      <div class="simpleTableWrap"><table class="previewTable simplePreviewTable"><thead><tr>${visible.map(col=>`<th><button class="tableSortButton" data-simple-sort="${esc(col.name)}">${esc(col.name)} <small>${esc(col.type)}</small></button></th>`).join('')}</tr></thead><tbody>${shown.map(item=>`<tr data-simple-row="${item.index}" class="${item.index===viewState.selectedRowIndex?'selected':''}">${visible.map(col=>`<td class="${col.type==='number'?'num':''}">${simpleCellHtml(item.row?.[col.name],col.type)}</td>`).join('')}</tr>`).join('')||`<tr><td colspan="${Math.max(1,visible.length)}"><div class="empty">No rows match the current filters.</div></td></tr>`}</tbody></table></div>
-      <aside class="simpleRowDetails"><div class="zoneHead"><b>Selected row details</b><span class="tiny">${viewState.selectedRowIndex!==null?'#'+(viewState.selectedRowIndex+1):''}</span></div>${renderSimpleRowDetails(selected,analysis)}</aside>
+    <div class="simpleContentGrid${!showRowDetails?' no-details':''}">
+      <div class="simpleTableWrap"><table class="previewTable simplePreviewTable"><thead><tr>${visible.map(col=>`<th><button class="tableSortButton" data-simple-sort="${esc(col.name)}">${esc(col.name)} <small>${esc(col.type)}</small></button></th>`).join('')}</tr></thead><tbody>${shown.map(item=>`<tr data-simple-row="${item.index}" class="${item.index===viewState.selectedRowIndex?'selected':''}">${visible.map(col=>`<td class="${col.type==='number'?'num':''}">${simpleCellHtml(item.row?.[col.name],col.type,{maxLen:400})}</td>`).join('')}</tr>`).join('')||`<tr><td colspan="${Math.max(1,visible.length)}"><div class="empty">No rows match the current filters.</div></td></tr>`}</tbody></table></div>
+      ${showRowDetails?`<aside class="simpleRowDetails"><div class="zoneHead"><b>Selected row details</b><span class="tiny">${viewState.selectedRowIndex!==null?'#'+(viewState.selectedRowIndex+1):''}</span></div>${renderSimpleRowDetails(selected,analysis)}</aside>`:''}
     </div>
   </div>`;
   bindSimpleTableControls(ds.id);
@@ -10635,9 +10681,11 @@ function bindSimpleTableControls(dsId){
   $('simpleTableSearch')?.addEventListener('input',e=>{viewState.search=e.target.value||''; renderSimpleTablePreview(ds,{focus:'search'}); renderSide();});
   $('simpleSortCol')?.addEventListener('change',e=>{viewState.sortCol=e.target.value||''; renderSimpleTablePreview(ds);});
   $('simpleSortDir')?.addEventListener('click',()=>{viewState.sortDir=viewState.sortDir==='asc'?'desc':'asc'; renderSimpleTablePreview(ds);});
-  $('simpleResetTable')?.addEventListener('click',()=>{state.simpleTableViews[ds.id]={search:'',filters:{},sortCol:'',sortDir:'desc',hiddenCols:defaultHiddenColumnsForTable(analyzeTable(ds).columns),selectedRowIndex:null}; renderSimpleTablePreview(ds); renderSide();});
+  $('simpleResetTable')?.addEventListener('click',()=>{const analysis=analyzeTable(ds); const autoHidden=autoDetectHiddenColumns(analysis.rows,analysis.columns); const defaultHidden=defaultHiddenColumnsForTable(analysis.columns); state.simpleTableViews[ds.id]={search:'',filters:{},sortCol:'',sortDir:'desc',hiddenCols:[...new Set([...defaultHidden,...autoHidden])],selectedRowIndex:null,showAdvanced:false,showRowDetails:true}; renderSimpleTablePreview(ds); renderSide();});
   $('simpleExportCsv')?.addEventListener('click',()=>exportDatasetCsv(ds.id));
   $('simpleSaveView')?.addEventListener('click',()=>saveSimpleTableView(ds.id));
+  $('simpleToggleAdvanced')?.addEventListener('click',()=>{viewState.showAdvanced=!viewState.showAdvanced; renderSimpleTablePreview(ds);});
+  $('simpleToggleRowDetails')?.addEventListener('change',()=>{viewState.showRowDetails=$('simpleToggleRowDetails').checked; renderSimpleTablePreview(ds);});
   reader.querySelectorAll('[data-simple-filter]').forEach(sel=>sel.addEventListener('change',()=>{viewState.filters[sel.dataset.simpleFilter]=sel.value||''; renderSimpleTablePreview(ds); renderSide();}));
   reader.querySelectorAll('[data-simple-column]').forEach(input=>input.addEventListener('change',()=>{const col=input.dataset.simpleColumn; const hidden=new Set(viewState.hiddenCols||[]); if(input.checked) hidden.delete(col); else hidden.add(col); viewState.hiddenCols=[...hidden]; renderSimpleTablePreview(ds); renderSide();}));
   reader.querySelectorAll('[data-simple-sort]').forEach(btn=>btn.addEventListener('click',()=>{const col=btn.dataset.simpleSort; if(viewState.sortCol===col) viewState.sortDir=viewState.sortDir==='asc'?'desc':'asc'; else {viewState.sortCol=col; viewState.sortDir='desc';} renderSimpleTablePreview(ds);}));
@@ -11796,35 +11844,56 @@ async function addUniversalFile(file){
   }
 }
 function rebuildProviderResultAudits(){
-  if(typeof MRS_PROVIDER_RESULTS.collectProviderArtifacts!=='function'||typeof MRS_PROVIDER_RESULTS.buildNormalizedAudit!=='function'||typeof MRS_PROVIDER_MARKDOWN.buildAuditMarkdown!=='function') return {bundles:0,datasets:0};
+  if(typeof MRS_PROVIDER_RESULTS.collectProviderArtifacts!=='function'||typeof MRS_PROVIDER_RESULTS.buildNormalizedAudit!=='function'||typeof MRS_PROVIDER_MARKDOWN.createGeneratedReport!=='function') return {bundles:0,datasets:0};
+  const removedDatasetIds=(REPORT.datasets||[]).filter(ds=>ds.sourceKind==='provider-result-adapter').map(ds=>ds.id);
+  removedDatasetIds.forEach(id=>analysisCache.delete(id));
+  REPORT.datasets=(REPORT.datasets||[]).filter(ds=>ds.sourceKind!=='provider-result-adapter');
+  REPORT.charts=(REPORT.charts||[]).filter(chart=>chart.sourceKind!=='provider-result-adapter');
+  REPORT.generatedReports=(REPORT.generatedReports||[]).filter(item=>item.sourceKind!=='provider-result-adapter');
   const artifacts=MRS_PROVIDER_RESULTS.collectProviderArtifacts(REPORT.files||[]);
   const groups=MRS_PROVIDER_RESULTS.groupArtifacts(artifacts),created=[];
   for(const group of groups){
     const audit=MRS_PROVIDER_RESULTS.buildNormalizedAudit(group);
     if(!audit) continue;
     const groupId=audit.bundleId;
-    REPORT.datasets=(REPORT.datasets||[]).filter(ds=>ds.sourceKind!=='provider-result-adapter'||ds.artifactGroupId!==groupId);
-    REPORT.charts=(REPORT.charts||[]).filter(chart=>chart.sourceKind!=='provider-result-adapter'||chart.artifactGroupId!==groupId);
+    const hasCrawl=Object.keys(audit.providerDatasets||{}).some(k=>k.startsWith('crawl_'));
     for(const [key,rows] of Object.entries(audit.providerDatasets||{})){
       if(!rows.length) continue;
-      const ds={id:stableId('ds-provider',groupId,key),name:`Audit · ${key.replace(/_/g,' ')}`,sourceKind:'provider-result-adapter',artifactGroupId:groupId,jobId:audit.jobId,target:audit.target,sourceFileId:rows[0].sourceFileId||'',sourceArtifactIds:[...audit.sourceArtifactIds],sourceAnchor:{kind:key},createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),rows,columns:inferColumns(rows),warnings:[...audit.warnings]};
+      const ds={id:stableId('ds-provider',groupId,key),name:`Audit · ${key.replace(/_/g,' ')}`,sourceKind:'provider-result-adapter',artifactGroupId:groupId,jobId:audit.jobId,target:audit.target,sourceFileId:rows[0].sourceFileId||'',sourceFileIds:[...new Set(rows.map(row=>String(row.sourceFileId||'')).filter(Boolean))],sourceArtifactIds:[...audit.sourceArtifactIds],sourceAnchor:{kind:key},createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),rows,columns:inferColumns(rows),warnings:[...audit.warnings]};
       REPORT.datasets.push(ds); created.push(ds); getDatasetAnalysis(ds,{refresh:true});
-      const numeric=columns(ds).filter(column=>column.type==='number').map(column=>column.name).filter(name=>/^value_number$|^score$|^pages$|^count$/i.test(name));
-      const dimension=columns(ds).map(column=>column.name).find(name=>/metric|provider|impact|category|form_factor/i.test(name));
-      if(dimension&&numeric.length){
-        const y=numeric[0],chart={id:stableId('ch-provider',groupId,key,y),title:`Audit · ${key.replace(/_/g,' ')}`,type:'bar',datasetId:ds.id,x:dimension,y,agg:'sum',sort:'desc',top:15,sourceFileId:ds.sourceFileId,sourceKind:'provider-result-adapter',artifactGroupId:groupId,jobId:audit.jobId,target:audit.target,sourceArtifactIds:[...audit.sourceArtifactIds]};
-        REPORT.charts.push(chart);
+      if(!hasCrawl){
+        const numeric=columns(ds).filter(column=>column.type==='number').map(column=>column.name).filter(name=>/^value_number$|^score$|^pages$|^count$|^markdown_characters$|^internal_links$|^external_links$|^title_length$|^description_length$/.test(name));
+        const dimension=columns(ds).map(column=>column.name).find(name=>/metric|provider|impact|category|form_factor|content_length_bucket|status_code/.test(name));
+        if(dimension&&numeric.length){
+          const y=numeric[0],chart={id:stableId('ch-provider',groupId,key,y),title:`Audit · ${key.replace(/_/g,' ')}`,type:'bar',datasetId:ds.id,x:dimension,y,agg:'sum',sort:'desc',top:15,sourceFileId:ds.sourceFileId,sourceKind:'provider-result-adapter',artifactGroupId:groupId,jobId:audit.jobId,target:audit.target,sourceArtifactIds:[...audit.sourceArtifactIds]};
+          REPORT.charts.push(chart);
+        }
       }
     }
-    const report=MRS_PROVIDER_MARKDOWN.buildAuditMarkdown(audit,{generatedAt:new Date().toISOString()});
-    REPORT.generatedReports=(REPORT.generatedReports||[]).filter(item=>item.artifactGroupId!==groupId);
-    REPORT.generatedReports.push({...report,artifactGroupId:groupId,sourceFileId:audit.sourceArtifactIds[0]||'',autoRegenerate:true});
+    if(hasCrawl){
+      const addCrawlChart=(datasetKey,config)=>{
+        const ds=created.find(item=>item.sourceKind==='provider-result-adapter'&&item.artifactGroupId===groupId&&item.sourceAnchor?.kind===datasetKey);
+        if(!ds||!ds.rows?.length) return;
+        if(config.requireMultipleRows&&ds.rows.length<2) return;
+        REPORT.charts.push({id:stableId('ch-provider',groupId,datasetKey,config.x,config.y),datasetId:ds.id,sourceFileId:ds.sourceFileId,sourceKind:'provider-result-adapter',artifactGroupId:groupId,jobId:audit.jobId,target:audit.target,sourceArtifactIds:[...audit.sourceArtifactIds],type:'bar',agg:'sum',sort:'desc',top:config.top||10,...config});
+      };
+      addCrawlChart('crawl_status_distribution',{title:'Crawl4AI · HTTP-статуси сторінок',x:'status_code',y:'pages',top:12,requireMultipleRows:true});
+      addCrawlChart('crawl_link_totals',{title:'Crawl4AI · внутрішні та зовнішні посилання',x:'link_type',y:'count',top:4});
+      addCrawlChart('crawl_content_length_distribution',{title:'Crawl4AI · розподіл обсягу контенту',x:'content_length_bucket',y:'pages',top:6});
+      addCrawlChart('crawl_pages',{title:'Crawl4AI · топ сторінок за Markdown',x:'url',y:'markdown_characters',top:10});
+      addCrawlChart('crawl_pages',{title:'Crawl4AI · топ сторінок за внутрішніми посиланнями',x:'url',y:'internal_links',top:10});
+    }
+    const report=MRS_PROVIDER_MARKDOWN.createGeneratedReport(audit,{generatedAt:new Date().toISOString()});
+    REPORT.generatedReports.push({...report,artifactGroupId:groupId,sourceFileIds:[...new Set((audit.artifacts||[]).map(item=>String(item.sourceFileId||'')).filter(Boolean))],autoRegenerate:true});
   }
+  const preferredDataset=created.find(ds=>ds.sourceAnchor?.kind==='crawl_pages');
+  if(!removedDatasetIds.length&&preferredDataset) state.activeDataset=preferredDataset.id;
+  else if(removedDatasetIds.includes(state.activeDataset)) state.activeDataset=preferredDataset?.id||created[0]?.id||REPORT.datasets[0]?.id||null;
   return {bundles:groups.length,datasets:created.length};
 }
 function downloadGeneratedReport(id){const report=(REPORT.generatedReports||[]).find(item=>item.id===id);if(!report)return;const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([report.content],{type:'text/markdown;charset=utf-8'}));a.download=(report.title||'Executive report.md').replace(/[\\/:*?"<>|]+/g,'_');a.click();URL.revokeObjectURL(a.href);}
 async function copyGeneratedReport(id){const report=(REPORT.generatedReports||[]).find(item=>item.id===id);if(!report)return;try{await navigator.clipboard.writeText(report.content);toast('Markdown скопійовано');}catch(error){toast('Копіювання недоступне у цьому браузері');}}
-function openGeneratedReport(id){const report=(REPORT.generatedReports||[]).find(item=>item.id===id);if(!report)return;openModal(report.title,`<div class="hintBox">Детермінований локальний звіт · ${esc(report.target||report.jobId||'audit')}</div><pre style="white-space:pre-wrap;max-height:60vh;overflow:auto">${esc(report.content)}</pre>`,`<button class="btn" id="generatedCopy">Copy</button><button class="btn" id="generatedDownload">Download .md</button><button class="btn primary" id="generatedRegenerate">Regenerate</button>`);$('generatedCopy').onclick=()=>copyGeneratedReport(id);$('generatedDownload').onclick=()=>downloadGeneratedReport(id);$('generatedRegenerate').onclick=()=>{rebuildProviderResultAudits();refresh();closeModal();toast('Звіт регенеровано');};}
+function openGeneratedReport(id){const report=(REPORT.generatedReports||[]).find(item=>item.id===id);if(!report)return;const rendered=typeof MRS_PROVIDER_MARKDOWN.renderMarkdown==='function'?MRS_PROVIDER_MARKDOWN.renderMarkdown(report.content):`<pre style="white-space:pre-wrap;max-height:60vh;overflow:auto">${esc(report.content)}</pre>`;openModal(report.title,`<div class="hintBox">Детермінований локальний звіт · ${esc(report.target||report.jobId||'audit')}</div><article class="markdownReport" style="max-height:60vh;overflow:auto">${rendered}</article>`,`<button class="btn" id="generatedCopy">Copy</button><button class="btn" id="generatedDownload">Download .md</button><button class="btn primary" id="generatedRegenerate">Regenerate</button>`);$('generatedCopy').onclick=()=>copyGeneratedReport(id);$('generatedDownload').onclick=()=>downloadGeneratedReport(id);$('generatedRegenerate').onclick=()=>{rebuildProviderResultAudits();refresh();closeModal();toast('Звіт регенеровано');};}
 async function handleFiles(fileList){if(!guardAdmin()) {toast('Редагування вимкнено'); return;} const files=[...fileList]; if(files.length>MAX_IMPORT_FILES){showNotice(`За один раз можна додати не більше ${MAX_IMPORT_FILES} файлів.`,'error');return;} const before=new Set((REPORT.datasets||[]).map(d=>d.id)); let count=0; for(const file of files){try{await addUniversalFile(file); count++;}catch(e){console.warn('[import] skipped:',file?.name,e?.message||e);showNotice(e?.message||`Не вдалося додати ${file?.name||'файл'}.`,'error');}} const audits=rebuildProviderResultAudits(); refresh(); const added=(REPORT.datasets||[]).filter(d=>!before.has(d.id)); if(audits.bundles) showNotice(`Нормалізовано provider audit: ${audits.bundles} bundle(s), ${audits.datasets} datasets.`,'success'); else if(added.length===1) showImportSuccess(added[0]); else if(added.length>1) showNotice(`Додано ${added.length} таблиць із ${count} файлів.`,'success'); else if(count) showNotice(`Додано файлів: ${count}.`,'success');}
 async function addFile(file){assertSafeImportFile(file); const ext=(file.name.split('.').pop()||'').toLowerCase(); const id=uid('file'); const co=company(state.activeCompany); const companyId=co?.id||''; const companyPath=co?('companies/'+co.folder+'/'):'data/'; const importedAt=new Date().toISOString(); const fileMeta={size:file.size||0,lastModified:file.lastModified||0,createdAt:importedAt,updatedAt:importedAt}; if(['csv','tsv'].includes(ext)){const text=await file.text(); const matrix=parseCsv(text, ext==='tsv'?'\t':undefined); const rows=rowsFromMatrix(matrix); const rec={id,name:file.name,path:companyPath+file.name,folder:co?.name||'Дані',companyId,ext,type:file.type||'text/csv',...fileMeta,isData:true,contentText:text}; REPORT.files.push(rec); const ds={id:uid('ds'),name:file.name.replace(/\.[^.]+$/,''),sourceFileId:id,createdAt:importedAt,rows,columns:inferColumns(rows)}; REPORT.datasets.push(ds); state.activeDataset=ds.id; toast(`Додано таблицю: ${file.name}`); return;}
   if(ext==='json'){const text=await file.text(); let rows=[]; let obj=null; try{obj=JSON.parse(text); if(obj && Array.isArray(obj.datasets)){REPORT=stripLegacyTrueSavageDemoPack(stripLegacyCaspianPack(normalizeReport(obj))); state.activeDataset=REPORT.datasets[0]?.id||null; state.openTabs=[]; initState(); toast('Проєкт JSON завантажено'); return;} rows=jsonRows(obj);}catch(e){toast('JSON не прочитався');} const rec={id,name:file.name,path:companyPath+file.name,folder:co?.name||'Дані',companyId,ext,type:file.type||'application/json',...fileMeta,isData:rows.length>0,contentText:text}; REPORT.files.push(rec); if(rows.length){const ds={id:uid('ds'),name:file.name.replace(/\.[^.]+$/,''),sourceFileId:id,createdAt:importedAt,rows,columns:inferColumns(rows)}; REPORT.datasets.push(ds); state.activeDataset=ds.id; toast(`Додано JSON-таблицю: ${file.name}`);} return;}

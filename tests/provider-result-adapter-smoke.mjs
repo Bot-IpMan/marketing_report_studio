@@ -60,10 +60,53 @@ assert.equal(bundle.providerDatasets.accessibility_violations.length,1);
 assert.equal(bundle.providerDatasets.crawl_pages.length,1);
 assert.equal(JSON.stringify(bundle.providerDatasets.crawl_pages).includes('RAW_CRAWL_BODY_MUST_NOT_APPEAR'),false);
 assert.equal(bundle.datasets.audit_warnings[0].coverage,'PARTIAL');
+
+const detailedCrawl={
+  ...common,
+  provider_code:'crawl4ai',
+  result:{
+    normalized_result:{status:'completed',coverage:'FULL',findings:[],warnings:[]},
+    provider_result:{
+      pages:[
+        {url:'https://dropopt.com.ua/a',status_code:200,redirected_url:'https://dropopt.com.ua/a',metadata:{title:'A',description:'Опис A'},content:{markdown_characters:1400,markdown_excerpt:'# A'},links:{internal_total:4,external_total:2},media:{images_total:3,documents_total:1},tables:[{name:'t'}],network:{request_count:8},console:{error_count:1},crawl_stats:{retries:1,fallback_fetch_used:false},raw_markdown:'RAW_CRAWL_BODY_MUST_NOT_APPEAR'},
+        {url:'https://dropopt.com.ua/b',status_code:404,redirected_url:'',metadata:{title:'B'},content:{markdown_characters:7200,markdown_excerpt:'No heading'},links:{internal_total:12,external_total:1},media:{images_total:0,documents_total:0},tables:[],network:{request_count:4},console:{error_count:0},crawl_stats:{retries:0,fallback_fetch_used:true}}
+      ],
+      summary:{pages_by_status:{'200':1,'404':1},internal_links_total:16,external_links_total:3,documents_total:1}
+    }
+  }
+};
+const detailed=adapter.buildBundle([detailedCrawl]);
+assert.equal(detailed.providerDatasets.crawl_pages.length,2,'Crawl pages must stay as a readable per-page table.');
+assert.deepEqual(detailed.providerDatasets.crawl_link_totals.map(row=>[row.link_type,row.count]),[['internal',16],['external',3]],'Link totals must be chart-ready rows.');
+assert.deepEqual(detailed.providerDatasets.crawl_content_length_distribution.map(row=>[row.content_length_bucket,row.pages]),[['1–5 тис. символів',1],['5–10 тис. символів',1]],'Content distribution must be derived without page bodies.');
+assert.deepEqual(detailed.providerDatasets.crawl_status_distribution.map(row=>[row.status_code,row.pages]),[[200,1],[404,1]],'Status distribution must preserve actual status counts.');
+assert.equal(detailed.providerDatasets.crawl_pages[1].missing_description,true);
+assert.equal(detailed.providerDatasets.crawl_pages[1].has_h1,false);
+assert.equal(JSON.stringify(detailed.providerDatasets).includes('RAW_CRAWL_BODY_MUST_NOT_APPEAR'),false,'Raw page bodies must never leak into analytical datasets.');
 assert.equal(bundle.providerDatasets.accessibility_violations[0].impact,'serious');
 
 const conflict=adapter.groupArtifacts([pagespeed,{...lighthouse,target:'another.example'}]);
 assert.equal(conflict.length,2,'Conflicting known targets must never be merged only by job_id.');
+
+const normalizedTarget=adapter.groupArtifacts([pagespeed,{...lighthouse,target:'https://DROPOPT.COM.UA/path?source=test#top'}]);
+assert.equal(normalizedTarget.length,1,'Equivalent URL and domain targets must share one normalized bundle.');
+
+const distinctRuns=adapter.groupArtifacts([{...pagespeed,run_id:'run-a'},{...lighthouse,run_id:'run-b'}]);
+assert.equal(distinctRuns.length,2,'Explicitly distinct provider runs must never be merged into one bundle.');
+
+const largeA={...pagespeed,result:{...pagespeed.result,provider_result:{payload:`${'x'.repeat(5000)}A`}}};
+const largeB={...pagespeed,result:{...pagespeed.result,provider_result:{payload:`${'x'.repeat(5000)}B`}}};
+assert.notEqual(adapter.stableArtifactId(largeA),adapter.stableArtifactId(largeB),'Full artifact content must contribute to the artifact ID.');
+
+const unknownProvider={...pagespeed,provider_code:'future_provider',result:{normalized_result:{status:'partial',coverage:'PARTIAL',findings:[],warnings:[]},provider_result:{}}};
+const unknownBundle=adapter.buildBundle([unknownProvider]);
+assert.equal(unknownBundle.datasets.audit_warnings.some(row=>row.warning_status==='UNSUPPORTED_PROVIDER_CODE'),true,'Unknown providers must be preserved with a fail-closed diagnostic.');
+
+const noSuccessfulResults={...pagespeed,result:{...pagespeed.result,normalized_result:{...pagespeed.result.normalized_result,successful_results:undefined}}};
+assert.equal(adapter.buildBundle([noSuccessfulResults]).datasets.audit_provider_summary[0].successful_results,null,'Missing successful_results must stay unknown rather than become zero.');
+
+const clsArtifact={...pagespeed,result:{...pagespeed.result,provider_result:{records:[{form_factor:'mobile',cls:0.12}]}}};
+assert.equal(adapter.buildBundle([clsArtifact]).providerDatasets.web_vitals[0].unit,'score','CLS must remain unitless score data.');
 
 const normalized=adapter.buildNormalizedAudit(grouped[0]);
 assert.equal(normalized.sourceArtifactIds.length,4);

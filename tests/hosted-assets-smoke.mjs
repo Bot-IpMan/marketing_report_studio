@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { createReadStream, existsSync, statSync } from 'node:fs';
+import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import http from 'node:http';
 import net from 'node:net';
 import { dirname, resolve, sep } from 'node:path';
@@ -12,7 +12,14 @@ assert.ok(existsSync(resolve(distRoot, 'index.html')), 'dist/index.html must exi
 assert.ok(existsSync(resolve(distRoot, 'vendor/pdfjs/pdf.min.mjs')), 'dist must include vendored PDF.js module.');
 assert.ok(existsSync(resolve(distRoot, 'vendor/pdfjs/pdf.worker.min.mjs')), 'dist must include vendored PDF.js worker.');
 assert.ok(existsSync(resolve(distRoot, 'src/features/document-extract.js')), 'dist must include document extraction module.');
+assert.ok(existsSync(resolve(distRoot, 'src/features/provider-result-adapter.js')), 'dist must include provider result adapter module.');
+assert.ok(existsSync(resolve(distRoot, 'src/features/markdown-report-builder.js')), 'dist must include provider Markdown module.');
 assert.ok(existsSync(resolve(distRoot, 'app.js')), 'dist must include app.js.');
+
+const distIndex = readFileSync(resolve(distRoot, 'index.html'), 'utf8');
+assert.match(distIndex, /src\/features\/provider-result-adapter\.js/, 'hosted shell must load provider result adapter.');
+assert.match(distIndex, /src\/features\/markdown-report-builder\.js/, 'hosted shell must load provider Markdown module.');
+assert.doesNotMatch(distIndex, /static\.cloudflareinsights\.com|beacon\.min\.js|cloudflareinsights/i, 'local build must not contain an analytics beacon.');
 
 const port = await freePort();
 const server = await startDistServer(port);

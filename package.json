@@ -16,7 +16,7 @@
     "qa:scale": "node tests/performance-storage-smoke.mjs",
     "qa:xlsx": "node tests/xlsx-styles-smoke.mjs",
     "qa:xlsx:regions": "node tests/xlsx-regions-smoke.mjs",
-    "test": "node tests/api-smoke.mjs && node tests/worker-smoke.mjs && node tests/config-and-ui-smoke.mjs && node tests/ui-smoke.mjs && node tests/universal-analysis-smoke.mjs && node tests/chart-registry-smoke.mjs && node tests/performance-storage-smoke.mjs && node tests/pdf-fixtures-smoke.mjs && node tests/hosted-assets-smoke.mjs && node tests/xlsx-styles-smoke.mjs && node tests/xlsx-regions-smoke.mjs && node tests/document-adapters-smoke.mjs && node tests/provider-result-adapter-smoke.mjs && node tests/provider-markdown-smoke.mjs",
+    "test": "node tests/api-smoke.mjs && node tests/worker-smoke.mjs && node tests/config-and-ui-smoke.mjs && node tests/ui-smoke.mjs && node tests/universal-analysis-smoke.mjs && node tests/chart-registry-smoke.mjs && node tests/performance-storage-smoke.mjs && node tests/pdf-fixtures-smoke.mjs && node tests/hosted-assets-smoke.mjs && node tests/xlsx-styles-smoke.mjs && node tests/xlsx-regions-smoke.mjs && node tests/document-adapters-smoke.mjs && node tests/provider-result-adapter-smoke.mjs && node tests/provider-markdown-smoke.mjs && node tests/provider-result-app-integration-smoke.mjs",
     "check": "npm run test && npm run e2e && npm run build"
   }
 }

@@ -12,9 +12,10 @@
     return cell(value);
   }
   function findingsTable(rows){
-    if(!rows.length) return '_Нормалізовані findings відсутні._';
+    const executiveRows=rows.filter(row=>row.metric!=='page_observation');
+    if(!executiveRows.length) return '_Ключових findings поза інвентарем сторінок немає._';
     const header='| Провайдер | Категорія | Метрика | Значення | Серйозність | Впевненість |\n| --- | --- | --- | ---: | --- | ---: |';
-    return [header,...rows.slice(0,100).map(row=>`| ${cell(row.provider)} | ${cell(row.category)} | ${cell(row.metric)} | ${formatValue(row.value_number??row.value_text,row.unit)} | ${cell(row.severity)} | ${row.confidence===null?'—':cell(row.confidence)} |`)].join('\n');
+    return [header,...executiveRows.slice(0,30).map(row=>`| ${cell(row.provider)} | ${cell(row.category)} | ${cell(row.metric)} | ${formatValue(row.value_number??row.value_text,row.unit)} | ${cell(row.severity)} | ${row.confidence===null?'—':cell(row.confidence)} |`)].join('\n');
   }
   function summaryTable(rows){
     if(!rows.length) return '_Валідних provider artifacts не знайдено._';
@@ -30,6 +31,23 @@
     const usable=rows.filter(row=>typeof row.value==='number'&&Number.isFinite(row.value)).slice(0,80);
     if(!usable.length) return '_Числових значень, придатних для відображення, немає._';
     return ['| Джерело | Форм-фактор | Метрика | Значення |','| --- | --- | --- | ---: |',...usable.map(row=>`| ${cell(row.source)} | ${cell(row.form_factor)} | ${cell(row.metric)} | ${formatValue(row.value,row.unit)} |`)].join('\n');
+  }
+  function crawlSummary(rows){
+    if(!rows.length) return '';
+    const header='| Провайдер | Сторінки | HTTP статуси | Внутрішні посилання | Зовнішні посилання | Документи |\n| --- | ---: | --- | ---: | ---: | ---: |';
+    return ['## Огляд Crawl4AI','',header,...rows.map(row=>`| ${cell(row.provider)} | ${formatValue(row.pages_total)} | ${cell(row.status_counts_json)} | ${formatValue(row.internal_links_total)} | ${formatValue(row.external_links_total)} | ${formatValue(row.documents_total)} |`),''].join('\n');
+  }
+  function crawlDetailSections(providers){
+    const pages=Array.isArray(providers.crawl_pages)?providers.crawl_pages:[];
+    if(!pages.length) return '';
+    const quality=Array.isArray(providers.crawl_quality_summary)?providers.crawl_quality_summary[0]:null;
+    const distribution=Array.isArray(providers.crawl_content_length_distribution)?providers.crawl_content_length_distribution:[];
+    const top=[...pages].filter(row=>typeof row.internal_links==='number').sort((a,b)=>b.internal_links-a.internal_links).slice(0,10);
+    const sections=[];
+    if(quality){sections.push('## Якість інвентарю сторінок','', '| Сторінки | Без meta description | Без H1 | Redirect | Console errors | Fallback fetch |','| ---: | ---: | ---: | ---: | ---: | ---: |',`| ${formatValue(quality.pages_total)} | ${formatValue(quality.missing_description_pages)} | ${formatValue(quality.missing_h1_pages)} | ${formatValue(quality.redirected_pages)} | ${formatValue(quality.console_error_pages)} | ${formatValue(quality.fallback_fetch_pages)} |`,'');}
+    if(distribution.length){sections.push('## Розподіл обсягу контенту','', '| Діапазон Markdown | Сторінки |','| --- | ---: |',...distribution.map(row=>`| ${cell(row.content_length_bucket)} | ${formatValue(row.pages)} |`),'');}
+    if(top.length){sections.push('## Топ сторінок за внутрішніми посиланнями','', '| URL | Внутрішні | Зовнішні | Markdown символів |','| --- | ---: | ---: | ---: |',...top.map(row=>`| ${cell(row.url)} | ${formatValue(row.internal_links)} | ${formatValue(row.external_links)} | ${formatValue(row.markdown_characters)} |`),'');}
+    return sections.join('\n');
   }
   function buildMarkdown(bundle,options={}){
     const data=bundle&&typeof bundle==='object'?bundle:{};
@@ -51,6 +69,8 @@
       '## Ключові нормалізовані findings',
       '',findingsTable(Array.isArray(datasets.audit_findings)?datasets.audit_findings:[]),
       '',
+      crawlSummary(Array.isArray(providers.crawl_summary)?providers.crawl_summary:[]),
+      crawlDetailSections(providers),
       '## Семантичні метрики',
       '',metricSummary(Array.isArray(providers.web_vitals)?providers.web_vitals:[]),
       '',
