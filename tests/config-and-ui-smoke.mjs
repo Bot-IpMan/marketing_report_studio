@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
 
 const wrangler = readFileSync('wrangler.toml', 'utf8');
@@ -8,6 +9,14 @@ const buildScript = readFileSync('scripts/build.mjs', 'utf8');
 const api = readFileSync('functions/api/[[path]].js', 'utf8');
 const worker = readFileSync('worker.js', 'utf8');
 const sourceBundle = [wrangler, html, appSource, buildScript, api, worker].join('\n');
+
+const translationFunctions = appSource.match(/function escapeRegExp\(value\)[\s\S]*?function replaceTranslatedPhrase\(text, from, to\)[\s\S]*?\n\}/)?.[0];
+const translationHarness = vm.runInNewContext(`${translationFunctions}; replaceTranslatedPhrase`, {});
+assert.equal(
+  translationHarness('Marketing Report Studio', 'Market', 'Ринок'),
+  'Marketing Report Studio',
+  'word-boundary translation must not corrupt the Marketing product name',
+);
 
 assert.doesNotMatch(
   wrangler,
