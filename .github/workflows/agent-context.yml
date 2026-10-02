@@ -1,0 +1,38 @@
+name: Agent Context
+run-name: agent-context-${{ github.run_id }}
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Full SHA of the current source_branch head
+        required: true
+        type: string
+      source_branch:
+        description: main or an exact agent/task branch name
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: agent-context-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout trusted helper
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Publish bounded context
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/agent/run.py context

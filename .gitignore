@@ -12,3 +12,5 @@ _tmp_docx/
 !.env.example
 
 *.log
+__pycache__/
+*.pyc

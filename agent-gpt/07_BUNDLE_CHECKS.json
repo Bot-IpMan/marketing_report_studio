@@ -1,0 +1,26 @@
+{
+  "version": "1.0.0",
+  "status": "local-static-pass",
+  "operations": 20,
+  "server": "https://api.github.com",
+  "instruction_characters": 6982,
+  "checked": [
+    "required files",
+    "OpenAPI YAML",
+    "fixed GitHub repository paths",
+    "write endpoint whitelist",
+    "unique operations",
+    "example plan",
+    "workflow YAML",
+    "read-only test job",
+    "candidate check publisher"
+  ],
+  "not_verified_here": [
+    "GPT Editor import",
+    "token grants",
+    "remote workflows",
+    "GitHub CI",
+    "browser E2E",
+    "Cloudflare configuration"
+  ]
+}

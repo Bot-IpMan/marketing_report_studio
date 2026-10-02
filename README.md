@@ -95,9 +95,21 @@ Build first: the hosted-assets smoke test reads the generated `dist/` files.
 Use Node 24 for strict CI. A successful ordinary check with a missing browser
 does not count as browser validation.
 
-`.github/workflows/agent-validation.yml` provides manual validation of an
-exact commit SHA. It must first be merged into the default branch to enable
-`workflow_dispatch`. It grants only read access and does not deploy or merge.
+The separate development agent uses three workflows under `.github/workflows/`:
+`agent-context.yml` prepares bounded code slices, `agent-task.yml` validates
+and commits small changes to `agent/<task-id>` branches, and
+`agent-validation.yml` checks the exact candidate SHA and publishes a check
+run on that SHA. These workflows must be installed on the default branch
+before a GPT can dispatch them. The data journal lives on an isolated
+`agent-data` branch. None of these workflows deploys or merges product code.
+
+The agent's source-write policy is `.agent/policy.json`; its runnable helper
+code is in `scripts/agent/`. Run `npm run test:agent` after changing that
+policy or the helpers. Only the runner receives its scoped `GITHUB_TOKEN`;
+the private GPT connects directly to the GitHub API with a repository-scoped
+token entered in the GPT Actions authentication settings. The repo contains
+no agent token or client-report contents. Full installation instructions and
+the native GitHub API schema are distributed separately from the application.
 
 `npm run e2e` launches a local static server and a Chromium-compatible browser.
 It reports `SKIPPED` when no browser is available. `npm run e2e:strict` treats a

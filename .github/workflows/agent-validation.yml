@@ -5,12 +5,16 @@ on:
   workflow_dispatch:
     inputs:
       job_id:
-        description: Gateway validation job ID
+        description: Unique 32-character hexadecimal validation ID
         required: true
         type: string
       expected_sha:
-        description: Full immutable revision to validate
+        description: Full immutable candidate commit SHA
         required: true
+        type: string
+      task_id:
+        description: Existing 32-character task ID; blank for baseline
+        required: false
         type: string
 
 permissions:
@@ -22,6 +26,8 @@ concurrency:
 
 jobs:
   validate:
+    permissions:
+      contents: read
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
@@ -40,8 +46,8 @@ jobs:
           [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
           [[ "$JOB_ID" =~ ^[0-9a-f]{32}$ ]]
           test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
-          test "$GITHUB_SHA" = "$EXPECTED_SHA"
           test "$GITHUB_REPOSITORY" = 'Bot-IpMan/marketing_report_studio'
+          test "$GITHUB_REF" = 'refs/heads/main'
       - name: Node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4, verified 2026-10-02
         with:
@@ -49,14 +55,37 @@ jobs:
       - name: Require browser
         shell: bash
         run: |
-          browser="$(command -v google-chrome || command -v chromium || true)"
+          browser="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || true)"
           test -n "$browser"
           echo "E2E_BROWSER=$browser" >> "$GITHUB_ENV"
       - name: Build
         run: npm run build
       - name: Unit and smoke tests
         run: npm test
+      - name: Agent guard tests
+        run: npm run test:agent
       - name: Strict PDF fixtures
         run: npm run qa:pdf:strict
       - name: Strict browser E2E
         run: npm run e2e:strict
+
+  publish:
+    if: always()
+    needs: [validate]
+    permissions:
+      contents: write
+      checks: write
+      actions: read
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout trusted publisher
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Publish candidate check and result
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          VALIDATE_RESULT: ${{ needs.validate.result }}
+        run: python3 scripts/agent/run.py publish
