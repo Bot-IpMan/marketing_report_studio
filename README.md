@@ -82,12 +82,22 @@ transformation metadata. Unknown provenance fields remain unknown.
 ## Build And Test
 
 ```bash
-npm test
 npm run build
+npm test
 npm run e2e
-npm run e2e:strict
 npm run qa:pdf:strict
+npm run e2e:strict
 ```
+
+Build first: the hosted-assets smoke test reads the generated `dist/` files.
+`npm run check` runs build, smoke tests, and ordinary E2E in that order.
+`npm run check:strict` also requires real PDF parsing and a browser E2E pass.
+Use Node 24 for strict CI. A successful ordinary check with a missing browser
+does not count as browser validation.
+
+`.github/workflows/agent-validation.yml` provides manual validation of an
+exact commit SHA. It must first be merged into the default branch to enable
+`workflow_dispatch`. It grants only read access and does not deploy or merge.
 
 `npm run e2e` launches a local static server and a Chromium-compatible browser.
 It reports `SKIPPED` when no browser is available. `npm run e2e:strict` treats a
