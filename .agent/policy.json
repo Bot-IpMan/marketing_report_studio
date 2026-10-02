@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "repository": "Bot-IpMan/marketing_report_studio",
+  "default_branch": "main",
+  "data_branch": "agent-data",
+  "allowed_files": [
+    "app.js",
+    "marketing_report_studio_v8_access_folders_fixed.html",
+    "README.md"
+  ],
+  "allowed_prefixes": ["src/", "tests/", "docs/"],
+  "max_changed_files": 8,
+  "max_changed_lines": 500,
+  "max_app_changed_lines": 250,
+  "max_file_bytes": 2097152,
+  "max_patch_bytes": 40960,
+  "max_full_content_bytes": 24576,
+  "max_chunk_bytes": 16384,
+  "max_chunk_json_bytes": 24576
+}

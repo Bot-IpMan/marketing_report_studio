@@ -1,0 +1,14 @@
+{
+  "title": "Clarify one documentation paragraph",
+  "summary": "Small example for testing the task workflow without touching runtime code.",
+  "allowed_files": ["README.md"],
+  "steps": [
+    {
+      "objective": "Clarify the existing instructions",
+      "files": ["README.md"],
+      "tests": ["npm run build", "npm test", "npm run test:agent", "npm run qa:pdf:strict", "npm run e2e:strict"],
+      "risk": "A stale statement might mislead new users",
+      "done": "The document matches actual behavior and strict CI has passed"
+    }
+  ]
+}

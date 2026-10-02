@@ -1,0 +1,321 @@
+openapi: 3.1.0
+info:
+  title: Marketing Report Studio — direct GitHub agent
+  version: 1.0.0
+  description: Native GitHub REST operations for Bot-IpMan/marketing_report_studio. No gateway or product API.
+servers:
+  - url: https://api.github.com
+security:
+  - GitHubBearer: []
+paths:
+  /repos/Bot-IpMan/marketing_report_studio:
+    get:
+      operationId: getRepository
+      summary: Read repository metadata and default branch.
+      x-openai-isConsequential: false
+      responses:
+        '200': {description: Repository metadata}
+  /repos/Bot-IpMan/marketing_report_studio/git/ref/heads/main:
+    get:
+      operationId: getMainRef
+      summary: Pin the current main commit SHA.
+      x-openai-isConsequential: false
+      responses:
+        '200': {description: Main ref and object SHA}
+  /repos/Bot-IpMan/marketing_report_studio/git/ref/heads/agent-data:
+    get:
+      operationId: getAgentDataRef
+      summary: Pin the data-branch SHA for consistent context and task reads.
+      x-openai-isConsequential: false
+      responses:
+        '200': {description: Data ref and object SHA}
+        '404': {description: Data branch has not been initialized}
+  /repos/Bot-IpMan/marketing_report_studio/git/ref/heads/agent/{task_id}:
+    get:
+      operationId: getTaskRef
+      summary: Read exact head of a task-owned branch.
+      x-openai-isConsequential: false
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema: {$ref: '#/components/schemas/Identifier'}
+      responses:
+        '200': {description: Task branch head SHA}
+        '404': {description: Task branch not found}
+  /repos/Bot-IpMan/marketing_report_studio/git/commits/{sha}:
+    get:
+      operationId: getGitCommit
+      summary: Read a pinned Git commit and its tree SHA.
+      x-openai-isConsequential: false
+      parameters:
+        - name: sha
+          in: path
+          required: true
+          schema: {$ref: '#/components/schemas/Sha'}
+      responses:
+        '200': {description: Git commit}
+  /repos/Bot-IpMan/marketing_report_studio/git/trees/{tree_sha}:
+    get:
+      operationId: getGitTree
+      summary: Read a tree; inspect truncated and recurse by subtree if needed.
+      x-openai-isConsequential: false
+      parameters:
+        - name: tree_sha
+          in: path
+          required: true
+          schema: {$ref: '#/components/schemas/Sha'}
+      responses:
+        '200': {description: Tree entries and truncation indicator}
+  /repos/Bot-IpMan/marketing_report_studio/contents/{path}:
+    get:
+      operationId: readSmallFileOrContextPart
+      summary: Read a small source or generated context JSON at an immutable ref.
+      description: GitHub returns base64 JSON. Decode it; do not request whole app.js. For context use a pinned agent-data SHA in ref.
+      x-openai-isConsequential: false
+      parameters:
+        - name: path
+          in: path
+          required: true
+          description: Repository-relative file path. Generated chunks live under contexts/<source SHA>/ on agent-data.
+          schema: {type: string}
+        - name: ref
+          in: query
+          required: true
+          description: Full immutable 40-hex source commit or pinned agent-data commit, never a moving branch name.
+          schema: {$ref: '#/components/schemas/Sha'}
+      responses:
+        '200': {description: Base64-encoded file content and blob SHA}
+        '404': {description: Path not found at that ref}
+  /repos/Bot-IpMan/marketing_report_studio/actions/workflows/agent-context.yml:
+    get:
+      operationId: getContextWorkflow
+      summary: Verify context workflow is active on GitHub.
+      x-openai-isConsequential: false
+      responses:
+        '200': {description: Workflow state}
+  /repos/Bot-IpMan/marketing_report_studio/actions/workflows/agent-task.yml:
+    get:
+      operationId: getTaskWorkflow
+      summary: Verify task workflow is active on GitHub.
+      x-openai-isConsequential: false
+      responses:
+        '200': {description: Workflow state}
+  /repos/Bot-IpMan/marketing_report_studio/actions/workflows/agent-validation.yml:
+    get:
+      operationId: getValidationWorkflow
+      summary: Verify strict validation workflow is active on GitHub.
+      x-openai-isConsequential: false
+      responses:
+        '200': {description: Workflow state}
+  /repos/Bot-IpMan/marketing_report_studio/actions/workflows/{workflow_id}/runs:
+    get:
+      operationId: listAgentWorkflowRuns
+      summary: Find a unique dispatched run after a missing response or resume.
+      x-openai-isConsequential: false
+      parameters:
+        - name: workflow_id
+          in: path
+          required: true
+          schema: {type: string, enum: [agent-context.yml, agent-task.yml, agent-validation.yml]}
+        - name: branch
+          in: query
+          schema: {type: string, enum: [main]}
+        - name: event
+          in: query
+          schema: {type: string, enum: [workflow_dispatch, push]}
+        - name: per_page
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 10, default: 10}
+      responses:
+        '200': {description: Recent workflow runs; match the unique request or job ID}
+  /repos/Bot-IpMan/marketing_report_studio/actions/runs/{run_id}:
+    get:
+      operationId: getAgentRun
+      summary: Poll exact GitHub workflow run status and conclusion.
+      x-openai-isConsequential: false
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema: {type: integer, minimum: 1}
+      responses:
+        '200': {description: Workflow run}
+  /repos/Bot-IpMan/marketing_report_studio/actions/runs/{run_id}/jobs:
+    get:
+      operationId: getAgentJobs
+      summary: Verify each required validation job and step result.
+      x-openai-isConsequential: false
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema: {type: integer, minimum: 1}
+        - name: per_page
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 20, default: 20}
+      responses:
+        '200': {description: Workflow jobs and their steps}
+  /repos/Bot-IpMan/marketing_report_studio/commits/{sha}/check-runs:
+    get:
+      operationId: getCandidateChecks
+      summary: Confirm MRS Agent Validation check on exact candidate SHA.
+      x-openai-isConsequential: false
+      parameters:
+        - name: sha
+          in: path
+          required: true
+          schema: {$ref: '#/components/schemas/Sha'}
+        - name: check_name
+          in: query
+          schema: {type: string, enum: [MRS Agent Validation]}
+        - name: per_page
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 10, default: 10}
+      responses:
+        '200': {description: Check runs for this commit}
+  /repos/Bot-IpMan/marketing_report_studio/pulls:
+    get:
+      operationId: findExistingTaskPR
+      summary: Search for an existing open PR from the exact task branch.
+      x-openai-isConsequential: false
+      parameters:
+        - name: head
+          in: query
+          required: true
+          schema: {type: string, pattern: '^Bot-IpMan:agent/[0-9a-f]{32}$'}
+        - name: base
+          in: query
+          schema: {type: string, enum: [main]}
+        - name: state
+          in: query
+          schema: {type: string, enum: [open, all]}
+        - name: per_page
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 10, default: 10}
+      responses:
+        '200': {description: Matching pull requests}
+    post:
+      operationId: createDraftTaskPR
+      summary: Create a draft PR only after exact-head green validation and review.
+      x-openai-isConsequential: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [title, head, base, draft, body]
+              properties:
+                title: {type: string, maxLength: 150}
+                head: {type: string, pattern: '^agent/[0-9a-f]{32}$'}
+                base: {type: string, enum: [main]}
+                draft: {type: boolean, enum: [true]}
+                body: {type: string, maxLength: 12000}
+      responses:
+        '201': {description: Draft pull request created}
+        '422': {description: Invalid or duplicate PR; inspect existing PRs}
+  /repos/Bot-IpMan/marketing_report_studio/pulls/{number}:
+    get:
+      operationId: getTaskPR
+      summary: Read PR head SHA, base, draft state and merge state.
+      x-openai-isConsequential: false
+      parameters:
+        - name: number
+          in: path
+          required: true
+          schema: {type: integer, minimum: 1}
+      responses:
+        '200': {description: Pull request}
+  /repos/Bot-IpMan/marketing_report_studio/actions/workflows/agent-context.yml/dispatches:
+    post:
+      operationId: prepareAgentContext
+      summary: Prepare bounded source context; use only when user authorized setup.
+      x-openai-isConsequential: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [ref, inputs]
+              properties:
+                ref: {type: string, enum: [main]}
+                inputs:
+                  type: object
+                  additionalProperties: false
+                  required: [source_sha, source_branch]
+                  properties:
+                    source_sha: {$ref: '#/components/schemas/Sha'}
+                    source_branch: {type: string, pattern: '^(main|agent/[0-9a-f]{32})$'}
+      responses:
+        '200': {description: Run ID and links if returned by this API version}
+        '204': {description: Dispatch accepted with no response body; discover unique run}
+  /repos/Bot-IpMan/marketing_report_studio/actions/workflows/agent-task.yml/dispatches:
+    post:
+      operationId: dispatchAgentTask
+      summary: Initialize task or apply a bounded patch in its task branch.
+      x-openai-isConsequential: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [ref, inputs]
+              properties:
+                ref: {type: string, enum: [main]}
+                inputs:
+                  type: object
+                  additionalProperties: false
+                  required: [request_id, payload]
+                  properties:
+                    request_id: {$ref: '#/components/schemas/Identifier'}
+                    payload:
+                      type: string
+                      maxLength: 40960
+                      description: JSON string matching init or apply contract in Knowledge; maximum 40 KiB after UTF-8 encoding.
+      responses:
+        '200': {description: Run ID and links if returned by this API version}
+        '204': {description: Dispatch accepted without body; find run by request_id}
+  /repos/Bot-IpMan/marketing_report_studio/actions/workflows/agent-validation.yml/dispatches:
+    post:
+      operationId: dispatchCandidateValidation
+      summary: Run build, smoke, strict PDF and browser E2E on a pinned commit.
+      x-openai-isConsequential: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [ref, inputs]
+              properties:
+                ref: {type: string, enum: [main]}
+                inputs:
+                  type: object
+                  additionalProperties: false
+                  required: [job_id, expected_sha]
+                  properties:
+                    job_id: {$ref: '#/components/schemas/Identifier'}
+                    expected_sha: {$ref: '#/components/schemas/Sha'}
+                    task_id: {$ref: '#/components/schemas/Identifier'}
+      responses:
+        '200': {description: Run ID and links if returned by this API version}
+        '204': {description: Dispatch accepted without body; find run by job_id}
+components:
+  securitySchemes:
+    GitHubBearer:
+      type: http
+      scheme: bearer
+  schemas:
+    Sha:
+      type: string
+      pattern: '^[0-9a-f]{40}$'
+    Identifier:
+      type: string
+      pattern: '^[0-9a-f]{32}$'

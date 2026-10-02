@@ -1,0 +1,36 @@
+name: Agent Task
+run-name: agent-task-${{ inputs.request_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      request_id:
+        description: Task ID for init; operation ID for apply (32 hex)
+        required: true
+        type: string
+      payload:
+        description: Bounded JSON task request (init or apply)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: agent-task
+  cancel-in-progress: false
+
+jobs:
+  task:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout trusted helper
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Apply guarded operation
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/agent/run.py task
