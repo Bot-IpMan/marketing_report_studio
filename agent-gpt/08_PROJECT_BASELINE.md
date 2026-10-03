@@ -1,8 +1,17 @@
 # Marketing Report Studio — dated project baseline
 
-Prepared 2026-10-02. Repo: `Bot-IpMan/marketing_report_studio`. This is orientation for a GPT, not a substitute for reading current GitHub source and CI at a pinned commit.
+Prepared 2026-10-03. Repo: `Bot-IpMan/marketing_report_studio`. This is dated orientation for a GPT, not a substitute for reading current GitHub source and CI at a pinned commit.
 
-At the last verified remote inspection, default `main` pointed to `0afbedcec91122cb661b1b312cdbd2a30f795f3c`. A local preparation branch `agent/bootstrap-execution-readiness` had commit `5d299d12571ef1b23634ecaaed08c83374a3a0f7` adding build/test ordering and an initial validation workflow. This later direct GitHub implementation continues locally from it. **Neither that local commit nor these new source files prove what is currently installed on remote `main`.** Refresh the repository ref, tree, workflows and results before any task.
+At the last verified remote inspection, default `main` pointed to `c1cf72cf3f0969bc80af573c2f394e6a26619487`, the merge commit for PR #8 (`Agent/direct GitHub bootstrap`). The direct GitHub agent workflows, policy, helpers and `agent-gpt/` bundle were therefore present on remote `main`, not merely on a local preparation branch. Refresh the repository ref, tree, workflows and results before every task because this SHA becomes historical after the next merge.
+
+## Verified agent readiness at this snapshot
+
+- `Agent Context` run `37034236268` completed successfully for the pinned `main` SHA.
+- `agent-data` pointed to `7c51252171e95af0826d075e7e86a8be997b8554`.
+- `contexts/c1cf72cf3f0969bc80af573c2f394e6a26619487/manifest.json` reported `complete:true` and `file_count:57` with two index pages and no skipped files.
+- No `tasks/*` or `results/*` records existed, so a real task dispatch, strict candidate validation, exact-SHA check and draft PR had **not** yet been proven end to end.
+- The repository rulesets API returned no rulesets. Legacy branch-protection state could not be confirmed with the available integration permission. Add the `main` ruleset only after the first successful baseline validation exposes the exact required check identity.
+- GPT Editor schema import, protected PAT configuration and GPT-side action calls were not verified by repository inspection.
 
 ## Product architecture
 
