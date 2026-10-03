@@ -36,6 +36,7 @@ def main():
           "old gateway instruction found")
     schema = yaml.safe_load((PACKAGE / "03_ACTION_OPENAPI.yaml").read_text())
     check(schema["openapi"].startswith("3."), "invalid OpenAPI version")
+    check(schema["info"]["version"] == "1.1.0", "unexpected bundle schema version")
     check(schema["servers"] == [{"url": "https://api.github.com"}], "wrong server")
     paths = schema["paths"]
     prefix = "/repos/Bot-IpMan/marketing_report_studio/"
@@ -50,7 +51,10 @@ def main():
                        for name in ("context", "task", "validation")}
     expected_writes.add(prefix + "pulls")
     check(writes == expected_writes, "unexpected write endpoint")
-    for path, _, operation in operations:
+    for path, method, operation in operations:
+        expected_consequential = method != "get"
+        check(operation.get("x-openai-isConsequential") is expected_consequential,
+              f"wrong consequential flag for {method.upper()} {path}")
         check(len(operation["summary"]) <= 300, f"long summary: {path}")
         for param in operation.get("parameters", []):
             check(len(param.get("description", "")) <= 700, f"long parameter: {path}")
@@ -74,10 +78,10 @@ def main():
           "validation job is not read-only")
     check(workflows["validation"]["jobs"]["publish"]["permissions"]["checks"] == "write",
           "publisher cannot attach check")
-    result = {"version": "1.0.0", "status": "local-static-pass", "operations": len(operations),
+    result = {"version": schema["info"]["version"], "status": "local-static-pass", "operations": len(operations),
               "server": schema["servers"][0]["url"], "instruction_characters": len(instructions),
               "checked": ["required files", "OpenAPI YAML", "fixed GitHub repository paths",
-                          "write endpoint whitelist", "unique operations", "example plan",
+                          "write endpoint whitelist", "read/write consequential flags", "unique operations", "example plan",
                           "workflow YAML", "read-only test job", "candidate check publisher"],
               "not_verified_here": ["GPT Editor import", "token grants", "remote workflows", "GitHub CI",
                                     "browser E2E", "Cloudflare configuration"]}

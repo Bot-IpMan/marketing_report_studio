@@ -1,5 +1,5 @@
 {
-  "version": "1.0.0",
+  "version": "1.1.0",
   "status": "local-static-pass",
   "operations": 20,
   "server": "https://api.github.com",
@@ -9,6 +9,7 @@
     "OpenAPI YAML",
     "fixed GitHub repository paths",
     "write endpoint whitelist",
+    "read/write consequential flags",
     "unique operations",
     "example plan",
     "workflow YAML",

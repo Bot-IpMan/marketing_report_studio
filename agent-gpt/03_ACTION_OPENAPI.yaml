@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Marketing Report Studio — direct GitHub agent
-  version: 1.0.0
+  version: 1.1.0
   description: Native GitHub REST operations for Bot-IpMan/marketing_report_studio. No gateway or product API.
 servers:
   - url: https://api.github.com
@@ -198,7 +198,7 @@ paths:
     post:
       operationId: createDraftTaskPR
       summary: Create a draft PR only after exact-head green validation and review.
-      x-openai-isConsequential: false
+      x-openai-isConsequential: true
       requestBody:
         required: true
         content:
@@ -232,7 +232,7 @@ paths:
     post:
       operationId: prepareAgentContext
       summary: Prepare bounded source context; use only when user authorized setup.
-      x-openai-isConsequential: false
+      x-openai-isConsequential: true
       requestBody:
         required: true
         content:
@@ -257,7 +257,7 @@ paths:
     post:
       operationId: dispatchAgentTask
       summary: Initialize task or apply a bounded patch in its task branch.
-      x-openai-isConsequential: false
+      x-openai-isConsequential: true
       requestBody:
         required: true
         content:
@@ -285,7 +285,7 @@ paths:
     post:
       operationId: dispatchCandidateValidation
       summary: Run build, smoke, strict PDF and browser E2E on a pinned commit.
-      x-openai-isConsequential: false
+      x-openai-isConsequential: true
       requestBody:
         required: true
         content:
