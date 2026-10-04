@@ -53,5 +53,16 @@ if __name__ == "__main__":
     try:
         main()
     except (AgentError, KeyError, ValueError, json.JSONDecodeError) as exc:
-        print(f"AGENT_ERROR: {exc}", file=sys.stderr)
+        message = f"AGENT_ERROR: {exc}"
+        print(message, file=sys.stderr)
+
+        summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+        if summary_path:
+            try:
+                with open(summary_path, "a", encoding="utf-8") as summary:
+                    summary.write("## Agent task failure\n\n")
+                    summary.write(f"`{message}`\n")
+            except OSError:
+                pass
+
         sys.exit(1)
