@@ -5,10 +5,11 @@ import { readFileSync } from 'node:fs';
 const wrangler = readFileSync('wrangler.toml', 'utf8');
 const html = readFileSync('marketing_report_studio_v8_access_folders_fixed.html', 'utf8');
 const appSource = readFileSync('app.js', 'utf8');
+const diagnosticsSource = readFileSync('src/features/diagnostics.js', 'utf8');
 const buildScript = readFileSync('scripts/build.mjs', 'utf8');
 const api = readFileSync('functions/api/[[path]].js', 'utf8');
 const worker = readFileSync('worker.js', 'utf8');
-const sourceBundle = [wrangler, html, appSource, buildScript, api, worker].join('\n');
+const sourceBundle = [wrangler, html, appSource, diagnosticsSource, buildScript, api, worker].join('\n');
 
 const translationFunctions = appSource.match(/function escapeRegExp\(value\)[\s\S]*?function replaceTranslatedPhrase\(text, from, to\)[\s\S]*?\n\}/)?.[0];
 const translationHarness = vm.runInNewContext(`${translationFunctions}; replaceTranslatedPhrase`, {});
@@ -32,6 +33,7 @@ for (const marker of [
   'id="pasteBtn"',
   'id="saveClientHtmlBtn"',
   'id="saveDiskBtn"',
+  'id="diagnosticsBtn"',
   'id="fileInput" class="hiddenInput" multiple',
   '<section class="panel analytics" data-workspace-panel="analytics" data-workspace-slot="top">',
   '<section class="panel reader" data-workspace-panel="reader" data-workspace-slot="bottom">',
@@ -51,6 +53,23 @@ for (const id of ['clientReportBtn', 'saveHtmlBtn', 'saveClientPackageBtn', 'exp
   const tag = html.match(new RegExp(`<button[^>]*id="${id}"[^>]*>|<button[^>]*class="[^"]*hidden[^"]*"[^>]*id="${id}"[^>]*>`))?.[0] || '';
   assert.match(tag, /\bhidden\b/, `${id} must be hidden from the default UI`);
 }
+
+assert.match(html, /src="src\/features\/diagnostics\.js"/, 'workspace must load the local diagnostics module');
+assert.match(appSource, /MRS_DIAGNOSTICS\.setContextProvider\(buildLocalDiagnosticContext\)/, 'app must provide sanitized product context to local diagnostics');
+assert.match(diagnosticsSource, /const MAX_EVENTS=200/, 'diagnostics must keep a bounded event buffer');
+assert.match(diagnosticsSource, /unhandledrejection/, 'diagnostics must capture rejected promises');
+assert.match(diagnosticsSource, /automaticUpload:false/, 'diagnostics must declare that automatic upload is disabled');
+assert.doesNotMatch(diagnosticsSource, /\bfetch\s*\(|XMLHttpRequest|sendBeacon|WebSocket/, 'diagnostics must not transmit data over the network');
+await import('../src/features/diagnostics.js');
+const diagnostics=globalThis.MRSDiagnostics;
+const sanitized=diagnostics.sanitizeText('person@example.com https://example.com/private secret-client.pdf');
+assert.doesNotMatch(sanitized, /person@example\.com|example\.com|secret-client\.pdf/, 'diagnostics must redact common identifiers and client file names');
+diagnostics.clear();
+for(let index=0;index<205;index+=1) diagnostics.record('test','event '+index);
+const diagnosticSnapshot=await diagnostics.buildSnapshot();
+assert.equal(diagnosticSnapshot.events.length,diagnostics.MAX_EVENTS,'diagnostics event buffer must stay bounded');
+assert.equal(diagnosticSnapshot.privacy.localOnly,true,'diagnostics snapshot must remain explicitly local-only');
+assert.equal(diagnosticSnapshot.privacy.includesClientContent,false,'diagnostics snapshot must exclude client content');
 
 assert.match(appSource, /const BROWSER_ONLY_MODE = true/, 'hosted UI must be locked to browser-only mode');
 assert.match(appSource, /if\(BROWSER_ONLY_MODE\)/, 'network API calls must have a browser-only guard');
