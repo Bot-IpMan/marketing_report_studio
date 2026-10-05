@@ -55,9 +55,13 @@ for (const id of ['clientReportBtn', 'saveHtmlBtn', 'saveClientPackageBtn', 'exp
 }
 
 assert.match(html, /src="src\/features\/diagnostics\.js"/, 'workspace must load the local diagnostics module');
+assert.ok(html.indexOf('src="src/features/diagnostics.js"') < html.indexOf('src="src/core/dom.js"'), 'diagnostics must load before core and feature scripts');
 assert.match(appSource, /MRS_DIAGNOSTICS\.setContextProvider\(buildLocalDiagnosticContext\)/, 'app must provide sanitized product context to local diagnostics');
 assert.match(diagnosticsSource, /const MAX_EVENTS=200/, 'diagnostics must keep a bounded event buffer');
 assert.match(diagnosticsSource, /unhandledrejection/, 'diagnostics must capture rejected promises');
+assert.match(diagnosticsSource, /resource\.error/, 'diagnostics must capture local resource loading failures');
+assert.match(diagnosticsSource, /addEventListener\('error',[\s\S]*?,true\)/, 'resource error listener must use capture mode');
+assert.match(diagnosticsSource, /describeConsoleArgs/, 'diagnostics must retain bounded sanitized console arguments');
 assert.match(diagnosticsSource, /automaticUpload:false/, 'diagnostics must declare that automatic upload is disabled');
 assert.doesNotMatch(diagnosticsSource, /\bfetch\s*\(|XMLHttpRequest|sendBeacon|WebSocket/, 'diagnostics must not transmit data over the network');
 await import('../src/features/diagnostics.js');
@@ -66,8 +70,16 @@ const sanitized=diagnostics.sanitizeText('person@example.com https://example.com
 assert.doesNotMatch(sanitized, /person@example\.com|example\.com|secret-client\.pdf/, 'diagnostics must redact common identifiers and client file names');
 diagnostics.clear();
 for(let index=0;index<205;index+=1) diagnostics.record('test','event '+index);
+diagnostics.record('test.error',new Error('Failed secret-client.pdf at https://example.com/private'));
+diagnostics.setContextProvider(()=>({files:{byType:{text_csv:1}},nested:{level1:{level2:{count:2}}}}));
 const diagnosticSnapshot=await diagnostics.buildSnapshot();
 assert.equal(diagnosticSnapshot.events.length,diagnostics.MAX_EVENTS,'diagnostics event buffer must stay bounded');
+const lastDiagnosticEvent=diagnosticSnapshot.events.at(-1);
+assert.equal(lastDiagnosticEvent.details.error.name,'Error','diagnostics must preserve sanitized error type');
+assert.match(lastDiagnosticEvent.details.error.stack,/Error/,'diagnostics must preserve a sanitized stack trace');
+assert.doesNotMatch(lastDiagnosticEvent.details.error.stack,/secret-client\.pdf|example\.com/,'diagnostic stacks must redact client file names and URLs');
+assert.equal(diagnosticSnapshot.app.files.byType.text_csv,1,'safe nested file-type aggregates must not be truncated');
+assert.equal(diagnosticSnapshot.app.nested.level1.level2.count,2,'safe nested scalar diagnostics must survive bounded sanitization');
 assert.equal(diagnosticSnapshot.privacy.localOnly,true,'diagnostics snapshot must remain explicitly local-only');
 assert.equal(diagnosticSnapshot.privacy.includesClientContent,false,'diagnostics snapshot must exclude client content');
 
