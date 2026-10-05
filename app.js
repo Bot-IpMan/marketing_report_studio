@@ -150,6 +150,7 @@ const MRS_DOCUMENT_EXTRACT = (typeof window!=='undefined' && window.MRSDocumentE
 const MRS_PROVIDER_RESULTS = (typeof window!=='undefined' && window.MRSProviderResults) || {};
 const MRS_PROVIDER_MARKDOWN = (typeof window!=='undefined' && window.MRSProviderMarkdown) || {};
 const MRS_STORAGE = (typeof window!=='undefined' && window.MRSStorage) || {};
+const MRS_DIAGNOSTICS = (typeof window!=='undefined' && window.MRSDiagnostics) || {};
 const ANALYSIS_WORKER_SRC = 'src/workers/analysis.worker.js';
 const PDFJS_MODULE_SRC = 'vendor/pdfjs/pdf.min.mjs';
 const PDFJS_WORKER_SRC = 'vendor/pdfjs/pdf.worker.min.mjs';
@@ -166,6 +167,29 @@ let localStorageDisabledBySize = false;
 let REPORT = normalizeReport(loadReport() || DEFAULT);
 const state = {activeDataset: REPORT.datasets[0]?.id || null, activeFile:null, openTabs:[], theme:'dark', access:((HOSTED_MODE&&!BROWSER_ONLY_MODE)||REPORT.meta?.clientLocked)?'viewer':(REPORT.meta?.accessMode || 'admin'), activeCompany:null, compareA:null, compareB:null, compareOnly:false, openFolders:{}, showCompare:false, fsOpen:{}, fsRoots:[], fsPollTimer:null, analyticsSite:'all', analyticsResearch:'all', materialType:'all', reviewFilter:'all', competitorFilter:'all', matrixFilter:'all', fileSort:'newest', aiStatus:null, aiStatusLoaded:false, aiSectionId:'', aiQueueType:'all', aiQueueStatus:'all', aiAuditFilter:'all', versionDiffFilter:'all', sidePanelView:'materials', lastVizFsSync:0, widgetSnapshots:{}, simpleChartDashboardView:'recommended', simpleChartCatalogOpen:false, simpleChartCatalogView:'all', simpleChartSelectedId:null, simpleChartFamilySelections:{}, simpleChartPage:1, simpleChartFilters:{search:'',metric:'all',dimension:'all',chartType:'all',aggregation:'all',sourceTable:'all',confidence:'all'}, simpleDerivedPage:1, lang:(REPORT.meta?.lang || getSavedLang() || 'uk')};
 const cloudSync = {enabled:HOSTED_MODE&&!BROWSER_ONLY_MODE, ready:false, localFallback:BROWSER_ONLY_MODE, saving:false, dirty:false, conflict:false, suppress:false, saveTimer:null, retryCount:0, reportId:null, version:null, role:null, user:null, workspace:null};
+function buildLocalDiagnosticContext(){
+  const datasets=Array.isArray(REPORT.datasets)?REPORT.datasets:[];
+  const files=Array.isArray(REPORT.files)?REPORT.files:[];
+  const byType={}; let totalBytes=0;
+  files.forEach(file=>{
+    const raw=String(file?.type||file?.kind||'unknown').toLowerCase();
+    const type=raw.replace(/[^a-z0-9.+_-]/g,'_').slice(0,40)||'unknown';
+    byType[type]=(byType[type]||0)+1;
+    const size=Number(file?.size); if(Number.isFinite(size)&&size>0) totalBytes+=size;
+  });
+  const rowCounts=datasets.map(item=>Array.isArray(item?.rows)?item.rows.length:0);
+  const columnCounts=datasets.map(item=>Array.isArray(item?.columns)?item.columns.length:0);
+  return {
+    mode:{browserOnly:BROWSER_ONLY_MODE,hosted:HOSTED_MODE,access:state.access,lang:state.lang,theme:state.theme},
+    counts:{datasets:datasets.length,documents:REPORT.documents?.length||0,extractedTables:REPORT.extractedTables?.length||0,files:files.length,charts:REPORT.charts?.length||0,tables:REPORT.tables?.length||0},
+    dataShape:{totalRows:rowCounts.reduce((sum,value)=>sum+value,0),maxRows:Math.max(0,...rowCounts),maxColumns:Math.max(0,...columnCounts)},
+    files:{byType,totalBytes},
+    pdf:{runtimeStatus:pdfJsRuntime.status,loadAttempts:pdfJsRuntime.attempts,lastError:pdfJsRuntime.lastError?String(pdfJsRuntime.lastError?.message||pdfJsRuntime.lastError):null},
+    storage:{indexedDbWarningShown,localStorageDisabledBySize},
+    workspace:{sidePanelView:state.sidePanelView,openTabCount:Array.isArray(state.openTabs)?state.openTabs.length:0}
+  };
+}
+if(typeof MRS_DIAGNOSTICS.setContextProvider==='function') MRS_DIAGNOSTICS.setContextProvider(buildLocalDiagnosticContext);
 let VERSION_DIFF_BASELINE = null;
 let VERSION_DIFF_BASELINE_REPORT = null;
 const $ = MRS_DOM.byId || (id => document.getElementById(id));
