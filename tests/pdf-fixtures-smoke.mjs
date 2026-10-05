@@ -25,6 +25,44 @@ const rebuilt=documents.reconstructFinancialTableHeaders([['Financial Summary','
 assert.equal(rebuilt.reconstructed,true,'period row must replace a title row as the financial header');
 assert.deepEqual(rebuilt.matrix[0],['Metric','Q1-2025','Q2-2025']);
 
+const rejectedTocItems=[
+  {str:'Section',transform:[1,0,0,1,10,100],width:60,height:10},
+  {str:'Page',transform:[1,0,0,1,200,100],width:25,height:10},
+  {str:'Financial summary',transform:[1,0,0,1,10,80],width:110,height:10},
+  {str:'4',transform:[1,0,0,1,200,80],width:8,height:10},
+  {str:'Balance sheet',transform:[1,0,0,1,10,60],width:90,height:10},
+  {str:'26',transform:[1,0,0,1,200,60],width:14,height:10},
+  {str:'Cash flow',transform:[1,0,0,1,10,40],width:70,height:10},
+  {str:'30',transform:[1,0,0,1,200,40],width:14,height:10}
+];
+const rejectedCandidates=documents.detectPdfTablesFromItems(rejectedTocItems,1);
+assert.ok(rejectedCandidates.length>=1,'synthetic TOC layout must produce a PDF geometry candidate');
+assert.equal(rejectedCandidates.some(candidate=>candidate.accepted),false,'synthetic TOC candidate must remain rejected');
+const fakePdfjs={
+  getDocument(){
+    return {
+      promise:Promise.resolve({
+        numPages:1,
+        async getPage(){
+          return {
+            async getTextContent(){return {items:rejectedTocItems};},
+            cleanup(){}
+          };
+        },
+        async destroy(){}
+      })
+    };
+  }
+};
+const rejectedDocument=await documents.extractPdfDocument(new ArrayBuffer(8),{
+  fileId:'synthetic-toc',
+  fileName:'synthetic-toc.pdf',
+  pdfjsLib:fakePdfjs,
+  pdfJsStatus:'loaded',
+  previewAvailable:true
+});
+assert.equal(rejectedDocument.tables.length,0,'rejected PDF candidate must not be promoted into document tables');
+
 async function assertPdfFailureDiagnostics(){
   const unavailable=await documents.extractPdfDocument(new ArrayBuffer(8),{
     fileId:'missing',fileName:'missing.pdf',pdfjsLib:null,pdfJsStatus:'failed',previewAvailable:true,
