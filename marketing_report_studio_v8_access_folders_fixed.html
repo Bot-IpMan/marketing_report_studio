@@ -786,9 +786,9 @@ details:not([open])>.advancedMenu,details:not([open])>.workspaceMenuPanel{displa
 .chartRegistryPager{justify-content:space-between;margin-top:9px;color:var(--mrs-muted);font-size:11px}
 .pdfDiagnostics{display:grid;gap:8px;margin-bottom:9px;padding:10px;border:1px solid var(--mrs-border);border-radius:var(--mrs-radius-lg);background:var(--mrs-surface-2)}
 .pdfDiagnostics p{margin:0;color:var(--mrs-text);font-size:12px}
-.pdfDiagnostics dl{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:7px;margin:0}
-.pdfDiagnostics dl div{padding:6px;border-radius:8px;background:var(--mrs-surface-1)}
-.pdfDiagnostics dt{color:var(--mrs-muted);font-size:10px}.pdfDiagnostics dd{margin:2px 0 0;font-size:12px;font-weight:800}
+.pdfDiagnostics dl{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:7px;margin:0;min-width:0}
+.pdfDiagnostics dl div{min-width:0;padding:6px;border-radius:8px;background:var(--mrs-surface-1)}
+.pdfDiagnostics dt{color:var(--mrs-muted);font-size:10px}.pdfDiagnostics dd{min-width:0;max-width:100%;margin:2px 0 0;font-size:12px;font-weight:800;overflow-wrap:anywhere;word-break:break-word}
 .analysisProgress{display:grid;grid-template-columns:minmax(180px,auto) minmax(140px,1fr) auto;align-items:center;gap:10px;border:1px solid rgba(91,130,255,.4);border-radius:var(--mrs-radius-md);background:rgba(49,92,246,.09);padding:8px 10px}
 .analysisProgress b,.analysisProgress span{display:block}
 .analysisProgress span{color:var(--mrs-muted);font-size:10px}
