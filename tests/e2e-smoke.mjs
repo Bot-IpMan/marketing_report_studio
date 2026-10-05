@@ -647,8 +647,12 @@ async function runSimpleE2E() {
         docOverflow,
         topbarWidth: topbarRect ? topbarRect.width : 0,
         simpleTreeExists: Boolean(document.querySelector('[data-simple-file-tree]')),
-        dropZoneExists: Boolean(document.querySelector('#materialsDropZone'))
-        ,overflowing:[...document.querySelectorAll('body *')].map(element=>{const rect=element.getBoundingClientRect();return {tag:element.tagName,className:String(element.className||'').slice(0,100),id:element.id||'',left:Math.round(rect.left),right:Math.round(rect.right),width:Math.round(rect.width),scrollWidth:element.scrollWidth};}).filter(item=>item.right>window.innerWidth+4||item.left<-4||item.scrollWidth>item.width+4).sort((a,b)=>Math.max(b.right-window.innerWidth,b.scrollWidth-b.width)-Math.max(a.right-window.innerWidth,a.scrollWidth-a.width)).slice(0,8)
+        dropZoneExists: Boolean(document.querySelector('#materialsDropZone')),
+        documentWidth: document.documentElement.scrollWidth,
+        bodyWidth: document.body.scrollWidth,
+        rectOverflowing:[...document.querySelectorAll('body *')].map(element=>{const rect=element.getBoundingClientRect();return {tag:element.tagName,className:String(element.className||'').slice(0,100),id:element.id||'',left:Math.round(rect.left),right:Math.round(rect.right),width:Math.round(rect.width),scrollWidth:element.scrollWidth};}).filter(item=>item.right>window.innerWidth+4||item.left<-4).sort((a,b)=>Math.max(b.right-window.innerWidth,-b.left)-Math.max(a.right-window.innerWidth,-a.left)).slice(0,12),
+        nonSvgScrollOverflowing:[...document.querySelectorAll('body *')].filter(element=>!(element instanceof SVGElement)).map(element=>{const rect=element.getBoundingClientRect();return {tag:element.tagName,className:String(element.className||'').slice(0,100),id:element.id||'',left:Math.round(rect.left),right:Math.round(rect.right),width:Math.round(rect.width),scrollWidth:element.scrollWidth};}).filter(item=>item.scrollWidth>item.width+4).sort((a,b)=>(b.scrollWidth-b.width)-(a.scrollWidth-a.width)).slice(0,12),
+        overflowing:[...document.querySelectorAll('body *')].map(element=>{const rect=element.getBoundingClientRect();return {tag:element.tagName,className:String(element.className||'').slice(0,100),id:element.id||'',left:Math.round(rect.left),right:Math.round(rect.right),width:Math.round(rect.width),scrollWidth:element.scrollWidth};}).filter(item=>item.right>window.innerWidth+4||item.left<-4||item.scrollWidth>item.width+4).sort((a,b)=>Math.max(b.right-window.innerWidth,b.scrollWidth-b.width)-Math.max(a.right-window.innerWidth,a.scrollWidth-a.width)).slice(0,8)
       };
     })()`);
     assert.ok(mobileState.docOverflow <= 4, `Mobile page has horizontal overflow: ${JSON.stringify(mobileState)}`);
