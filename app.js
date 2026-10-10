@@ -10656,6 +10656,7 @@ function renderSimpleTablePreview(ds, opts={}){
   }).join('');
   const rowLimitText=applied.rows.length>renderLimit?`Showing first ${renderLimit} of ${fmt(applied.rows.length)} filtered rows.`:`Showing ${fmt(applied.rows.length)} filtered rows.`;
   const showAdvanced=viewState.showAdvanced===true;
+  const controlsCollapsed=viewState.controlsCollapsed===true;
   const showRowDetails=viewState.showRowDetails!==false;
   reader.innerHTML=`<div class="simpleTableShell" data-simple-table>
     <div class="previewToolbar simpleTableTop">
@@ -10664,19 +10665,20 @@ function renderSimpleTablePreview(ds, opts={}){
       <span class="pill">${fmt(analysis.columns.length)} columns</span>
       <span class="pill">${fmt(applied.rows.length)} after filters</span>
       <div class="spacer"></div>
-      <button class="btn small ghost" id="simpleToggleAdvanced" title="${showAdvanced?'Hide advanced controls':'Show advanced controls'}">${showAdvanced?'⌄ Advanced':'⌃ Advanced'}</button>
-      <button class="btn small" id="simpleExportCsv">Export CSV</button>
-      <button class="btn small" id="simpleSaveView">Save view</button>
-      <button class="btn small" id="simpleResetTable">Reset</button>
+      <button class="btn small ghost" id="simpleToggleControls" type="button" aria-expanded="${!controlsCollapsed}" aria-controls="simpleTableControls simpleAdvancedPanel" title="${controlsCollapsed?'Show table controls':'Hide table controls'}">${controlsCollapsed?'▾ Show controls':'▴ Hide controls'}</button>
+      <button class="btn small ghost" style="${controlsCollapsed?'display:none':''}" id="simpleToggleAdvanced" title="${showAdvanced?'Hide advanced controls':'Show advanced controls'}">${showAdvanced?'⌄ Advanced':'⌃ Advanced'}</button>
+      <button class="btn small" style="${controlsCollapsed?'display:none':''}" id="simpleExportCsv">Export CSV</button>
+      <button class="btn small" style="${controlsCollapsed?'display:none':''}" id="simpleSaveView">Save view</button>
+      <button class="btn small" style="${controlsCollapsed?'display:none':''}" id="simpleResetTable">Reset</button>
     </div>
-    <div class="simpleTableControls">
+    <div class="simpleTableControls" id="simpleTableControls" style="${controlsCollapsed?'display:none':''}">
       <input id="simpleTableSearch" class="select" placeholder="Search..." value="${esc(viewState.search||'')}">
       <label class="simpleSort"><span>Sort</span><select class="select" id="simpleSortCol"><option value="">None</option>${sortOptions}</select></label>
       <button class="btn small" id="simpleSortDir">${viewState.sortDir==='asc'?'Asc':'Desc'}</button>
       <details class="simpleColumnPicker"><summary class="btn small">Columns (${visible.length}/${analysis.columns.length})</summary><div class="checks">${columnChecks}</div></details>
       ${showRowDetails?'<label class="check"><input type="checkbox" id="simpleToggleRowDetails" checked><span>Row details</span></label>':'<label class="check"><input type="checkbox" id="simpleToggleRowDetails"><span>Row details</span></label>'}
     </div>
-    <details class="simpleAdvancedPanel" ${showAdvanced?'open':''}>
+    <details class="simpleAdvancedPanel" id="simpleAdvancedPanel" style="${controlsCollapsed?'display:none':''}" ${showAdvanced?'open':''}>
       <summary><b>Advanced</b><span class="tiny">Filters, quality, column types</span></summary>
       <div class="simpleFilterBar">${filterHtml||'<span class="hint">No compact category/status filters detected.</span>'}</div>
       ${renderColumnTypeBadges(analysis)}
@@ -10708,6 +10710,7 @@ function bindSimpleTableControls(dsId){
   $('simpleResetTable')?.addEventListener('click',()=>{const analysis=analyzeTable(ds); const autoHidden=autoDetectHiddenColumns(analysis.rows,analysis.columns); const defaultHidden=defaultHiddenColumnsForTable(analysis.columns); state.simpleTableViews[ds.id]={search:'',filters:{},sortCol:'',sortDir:'desc',hiddenCols:[...new Set([...defaultHidden,...autoHidden])],selectedRowIndex:null,showAdvanced:false,showRowDetails:true}; renderSimpleTablePreview(ds); renderSide();});
   $('simpleExportCsv')?.addEventListener('click',()=>exportDatasetCsv(ds.id));
   $('simpleSaveView')?.addEventListener('click',()=>saveSimpleTableView(ds.id));
+  $('simpleToggleControls')?.addEventListener('click',()=>{viewState.controlsCollapsed=!viewState.controlsCollapsed; renderSimpleTablePreview(ds);});
   $('simpleToggleAdvanced')?.addEventListener('click',()=>{viewState.showAdvanced=!viewState.showAdvanced; renderSimpleTablePreview(ds);});
   $('simpleToggleRowDetails')?.addEventListener('change',()=>{viewState.showRowDetails=$('simpleToggleRowDetails').checked; renderSimpleTablePreview(ds);});
   reader.querySelectorAll('[data-simple-filter]').forEach(sel=>sel.addEventListener('change',()=>{viewState.filters[sel.dataset.simpleFilter]=sel.value||''; renderSimpleTablePreview(ds); renderSide();}));
