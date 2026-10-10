@@ -657,7 +657,7 @@ async function extractPdfDocument(arrayBuffer,input={}){
       if(pageText) documentModel.textBlocks.push({kind:'pdf_page_text',text:pageText,page:pageNumber,quality});
       if(!['corrupted','empty'].includes(quality.status)){
         const found=detectPdfTablesFromItems(textContent.items,pageNumber,input);
-        found.forEach((table,index)=>{
+        found.filter(table=>table.accepted).forEach((table,index)=>{
           documentModel.tables.push(createExtractedTable(documentModel,{
             title:`${documentModel.fileName} · Page ${pageNumber} · Table ${index+1}`,kind:'detected_table',columns:table.headers.map(name=>({name})),rows:table.rows,
             sourceAnchor:{page:pageNumber,tableIndex:index,startRow:table.startRow,endRow:table.endRow,startColumn:table.startColumn,endColumn:table.endColumn,boundingBox:table.boundingBox},
