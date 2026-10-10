@@ -910,13 +910,18 @@ details:not([open])>.advancedMenu,details:not([open])>.workspaceMenuPanel{displa
   border-radius:var(--mrs-radius-md);
   background:var(--mrs-surface-2);
 }
+.simplePreviewTable{width:max-content;min-width:100%;table-layout:auto}
 .simplePreviewTable th,.simplePreviewTable td{
-  white-space:normal;
-  word-break:break-word;
-  overflow-wrap:anywhere;
+  min-width:150px;
   max-width:320px;
+  white-space:normal;
+  word-break:normal;
+  overflow-wrap:break-word;
   vertical-align:top;
 }
+.simplePreviewTable th{min-width:170px}
+.simplePreviewTable th:first-child,.simplePreviewTable td:first-child{position:sticky;left:0;min-width:160px;background:var(--mrs-surface-2);box-shadow:1px 0 0 var(--mrs-border);z-index:2}
+.simplePreviewTable th:first-child{z-index:3}
 .simplePreviewTable th{
   position:sticky;
   top:0;
