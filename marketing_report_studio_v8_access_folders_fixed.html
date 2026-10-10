@@ -1069,6 +1069,34 @@ details:not([open])>.advancedMenu,details:not([open])>.workspaceMenuPanel{displa
 }
 .simpleTreeItem{
   min-height:40px;
+  width:100%;
+  max-width:100%;
+  min-width:0;
+  overflow:hidden;
+}
+.simpleTreeItems{
+  min-width:0;
+}
+.simpleTreeItem:hover{
+  transform:none;
+}
+.simpleTreeItem .itemName{
+  min-width:0;
+  max-width:100%;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.simpleTreeItem .itemMeta{
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+@media(max-width:560px){
+  .files .simpleTreeItem .itemName{
+    white-space:nowrap;
+    overflow-wrap:normal;
+  }
 }
 .simpleTreeItem .btn{
   flex:0 0 auto;
