@@ -10658,6 +10658,8 @@ function renderSimpleTablePreview(ds, opts={}){
   const showAdvanced=viewState.showAdvanced===true;
   const controlsCollapsed=viewState.controlsCollapsed===true;
   const showRowDetails=viewState.showRowDetails!==false;
+  const previousTable=reader.querySelector('.simpleTableShell .simpleTableWrap');
+  const previousScroll=previousTable?{left:previousTable.scrollLeft,top:previousTable.scrollTop}:null;
   reader.innerHTML=`<div class="simpleTableShell" data-simple-table>
     <div class="previewToolbar simpleTableTop">
       <b>${esc(ds.name||'Table')}</b>
@@ -10691,6 +10693,11 @@ function renderSimpleTablePreview(ds, opts={}){
     </div>
   </div>`;
   bindSimpleTableControls(ds.id);
+  if(previousScroll){
+    const table=reader.querySelector('.simpleTableShell .simpleTableWrap');
+    if(table){table.scrollLeft=previousScroll.left;table.scrollTop=previousScroll.top;}
+  }
+  if(opts.focus==='controls') $('simpleToggleControls')?.focus();
   if(opts.focus==='search'){
     const input=$('simpleTableSearch');
     if(input){
@@ -10710,7 +10717,7 @@ function bindSimpleTableControls(dsId){
   $('simpleResetTable')?.addEventListener('click',()=>{const analysis=analyzeTable(ds); const autoHidden=autoDetectHiddenColumns(analysis.rows,analysis.columns); const defaultHidden=defaultHiddenColumnsForTable(analysis.columns); state.simpleTableViews[ds.id]={search:'',filters:{},sortCol:'',sortDir:'desc',hiddenCols:[...new Set([...defaultHidden,...autoHidden])],selectedRowIndex:null,showAdvanced:false,showRowDetails:true}; renderSimpleTablePreview(ds); renderSide();});
   $('simpleExportCsv')?.addEventListener('click',()=>exportDatasetCsv(ds.id));
   $('simpleSaveView')?.addEventListener('click',()=>saveSimpleTableView(ds.id));
-  $('simpleToggleControls')?.addEventListener('click',()=>{viewState.controlsCollapsed=!viewState.controlsCollapsed; renderSimpleTablePreview(ds);});
+  $('simpleToggleControls')?.addEventListener('click',()=>{viewState.controlsCollapsed=!viewState.controlsCollapsed; renderSimpleTablePreview(ds,{focus:'controls'});});
   $('simpleToggleAdvanced')?.addEventListener('click',()=>{viewState.showAdvanced=!viewState.showAdvanced; renderSimpleTablePreview(ds);});
   $('simpleToggleRowDetails')?.addEventListener('change',()=>{viewState.showRowDetails=$('simpleToggleRowDetails').checked; renderSimpleTablePreview(ds);});
   reader.querySelectorAll('[data-simple-filter]').forEach(sel=>sel.addEventListener('change',()=>{viewState.filters[sel.dataset.simpleFilter]=sel.value||''; renderSimpleTablePreview(ds); renderSide();}));
