@@ -1,10 +1,12 @@
 # Direct GitHub technical specification
 
-Version 1.0.0. Target repository: `Bot-IpMan/marketing_report_studio`.
+Version 1.1.0. Target repository: `Bot-IpMan/marketing_report_studio`.
 
 ## Boundary
 
 GPT Actions use GitHub REST at `api.github.com` with a repository-scoped fine-grained PAT. There is no developer-operated gateway or product API. The app remains browser-only; the workflows are separate development infrastructure. Actions and GPT Editor integration must still be tested in the real account before declaring the agent active.
+
+All GET operations in the Action schema use `x-openai-isConsequential:false`. The three workflow dispatches and draft-PR creation use `x-openai-isConsequential:true`, so the platform must request confirmation for every external mutation. The bundle validator enforces this split together with the fixed write-endpoint whitelist; changing either requires an owner-reviewed maintenance PR.
 
 ## Trust and credentials
 
